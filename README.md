@@ -38,7 +38,7 @@ GPU testing done on JUWELS Booster: 1X NVIDIA A100 (40GB) GPU with:
 The following files correspond to:
 
 ```
-	problems.py : Dataloader for FNO model
+    problems.py : Dataloader for FNO model
     fourier_operator: FNO modules
     utils.py : Sumplemment fucntions
 ```
