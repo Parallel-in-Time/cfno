@@ -215,11 +215,11 @@ class FNO2d(nn.Module):
         self.device = device
         
         if self.include_grid == 1:
-            self.r = nn.Sequential(nn.Linear(self.input_dim+2, self.proj_scale),
+            self.p = nn.Sequential(nn.Linear(self.input_dim+2, self.proj_scale),
                                    self.activation,
                                    nn.Linear(self.proj_scale, self.width))
         else:
-            self.r = nn.Sequential(nn.Linear(self.input_dim, self.proj_scale),
+            self.p = nn.Sequential(nn.Linear(self.input_dim, self.proj_scale),
                                    self.activation,
                                    nn.Linear(self.proj_scale, self.width))
         
@@ -252,7 +252,7 @@ class FNO2d(nn.Module):
             grid = self.get_grid(x.shape[0], x.shape[1]).to(self.device)
             x = torch.cat((grid, x), -1)
         
-        x = self.r(x)
+        x = self.p(x)
         x = x.permute(0, 3, 1, 2) # (batch_size, x, y, width) ---> (batch_size, width, x, y)
         
         x1_padding =  self.padding

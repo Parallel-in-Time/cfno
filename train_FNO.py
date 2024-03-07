@@ -15,7 +15,7 @@ if len(sys.argv) == 2:
     training_properties = {
         "learning_rate": 0.001,
         "weight_decay": 1e-8,
-        "scheduler_step": 0.97,
+        "scheduler_step": 0.98,
         "scheduler_gamma": 10,
         "epochs": 1000,
         "batch_size": 16,

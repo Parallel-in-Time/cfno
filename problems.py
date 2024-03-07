@@ -242,8 +242,8 @@ class DarcyDataset(Dataset):
         return self.length
 
     def __getitem__(self, index):
-        inputs = torch.from_numpy(self.reader['sample_' + str(index + self.start)]["input"][:]).type(torch.float32).reshape(1, s, s)
-        labels = torch.from_numpy(self.reader['sample_' + str(index + self.start)]["output"][:]).type(torch.float32).reshape(1, s, s)
+        inputs = torch.from_numpy(self.reader['sample_' + str(index + self.start)]["input"][:]).type(torch.float32).reshape(1, self.s, self.s)
+        labels = torch.from_numpy(self.reader['sample_' + str(index + self.start)]["output"][:]).type(torch.float32).reshape(1, self.s, self.s)
         # normalisation
         inputs = (inputs - self.min_data) / (self.max_data - self.min_data)
         labels = (labels - self.min_model) / (self.max_model - self.min_model)
