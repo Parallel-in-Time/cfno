@@ -1,0 +1,6 @@
+*.out
+*.log
+TrainedModels/
+.ipynb_checkpoints/
+__pycache__/
+data/

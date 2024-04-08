@@ -1,15 +1,14 @@
 #!/bin/bash
 # SLURM SUBMIT SCRIPT
-#SBATCH --job-name=fno2d_wave
+#SBATCH --job-name=fno2d_RBC
 #SBATCH --account=exalab
-#SBATCH --partition=develbooster
+#SBATCH --partition=booster
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1                    # numbe of GPUs
 #SBATCH --ntasks-per-node=1             
 #SBATCH --cpus-per-task=48              # Slurm 22.05: srun doesnot inherit this variable from sbatch
-#SBATCH --time=00:10:00                 # maximum execution time (HH:MM:SS)
+#SBATCH --time=02:00:00                 # maximum execution time (HH:MM:SS)
 #SBATCH --threads-per-core=1            # using only real cores, no SMT
-#SBATCH --hint=nomultithread
 #SBATCH --error=%x-%j.log               # log file name
 
 # explicitly setting srun environment variable to inherit from SBATCH
@@ -25,6 +24,6 @@ source setup.sh
 cd "$BASE_REPO"
 echo "START TIME: $(date)"
 
-srun python  `pwd`/train_FNO.py wave 
+srun python  `pwd`/train_FNO.py RBC2D
 
 echo "END TIME: $(date)"

@@ -66,16 +66,17 @@ class SpectralConv1d(nn.Module):
         return x
 
 class FNO1d(nn.Module):
-    def __init__(self, fno_architecture, nfun =1, padding_frac=1/4, device="cpu"):
+    def __init__(self, fno_architecture, in_channels = 2, out_channels=1, padding_frac= 1/4, device="cpu"):
         super(FNO1d, self).__init__()
 
         """
         The network contains n_layers of the Fourier layer. 
         The following is done:
-        1. Lift the input to the desire channel dimension by self.fc0 
-        2. 4 layers of the integral operators u' = (W + K)(u).
+        1. Lift the input to the desire channel dimension by self.fc0 (p layer)
+        2. n layers of the integral operators u' = (W + K)(u).
             W defined by self.w; K defined by self.conv 
-        3. Project from the channel space to the output space by self.fc1 and self.fc2 .
+        3. Project from the channel space to the ouput space by self.fc1 (q layer)
+        4. Ouput layer given by self.fc2
 
         input: solution of the initial condition and location (a(x), x)
         input_shape: (batchsize, x=s, c=2)
@@ -83,22 +84,21 @@ class FNO1d(nn.Module):
         output_shape: (batchsize, x=s, c=1)
         """
 
-        
-        
         self.padding_frac = padding_frac
         self.modes1 = fno_architecture["modes"]
         self.width = fno_architecture["width"]
         self.n_layers = fno_architecture["n_layers"]
         self.proj_scale = fno_architecture["proj_scale"]
         self.device = device
+        self.input_dim = in_channels
         
         #lifting the input to fc0 (P layer)
-        self.fc0 = nn.Linear(nfun + 1, self.width)  # input channel is 2: (u0(x), x)
+        self.fc0 = nn.Linear(input_dim, self.width)  # input channel is 2: (u0(x), x)
 
         self.conv_list = nn.ModuleList(
-            [nn.Conv1d(self.width, self.width, 1) for _ in range(self.n_layers)])
+            [nn.Conv1d(self.width, self.width, 1) for _ in range(self.n_layers)])  # K 
         self.spectral_list = nn.ModuleList(
-            [SpectralConv1d(self.width, self.width, self.modes1) for _ in range(self.n_layers)])
+            [SpectralConv1d(self.width, self.width, self.modes1) for _ in range(self.n_layers)]) # W
         
         self.fc1 = nn.Linear(self.width, self.proj_scale)  # projecting from fc0 --> fc1 (Q layer)
         self.fc2 = nn.Linear(self.proj_scale, 1)  # output layer 
@@ -110,9 +110,8 @@ class FNO1d(nn.Module):
         x = self.fc0(x)   # Lifting: P layer
         x = x.permute(0, 2, 1)  # (batch_size, nfun+1, width) ---> (batch_size, width, nfun+1)
         x_padding = int(round(x.shape[-1] * self.padding_frac))
-        x = F.pad(x, [0, x_padding])  # pad the domain if input is non-periodic
-        
-        
+        x = Func.pad(x, [0, x_padding])  # pad the domain if input is non-periodic
+    
         for k, (s, c) in enumerate(zip(self.spectral_list, self.conv_list)):
 
             x1 = s(x)
@@ -156,7 +155,8 @@ class SpectralConv2d(nn.Module):
 
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.modes1 = modes1  # Number of Fourier modes to multiply, at most floor(N/2) + 1
+        # Number of Fourier modes to multiply, at most floor(N/2) + 1
+        self.modes1 = modes1 
         self.modes2 = modes2
 
         self.scale = (1 / (in_channels * out_channels))
@@ -193,21 +193,22 @@ class FNO2d(nn.Module):
         """
         The network contains n_layers of the Fourier layer. 
         The following is done:
-        1. Lift the input to the desire channel dimension by self.fc0 
-        2. 4 layers of the integral operators u' = (W + K)(u).
-            W defined by self.w; K defined by self.conv 
-        3. Project from the channel space to the output space by self.fc1 and self.fc2 .
+        1. Lift the input layer to the desire channel dimension by p layer
+        2. n layers of the integral operators u' = (W + K)(u).
+           W defined by self.w; K defined by self.conv 
+        3. Project from the channel space to the output space by q 
+        
 
         input: solution of the initial condition and location (a(x,y), x, y)
-        input_shape: (batchsize, x=s, y=s, c=3)
+        input_shape: (batchsize, x=sx, y=sy, c=3)
         output: solution at a later timestep
-        output_shape: (batchsize, x=s, y=s, c=1)
+        output_shape: (batchsize, x=sx, y=sy, c=1)
         """
-        self.modes1 = fno_architecture["modes"]
-        self.modes2 = fno_architecture["modes"]
+        self.modes1 = fno_architecture["modes1"]
+        self.modes2 = fno_architecture["modes1"]
         self.width = fno_architecture["width"]
         self.n_layers = fno_architecture["n_layers"]
-        self.proj_scale = 128
+        self.proj_scale = fno_architecture["proj_scale"]
         self.padding = fno_architecture["padding"]
         self.include_grid = fno_architecture["include_grid"]
         self.input_dim = in_channels
@@ -215,33 +216,35 @@ class FNO2d(nn.Module):
         self.device = device
         
         if self.include_grid == 1:
-            self.p = nn.Sequential(nn.Linear(self.input_dim+2, self.proj_scale),
+            # input channel is 3: (a(x, y), x, y)
+            self.p = nn.Sequential(nn.Linear(self.input_dim+2, self.proj_scale),  # scaling: p layer
                                    self.activation,
-                                   nn.Linear(self.proj_scale, self.width))
+                                   nn.Linear(self.proj_scale, self.width))  
         else:
-            self.p = nn.Sequential(nn.Linear(self.input_dim, self.proj_scale),
+            # input channel is 1: (a(x, y))
+            self.p = nn.Sequential(nn.Linear(self.input_dim, self.proj_scale),  # scaling: p layer
                                    self.activation,
-                                   nn.Linear(self.proj_scale, self.width))
+                                   nn.Linear(self.proj_scale, self.width))   
         
-        
-        self.fc0 = nn.Linear(3, self.width)  # input channel is 3: (a(x, y), x, y)
-        self.conv_list = nn.ModuleList([nn.Conv2d(self.width, self.width, 1) for _ in range(self.n_layers)])
-        self.spectral_list = nn.ModuleList([SpectralConv2d(self.width, self.width, self.modes1, self.modes2) for _ in range(self.n_layers)])
+     
+        self.conv_list = nn.ModuleList([nn.Conv2d(self.width, self.width, 1) for _ in range(self.n_layers)]) # K
+        self.spectral_list = nn.ModuleList([SpectralConv2d(self.width, self.width, self.modes1, self.modes2) for _ in range(self.n_layers)])  # W
 
         
-        self.q = nn.Sequential(nn.Linear(self.width, self.proj_scale),
+        self.q = nn.Sequential(nn.Linear(self.width, self.proj_scale), # projection: q layer 
                                 self.activation,
-                                nn.Linear(self.proj_scale, out_channels))  # projection: q layer with (fc1, fc2)
+                                nn.Linear(self.proj_scale, out_channels))  
         
         self.to(device)
                 
-    def get_grid(self, samples, res):
-        size_x = size_y = res
+    def get_grid(self, samples, size_x, size_y):
+        res_x = size_y
+        res_y = size_x
         samples = samples
-        gridx = torch.tensor(np.linspace(0, 1, size_x), dtype=torch.float)
-        gridx = gridx.reshape(1, 1, size_x, 1).repeat([samples, size_y, 1, 1])
-        gridy = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
-        gridy = gridy.reshape(1, size_y, 1, 1).repeat([samples, 1, size_x, 1])
+        gridx = torch.tensor(np.linspace(0, 1, res_x), dtype=torch.float)
+        gridx = gridx.reshape(1, 1, res_x, 1).repeat([samples, res_y, 1, 1])
+        gridy = torch.tensor(np.linspace(0, 1, res_y), dtype=torch.float)
+        gridy = gridy.reshape(1, res_y, 1, 1).repeat([samples, 1, res_x, 1])
         grid = torch.cat((gridy, gridx), dim=-1)
 
         return grid
@@ -249,7 +252,7 @@ class FNO2d(nn.Module):
     def forward(self, x):
                 
         if self.include_grid == 1:
-            grid = self.get_grid(x.shape[0], x.shape[1]).to(self.device)
+            grid = self.get_grid(x.shape[0], x.shape[1], x.shape[2]).to(self.device)
             x = torch.cat((grid, x), -1)
         
         x = self.p(x)
@@ -290,5 +293,4 @@ class FNO2d(nn.Module):
         print(f'Total number of model parameters: {nparams} (~{format_tensor_size(nbytes)})')
 
         return nparams
-
     

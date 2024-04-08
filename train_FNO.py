@@ -8,35 +8,28 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from problems import Darcy,WaveEquation
+from problems import Darcy, WaveEquation, RBC2D
+from problems import default_param, default_train_params, RBC_param, RBC_train_param
 
 if len(sys.argv) == 2:
 
-    training_properties = {
-        "learning_rate": 0.001,
-        "weight_decay": 1e-8,
-        "scheduler_step": 0.98,
-        "scheduler_gamma": 10,
-        "epochs": 1000,
-        "batch_size": 16,
-        "exp": 1,
-        "training_samples": 256,
-    }
-    fno_architecture = {
-        "width": 64,
-        "modes": 16,
-        "FourierF" : 0, #Number of Fourier Features in the input channels. Default is 0.
-        "n_layers": 4, #Number of Fourier layers
-        "padding": 0,
-        "include_grid":1,
-        "retrain": 4, #Random seed
-    }
+    training_properties = {}
+    fno_architecture = {}
     
     #   "which_example" can be 
     #   wave           : Wave equation
-    #   darcy               : Darcy Flow
+    #   darcy          : Darcy Flow
+    #   RBC2D          : Rayleigh-Bénard convection 2D
     
     which_example = sys.argv[1]
+    if which_example == "wave" or which_example == "darcy":
+        training_properties = default_train_params(training_properties)
+        fno_architecture = default_param(fno_architecture)
+    elif which_example == "RBC2D":
+        training_properties = RBC_train_param(training_properties)
+        fno_architecture = RBC_param(fno_architecture)
+    else:
+        raise ValueError("the variable which_example has to be either wave or darcy or RBC2D")
 
     # Save the models here:
     folder = "TrainedModels/"+"FNO_"+which_example+"_tmp1"
@@ -64,8 +57,10 @@ if which_example == "wave":
     example = WaveEquation(fno_architecture, device, batch_size,training_samples)
 elif which_example == "darcy":
     example = Darcy(fno_architecture, device, batch_size,training_samples)
+elif which_example == "RBC2D":
+    example = RBC2D(fno_architecture, device, batch_size,training_samples)
 else:
-    raise ValueError("the variable which_example has to be either wave or darcy")
+    raise ValueError("the variable which_example has to be either wave or darcy or RBC2D")
 
 if not os.path.isdir(folder):
     print("Generated new folder")
@@ -139,8 +134,8 @@ for epoch in range(epochs):
                     train_relative_l1 += loss_f.item()
             train_relative_l1 /= len(train_loader)
             
-            writer.add_scalar("train_loss/train_loss_rel", train_relative_l1, epoch)
-            writer.add_scalar("val_loss/val_loss", val_relative_l1, epoch)
+            writer.add_scalar("train_loss/train_l1_loss_rel", train_relative_l1, epoch)
+            writer.add_scalar("val_loss/val_l1_loss_rel", val_relative_l1, epoch)
 
             if val_relative_l1 < best_model_testing_error:
                 best_model_testing_error = val_relative_l1
