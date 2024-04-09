@@ -140,7 +140,9 @@ for epoch in range(epochs):
             if val_relative_l1 < best_model_testing_error:
                 best_model_testing_error = val_relative_l1
                 best_model = copy.deepcopy(model)
-                torch.save(best_model, folder + "/model.pkl")
+                best_model_checkpoint = model.state_dict()
+                torch.save(best_model, folder + "/best_model_deepcopy.pt")
+                torch.save(best_model_checkpoint, folder + "/best_model.pt")
                 writer.add_scalar("val_loss/Best Relative Testing Error", best_model_testing_error, epoch)
                 counter = 0
             else:
@@ -159,4 +161,5 @@ for epoch in range(epochs):
     if counter > threshold:
         print("Early Stopping since best_model_testing_error:{best_model_testing_error} < val_relative_l1:{val_relative_l1} \
                 in the given threshold:{threshold}")
+        torch.save(model.state_dict(), folder + "/model.pt")
         break

@@ -457,7 +457,7 @@ class RBC2D:
                             out_channels = 2, 
                             device=device) 
         
-
+        print(self.model)
         num_workers = 8
         
         self.train_loader = DataLoader(RBCDataset2D("training", self.N_Fourier_F, training_samples, 10, 256, 64), batch_size=batch_size, shuffle=True, num_workers=num_workers)

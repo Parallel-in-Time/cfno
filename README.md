@@ -70,7 +70,9 @@ The following files correspond to:
 ```
     problems.py : Dataloader for FNO model
     fourier_operator: FNO modules
-    utils.py : Sumplemment fucntions
+    utils.py : Sumplemment functions
+    DataVisual.ipynb: Data preprocessing
+    inference.py: Testing trained model
 ```
 
 ## Reference:

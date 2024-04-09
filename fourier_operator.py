@@ -235,7 +235,7 @@ class FNO2d(nn.Module):
                                 self.activation,
                                 nn.Linear(self.proj_scale, out_channels))  
         
-        self.to(device)
+        self.to(self.device)
                 
     def get_grid(self, samples, size_x, size_y):
         res_x = size_y
