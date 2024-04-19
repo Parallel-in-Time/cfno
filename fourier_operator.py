@@ -3,8 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as Func
 
-from utils import format_tensor_size
-
+from utils import format_tensor_size, activation_selection
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -205,23 +204,21 @@ class FNO2d(nn.Module):
         output_shape: (batchsize, x=sx, y=sy, c=1)
         """
         self.modes1 = fno_architecture["modes1"]
-        self.modes2 = fno_architecture["modes1"]
+        self.modes2 = fno_architecture["modes2"]
         self.width = fno_architecture["width"]
         self.n_layers = fno_architecture["n_layers"]
         self.proj_scale = fno_architecture["proj_scale"]
         self.padding = fno_architecture["padding"]
         self.include_grid = fno_architecture["include_grid"]
         self.input_dim = in_channels
-        self.activation  = nn.LeakyReLU() 
+        self.activation  = activation_selection(fno_architecture["activation"])
         self.device = device
         
         if self.include_grid == 1:
-            # input channel is 3: (a(x, y), x, y)
-            self.p = nn.Sequential(nn.Linear(self.input_dim+2, self.proj_scale),  # scaling: p layer
+            self.p = nn.Sequential(nn.Linear(self.input_dim +2, self.proj_scale),  # scaling: p layer
                                    self.activation,
                                    nn.Linear(self.proj_scale, self.width))  
         else:
-            # input channel is 1: (a(x, y))
             self.p = nn.Sequential(nn.Linear(self.input_dim, self.proj_scale),  # scaling: p layer
                                    self.activation,
                                    nn.Linear(self.proj_scale, self.width))   
@@ -290,7 +287,6 @@ class FNO2d(nn.Module):
             nparams += param.numel()
             nbytes += param.data.element_size() * param.numel()
 
-        print(f'Total number of model parameters: {nparams} (~{format_tensor_size(nbytes)})')
+        print(f'Total number of model parameters: {nparams} with {nbytes} (~{format_tensor_size(nbytes)})')
 
         return nparams
-    

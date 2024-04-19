@@ -1,6 +1,6 @@
 *.out
 *.log
-TrainedModels/
+TrainedModels_*
 .ipynb_checkpoints/
 __pycache__/
 data/

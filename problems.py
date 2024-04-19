@@ -15,27 +15,7 @@ random.seed(0)
 # NOTE:
 #All the training sets should be in the folder: data/
 
-
-def activation_selection(choice):
-    if choice in ['tanh', 'Tanh']:
-        return nn.Tanh()
-    elif choice in ['relu', 'ReLU']:
-        return nn.ReLU(inplace=True)
-    elif choice in ['lrelu', 'LReLU']:
-        return nn.LeakyReLU(inplace=True)
-    elif choice in ['sigmoid', 'Sigmoid']:
-        return nn.Sigmoid()
-    elif choice in ['softplus', 'Softplus']:
-        return nn.Softplus(beta=4)
-    elif choice in ['celu', 'CeLU']:
-        return nn.CELU()
-    elif choice in ['elu']:
-        return nn.ELU()
-    elif choice in ['mish']:
-        return nn.Mish()
-    else:
-        raise ValueError('Unknown activation function')
-        
+  
         
 def default_param(network_properties):
     
@@ -86,7 +66,7 @@ def default_train_params(training_properties):
         training_properties["exp"] = 1
         
     if "training_samples" not in training_properties:
-        training_properties["training_samples"] = 256
+        training_properties["training_samples"] = 250
         
     return training_properties
 
@@ -97,54 +77,63 @@ def RBC_param(network_properties):
         network_properties["modes1"] = 32
         
     if "modes2" not in network_properties:
-        network_properties["modes2"] = 16
+        network_properties["modes2"] = 32
     
     if "width" not in network_properties:
-        network_properties["width"] = 64
+        network_properties["width"] = 128
     
     if "n_layers" not in network_properties:
-        network_properties["n_layers"] = 4
+        network_properties["n_layers"] = 2
         
     if "proj_scale" not in network_properties:
-        network_properties["proj_scale"] = 128
+        network_properties["proj_scale"] = 32
 
     if "padding" not in network_properties:
         network_properties["padding"] = 0
     
     if "include_grid" not in network_properties:
-        network_properties["include_grid"] = 1
+        network_properties["include_grid"] = 0
     
     if "FourierF" not in network_properties:
         network_properties["FourierF"] = 0
+        
+    if "activation" not in network_properties:
+        network_properties["activation"] = 'ReLU'
     
     return network_properties
 
 
 def RBC_train_param(training_properties):
     if "learning_rate" not in training_properties:
-        training_properties["learning_rate"] = 0.001
+        training_properties["learning_rate"] = 0.00039
         
     if "weight_deacy" not in training_properties:
-        training_properties["weight_decay"] = 1e-6
+        training_properties["weight_decay"] = 1e-05
         
     if "scheduler_step" not in training_properties:
-        training_properties["scheduler_step"] = 0.98
+        training_properties["scheduler_step"] = 10
         
     if "scheduler_gamma" not in training_properties:
-        training_properties["scheduler_gamma"] = 10
+        training_properties["scheduler_gamma"] = 0.98
         
     if "epochs" not in training_properties:
-        training_properties["epochs"] = 1000
+        training_properties["epochs"] = 100
         
     if "batch_size" not in training_properties:
-        training_properties["batch_size"] = 50
+        training_properties["batch_size"] = 30
         
     if "exp" not in training_properties:
-        training_properties["exp"] = 2
+        training_properties["exp"] = 1
         
     if "training_samples" not in training_properties:
-        training_properties["training_samples"] = 250
+        training_properties["training_samples"] = 99
         
+    if "start_t" not in training_properties:
+        training_properties["start_t"] = 100
+        
+    if "end_t" not in training_properties:
+        training_properties["end_t"] = 198
+    
     return training_properties    
 
 
@@ -357,54 +346,30 @@ class Darcy:
 # Train: 250 samples
 # Validation: 100 samples
 # Test: 100 samples
-# Training Data: /p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/training_data
-# Compressed File: /p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/RBC_NX256_NZ64_TF50.h5 with t_{0:50}, sim_time={0,12.5}
-# Group: snapshots_{index:0:250}_t_{0:199}
-
-# Validation Data: /p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/validation_data
-# Compressed File: /p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/RBC_NX256_NZ64_TF50_val.h5 with t_{0:50}, sim_time={0,12.5}
-# Group: snapshots_{index:0:100}_t_{0:199}
-
-# Test Data: /p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/test_data
-# Compressed File: /p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/RBC_NX256_NZ64_TF50_test.h5 with t_{0:50}, sim_time={0,12.5}
-# Group: snapshots_{index:0:100}_t_{0:199}
-
-# u_0 = 0, b_0 = random.(seed=random.randint(1,5000), distribution='normal', scale=1e-3), t_0= 0, tf,sim_time=50, Ra=10e4, Pr=1
-
-# Subgroup: velocity_0 - (2,256,64), u_0
-# Subgroup: velocity_t - (2,256,64), u_t
-# -------------------------------------------------------
-# Subgroup: tasks/buoyancy_0 - (256,64), b_0
-# Subgroup: tasks/buoyancy_t - (256,64), b_t
-# Subgroup: tasks/vorticity_0 - (256,64), v_0
-# Subgroup: tasks/vorticity_t - (256,64), v_t
-# -------------------------------------------------------
-# SubGroup: scales/iteration  
-# SubGroup: scales/sim_time  
-# SubGroup: scales/timestep  
-# SubGroup: scales/wall_time  
 
 class RBCDataset2D(Dataset):
-    def __init__(self, task="training", nf=0, training_samples = 250, t = 10, sx = 256, sz = 64):
+    def __init__(self, task="training", nf=0, samples = 250, start_t = 0, end_t = 10, sx = 256, sz = 64):
+    
         
         # Data file: 
         if task == "training":
-            self.file_data = "/p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/RBC_NX256_NZ64_TF50_train.h5"
-            self.length = training_samples
+            self.file_data = "/p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/RBC2D_NX64_NZ64_TF50_Pr1_Ra10e4/RBC2D_NX64_NZ64_TF50_Pr1_Ra10e4_train.h5"
+            self.length = samples
         elif task == "validation":
-            self.file_data = "/p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/RBC_NX256_NZ64_TF50_val.h5"
-            self.length = 100
+            self.file_data = "/p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/RBC2D_NX64_NZ64_TF50_Pr1_Ra10e4/RBC2D_NX64_NZ64_TF50_Pr1_Ra10e4_val.h5"
+            self.length = samples
         elif task == "test":
-            self.file_data = "/p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/RBC_NX256_NZ64_TF50_test.h5"
-            self.length = 100
+            self.file_data = "/p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/RBC2D_NX64_NZ64_TF50_Pr1_Ra10e4/RBC2D_NX64_NZ64_TF50_Pr1_Ra10e4_test.h5"
+            self.length = samples
         else:
             raise ValueError("task must be in [training,validation,test]")
             
         self.reader = h5py.File(self.file_data, 'r')
         
         # Time
-        self.t = t
-        self.start = 0
+        self.start_t = start_t
+        self.end_t = end_t
+        self.start = 1
                         
         # Grid size
         self.sx = sx
@@ -418,9 +383,29 @@ class RBCDataset2D(Dataset):
         return self.length
 
     def __getitem__(self, index):
-        inputs = torch.from_numpy(self.reader['snapshots_' + str(index + self.start)+"_t_"+str(self.t)]["velocity_0"][:]).type(torch.float32)  # (2, self.x, self.z)
-        labels = torch.from_numpy(self.reader['snapshots_' + str(index + self.start)+"_t_"+str(self.t)]["velocity_t"][:]).type(torch.float32)  # (2, self.x, self.z)
-
+        
+        # input: vel_start_t, output: vel_end_t
+        # inputs = torch.from_numpy(self.reader['snapshots_' + str(index + self.start)+"_t_"+str(self.start_t)]["velocity_t"][:]).type(torch.float32)  # (in_channel, sx, sz)
+        # labels = torch.from_numpy(self.reader['snapshots_' + str(index + self.start)+"_t_"+str(self.end_t)]["velocity_t"][:]).type(torch.float32)  # (out_channel, sx, sz)
+        
+        in_file = self.reader['snapshots_' + str(0 + self.start)+"_t_"+str(index+self.start_t)]
+        out_file = self.reader['snapshots_' + str(0 + self.start)+"_t_"+str(index+self.start_t+1)]
+        
+        # input: [vel_x_start_t, vel_z_start_t, b_start_t] , output: [vel_x_end_t, vel_z_end_t, b_end_t]
+        # vel0_x = in_file["velocity_t"][0,:,:]
+        # vel0_z = in_file["velocity_t"][1,:,:]
+        # b0 = in_file["tasks/buoyancy_t"][:]
+        # velt_x = out_file["velocity_t"][0,:,:]
+        # velt_z = out_file["velocity_t"][1,:,:]
+        # bt = out_file["tasks/buoyancy_t"][:]
+        
+        # inputs =  torch.from_numpy(np.stack((vel0_x, vel0_z, b0), axis = 0)).type(torch.float32)  # (in_channel=3, sx, sz)
+        # labels =  torch.from_numpy(np.stack((velt_x, velt_z, bt), axis = 0)).type(torch.float32)  # (out_channel=3, sx, sz)
+ 
+        # input: [vel_x_start_t, vel_z_start_t, b_start_t, p_start_t] , output: [vel_x_end_t, vel_z_end_t, b_end_t, p_end_t]
+        inputs = torch.from_numpy(in_file["input"][:]).type(torch.float32)
+        labels = torch.from_numpy(out_file["input"][:]).type(torch.float32)
+        
         if self.N_Fourier_F > 0:
             grid = self.get_grid() # [sx, sz, 2]
             FF = FourierFeatures(1, self.N_Fourier_F, grid.device)
@@ -428,10 +413,10 @@ class RBCDataset2D(Dataset):
             # x_proj torch.Size([sx, sz, N_Fourier_F])
             ff_grid = FF(grid) # [sx, sz, 2*N_Fourier_F]
             ff_grid = ff_grid.permute(2, 0, 1) #[sx, sz, 2*N_Fourier_F] ---> [2*N_Fourier_F,sx,sz]
-            inputs = torch.cat((inputs, ff_grid), 0) #([2,sx,sz],[2*N_Fourier,sx,sz]) ---> [2*N_Fourier_F+2,sx,sz]
+            inputs = torch.cat((inputs, ff_grid), 0) #([in_channel,sx,sz],[2*N_Fourier,sx,sz]) ---> [2*N_Fourier_F+in_channel,sx,sz]
             
 
-        return inputs.permute(1, 2, 0), labels.permute(1, 2, 0) # [2*N_Fourier_F+2,sx,sz], [2,sx,sz] ---> [sx,sz,2*N_Fourier_F+2], [sx,sz,2]
+        return inputs.permute(1, 2, 0), labels.permute(1, 2, 0) # [2*N_Fourier_F+in_channel,sx,sz], [out_channel,sx,sz] ---> [sx,sz,2*N_Fourier_F+in_channel], [sx,sz,out_channel]
 
     def get_grid(self):
         x = torch.linspace(0, 1, self.sx) # [sx]
@@ -445,23 +430,43 @@ class RBCDataset2D(Dataset):
         return grid
 
 
+class RBC2D():
+    def __init__(self, 
+                 network_properties, 
+                 batch_size,
+                 device= 'cpu', 
+                 training_samples = 250, 
+                 start_t = 0, 
+                 end_t = 10, 
+                 sx= 256, 
+                 sz = 64, 
+                 in_channels = 2, 
+                 out_channels = 2):
+        
+        self.network_properties =  network_properties 
+        self.batch_size = batch_size
+        self.device = device
+        self.training_samples = training_samples
+        self.start_t = start_t
+        self.end_t = end_t
+        self.sx = sx
+        self.sz = sz
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.validation_samples = self.end_t - self.start_t + 1
+        self.test_samples = self.end_t - self.start_t + 1
+      
+        
+        self.N_Fourier_F = self.network_properties["FourierF"]
+        
+        self.model = FNO2d(fno_architecture = self.network_properties, 
+                            in_channels = self.in_channels + 2 * self.N_Fourier_F, 
+                            out_channels = self.out_channels, 
+                            device= self.device) 
+        
 
-class RBC2D:
-    def __init__(self, network_properties, device, batch_size, training_samples = 250, sx= 256, sz = 64):
+        num_workers = 1
         
-        network_properties = RBC_param(network_properties)
-        self.N_Fourier_F = network_properties["FourierF"]
-        
-        self.model = FNO2d(fno_architecture = network_properties, 
-                            in_channels = 2 + 2 * self.N_Fourier_F, 
-                            out_channels = 2, 
-                            device=device) 
-        
-        print(self.model)
-        num_workers = 8
-        
-        self.train_loader = DataLoader(RBCDataset2D("training", self.N_Fourier_F, training_samples, 10, 256, 64), batch_size=batch_size, shuffle=True, num_workers=num_workers)
-        self.val_loader = DataLoader(RBCDataset2D("validation", self.N_Fourier_F, training_samples, 10, 256, 64), batch_size=batch_size, shuffle=False, num_workers=num_workers)
-        self.test_loader = DataLoader(RBCDataset2D("test", self.N_Fourier_F, training_samples, 50, 256, 64), batch_size=batch_size, shuffle=False, num_workers=num_workers)      
-        
-        
+        self.train_loader = DataLoader(RBCDataset2D("training", self.N_Fourier_F, self.training_samples, self.start_t, self.end_t, self.sx, self.sz), batch_size=self.batch_size, shuffle=True, num_workers=num_workers)
+        self.val_loader = DataLoader(RBCDataset2D("validation", self.N_Fourier_F, self.validation_samples, self.start_t, self.end_t, self.sx, self.sz), batch_size=self.batch_size, shuffle=False, num_workers=num_workers)
+        self.test_loader = DataLoader(RBCDataset2D("test", self.N_Fourier_F, self.test_samples, self.start_t, self.end_t, self.sx, self.sz), batch_size=self.batch_size, shuffle=False, num_workers=num_workers)

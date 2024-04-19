@@ -14,34 +14,7 @@ This code base focuses on the Rayleigh-Bénard convection (RBC) problem, as a st
 
 Run the script `download_data.py` which downloads all required data into the appropriate folder (it requires 'wget' to be installed on your system).
 
-For RBC problem the data is generated using [Dedalus](https://dedalus-project.readthedocs.io/en/latest/pages/examples/ivp_2d_rayleigh_benard.html) with
-
-```
-u_0 = 0
-b_0 = random.(seed=random.randint(1,5000), distribution='normal', scale=1e-3)
-t_0= 0
-t_f,sim_time=50 ---> index: 0-199
-Ra=10e4
-Pr=1
-Nx = 256
-Nz = 64
-```
-and stored in HDF5 file with 
-```
-# Group: snapshots_{sample}_t_{0:199} with training_samples:0-250, validation_samples:0-100, test_samples:0-100
-# Subgroup: velocity_0 - (2,256,64), u_0
-# Subgroup: velocity_t - (2,256,64), u_t
-# -------------------------------------------------------
-# Subgroup: tasks/buoyancy_0 - (256,64), b_0
-# Subgroup: tasks/buoyancy_t - (256,64), b_t
-# Subgroup: tasks/vorticity_0 - (256,64), v_0
-# Subgroup: tasks/vorticity_t - (256,64), v_t
-# -------------------------------------------------------
-# SubGroup: scales/iteration  
-# SubGroup: scales/sim_time  
-# SubGroup: scales/timestep  
-# SubGroup: scales/wall_time  
-```
+For RBC problem the data is generated using [Dedalus](https://dedalus-project.readthedocs.io/en/latest/pages/examples/ivp_2d_rayleigh_benard.html)
 
 ## Models Training
 
