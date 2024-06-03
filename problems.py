@@ -12,10 +12,6 @@ torch.manual_seed(0)
 np.random.seed(0)
 random.seed(0)
 
-# NOTE:
-#All the training sets should be in the folder: data/
-
-  
         
 def default_param(network_properties):
     
@@ -105,10 +101,10 @@ def RBC_param(network_properties):
 
 def RBC_train_param(training_properties):
     if "learning_rate" not in training_properties:
-        training_properties["learning_rate"] = 0.00039
+        training_properties["learning_rate"] = 0.0039
         
     if "weight_deacy" not in training_properties:
-        training_properties["weight_decay"] = 1e-05
+        training_properties["weight_decay"] = 1e-04
         
     if "scheduler_step" not in training_properties:
         training_properties["scheduler_step"] = 10
@@ -117,22 +113,22 @@ def RBC_train_param(training_properties):
         training_properties["scheduler_gamma"] = 0.98
         
     if "epochs" not in training_properties:
-        training_properties["epochs"] = 100
+        training_properties["epochs"] = 200
         
     if "batch_size" not in training_properties:
-        training_properties["batch_size"] = 30
+        training_properties["batch_size"] = 64
         
     if "exp" not in training_properties:
         training_properties["exp"] = 1
         
     if "training_samples" not in training_properties:
-        training_properties["training_samples"] = 99
+        training_properties["training_samples"] = 5000
         
     if "start_t" not in training_properties:
-        training_properties["start_t"] = 100
+        training_properties["start_t"] = 0
         
     if "end_t" not in training_properties:
-        training_properties["end_t"] = 198
+        training_properties["end_t"] = 4999
     
     return training_properties    
 
@@ -353,13 +349,13 @@ class RBCDataset2D(Dataset):
         
         # Data file: 
         if task == "training":
-            self.file_data = "/p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/RBC2D_NX64_NZ64_TF50_Pr1_Ra10e4/RBC2D_NX64_NZ64_TF50_Pr1_Ra10e4_train.h5"
+            self.file_data = "/p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/RBC2D_NX64_NZ64_T025_TF26_Pr1_Ra10e5_dt2_10e_5_fine/RBC2D_NX64_NZ64_T025_TF26_Pr1_Ra10e5_dt2_10e_5_fine_train.h5"
             self.length = samples
         elif task == "validation":
-            self.file_data = "/p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/RBC2D_NX64_NZ64_TF50_Pr1_Ra10e4/RBC2D_NX64_NZ64_TF50_Pr1_Ra10e4_val.h5"
+            self.file_data = "/p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/RBC2D_NX64_NZ64_T025_TF26_Pr1_Ra10e5_dt2_10e_5_fine/RBC2D_NX64_NZ64_T025_TF26_Pr1_Ra10e5_dt2_10e_5_fine_val.h5"
             self.length = samples
         elif task == "test":
-            self.file_data = "/p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/RBC2D_NX64_NZ64_TF50_Pr1_Ra10e4/RBC2D_NX64_NZ64_TF50_Pr1_Ra10e4_test.h5"
+            self.file_data = "/p/project/cexalab/john2/NeuralOperators/RayleighBernardConvection/RBC2D_NX64_NZ64_T025_TF26_Pr1_Ra10e5_dt2_10e_5_fine/RBC2D_NX64_NZ64_T025_TF26_Pr1_Ra10e5_dt2_10e_5_fine_test.h5"
             self.length = samples
         else:
             raise ValueError("task must be in [training,validation,test]")
@@ -369,7 +365,7 @@ class RBCDataset2D(Dataset):
         # Time
         self.start_t = start_t
         self.end_t = end_t
-        self.start = 1
+        self.start = 0
                         
         # Grid size
         self.sx = sx
@@ -467,6 +463,6 @@ class RBC2D():
 
         num_workers = 1
         
-        self.train_loader = DataLoader(RBCDataset2D("training", self.N_Fourier_F, self.training_samples, self.start_t, self.end_t, self.sx, self.sz), batch_size=self.batch_size, shuffle=True, num_workers=num_workers)
+        self.train_loader = DataLoader(RBCDataset2D("training", self.N_Fourier_F, self.training_samples, self.start_t, self.end_t, self.sx, self.sz), batch_size=self.batch_size, shuffle=False, num_workers=num_workers)
         self.val_loader = DataLoader(RBCDataset2D("validation", self.N_Fourier_F, self.validation_samples, self.start_t, self.end_t, self.sx, self.sz), batch_size=self.batch_size, shuffle=False, num_workers=num_workers)
         self.test_loader = DataLoader(RBCDataset2D("test", self.N_Fourier_F, self.test_samples, self.start_t, self.end_t, self.sx, self.sz), batch_size=self.batch_size, shuffle=False, num_workers=num_workers)
