@@ -2,7 +2,7 @@ import copy
 import json
 import os
 import sys
-
+import argparse
 import pandas as pd
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -11,37 +11,36 @@ from tqdm import tqdm
 from problems import Darcy, WaveEquation, RBC2D
 from problems import default_param, default_train_params, RBC_param, RBC_train_param
 
-if len(sys.argv) == 3:
 
-    training_properties = {}
-    fno_architecture = {}
-    
-    #   "which_example" can be 
-    #   wave           : Wave equation
-    #   darcy          : Darcy Flow
-    #   RBC2D          : Rayleigh-Bénard convection 2D
-    
-    which_example = sys.argv[1]
-    if which_example == "wave" or which_example == "darcy":
-        training_properties = default_train_params(training_properties)
-        fno_architecture = default_param(fno_architecture)
-    elif which_example == "RBC2D":
-        training_properties = RBC_train_param(training_properties)
-        fno_architecture = RBC_param(fno_architecture)
-    else:
-        raise ValueError("the variable which_example has to be either wave or darcy or RBC2D")
+parser = argparse.ArgumentParser(description='FNO Training')
+parser.add_argument('--problem', type=str, default='RBC2D',
+                    help='[wave, darcy, RBC2D] problem to be solved')
+parser.add_argument('--model_save_path', type=str,
+                    help='path to which FNO model is saved')
+parser.add_argument('--load_checkpoint', action="store_true",
+                    help='load checkpoint')
+parser.add_argument('--early_stopping', action="store_true",
+                    help='do early stopping')
+parser.add_argument('--checkpoint_path', type=str,
+                    help='folder containing checkpoint')
+args = parser.parse_args()
 
-    # Save the models here:
-    folder = sys.argv[2]
+training_properties = {}
+fno_architecture = {}
 
+problem = args.problem
+if problem == "wave" or problem == "darcy":
+    training_properties = default_train_params(training_properties)
+    fno_architecture = default_param(fno_architecture)
+elif problem == "RBC2D":
+    training_properties = RBC_train_param(training_properties)
+    fno_architecture = RBC_param(fno_architecture)
 else:
-    folder = sys.argv[1]
-    training_properties = json.loads(sys.argv[2].replace("\'", "\""))
-    fno_architecture = json.loads(sys.argv[3].replace("\'", "\""))
-    which_example = sys.argv[4]
+    raise ValueError("`problem` has to be either `wave` or `darcy` or `RBC2D`")
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using {device}")
+folder = args.model_save_path
 writer = SummaryWriter(log_dir=folder+"/tensorboard")
 
 learning_rate = training_properties["learning_rate"]
@@ -61,14 +60,14 @@ out_channels = 4      # output: [vel_x_end_t,vel_z_end_t,b_end_t, p_end_t]
 sx = 64
 sz = 64
 
-if which_example == "wave":
-    example = WaveEquation(fno_architecture, device, batch_size,training_samples)
-elif which_example == "darcy":
-    example = Darcy(fno_architecture, device, batch_size,training_samples)
-elif which_example == "RBC2D":
-    example = RBC2D(fno_architecture, batch_size, device, training_samples, start_t, end_t, sx, sz, in_channels, out_channels)
+if problem == "wave":
+    problem = WaveEquation(fno_architecture, device, batch_size,training_samples)
+elif problem == "darcy":
+    problem = Darcy(fno_architecture, device, batch_size,training_samples)
+elif problem == "RBC2D":
+    problem = RBC2D(fno_architecture, batch_size, device, training_samples, start_t, end_t, sx, sz, in_channels, out_channels)
 else:
-    raise ValueError("the variable which_example has to be either wave or darcy or RBC2D")
+    raise ValueError("`problem` has to be either `wave` or `darcy` or `RBC2D`")
 
 if not os.path.isdir(folder):
     print("Generated new folder")
@@ -81,10 +80,10 @@ df.to_csv(folder + '/net_architecture.txt', header=False, index=True, mode='w')
 print("Training paramaters:", training_properties)
 print("FNO model:", fno_architecture)
 
-model = example.model
+model = problem.model
 n_params = model.print_size()
-train_loader = example.train_loader
-val_loader = example.val_loader
+train_loader = problem.train_loader
+val_loader = problem.val_loader
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_gamma)
@@ -98,8 +97,15 @@ elif p == 2:
 best_model_testing_error = 300
 threshold = int(0.25 * epochs)
 counter = 0
+start_epoch = 0
 
-for epoch in range(epochs):
+if args.load_checkpoint:
+    checkpoint = torch.load(args.checkpoint_path)
+    model.load_state_dict(checkpoint['model'])
+    start_epoch = checkpoint['epoch']
+    print(f"Continuing training from {checkpoint_path} at {start_epoch}")
+
+for epoch in range(start_epoch, epochs):
     with tqdm(unit="batch", disable=False) as tepoch:
         model.train()
         tepoch.set_description(f"Epoch {epoch}")
@@ -140,15 +146,21 @@ for epoch in range(epochs):
             model.eval()
             val_relative_l1 = 0.0
             train_relative_l1 = 0.0
+            val_error = 0.0
 
             for step, (input_batch, output_batch) in enumerate(val_loader):
-                input_batch = input_batch.to(device)
-                output_batch = output_batch.to(device)
-                output_pred_batch = model(input_batch)
-
-                loss_f = torch.mean(abs(output_pred_batch - output_batch)) / torch.mean(abs(output_batch)) * 100
-                val_relative_l1 += loss_f.item()
+                    input_batch = input_batch.to(device)
+                    output_batch = output_batch.to(device)
+                    output_pred_batch = model(input_batch)
+                    
+                    val_loss = train_loss_fun(output_pred_batch, output_batch) / train_loss_fun(torch.zeros_like(output_batch).to(device), output_batch)
+                    loss_f = torch.mean(abs(output_pred_batch - output_batch)) / torch.mean(abs(output_batch)) * 100
+                    
+                    val_error += val_loss.item()
+                    val_relative_l1 += loss_f.item()
+                    
             val_relative_l1 /= len(val_loader)
+            val_error /= len(val_loader)
 
             for step, (input_batch, output_batch) in enumerate(train_loader):
                     input_batch = input_batch.to(device)
@@ -161,8 +173,8 @@ for epoch in range(epochs):
 
             writer.add_scalar("train_loss/train_l1_loss_rel", train_relative_l1, epoch)
             writer.add_scalar("val_loss/val_l1_loss_rel", val_relative_l1, epoch)
-          
-
+            writer.add_scalar("val_loss/val_error", val_error, epoch)
+            
             if val_relative_l1 < best_model_testing_error:
                 best_model_testing_error = val_relative_l1
                 # best_model = copy.deepcopy(model)             
@@ -185,11 +197,12 @@ for epoch in range(epochs):
             file.write("Params: " + str(n_params) + "\n")
         scheduler.step()
             
-    if epoch % 10 == 0 or epoch == epochs-1:
+    if epoch % 100 == 0 or epoch == epochs-1:
         torch.save(model.state_dict(), folder + f"/model_checkpoint_{epoch}.pt")
 
-    if counter > threshold:
-        print(f"Early Stopping since best_model_testing_error:{best_model_testing_error} < val_relative_l1:{val_relative_l1} \
-                in the given threshold:{threshold}")
-        torch.save(model.state_dict(), folder + f"/model_checkpoint_{epoch}.pt")
-        break
+    if args.early_stopping:
+        if counter > threshold:
+            print(f"Early Stopping since best_model_testing_error:{best_model_testing_error} < val_relative_l1:{val_relative_l1} \
+                    in the given threshold:{threshold}")
+            torch.save(model.state_dict(), folder + f"/model_checkpoint_{epoch}.pt")
+            break

@@ -17,7 +17,7 @@ module load OpenMPI/4.1.5 \
             Pillow-SIMD/9.5.0  \
             tqdm/4.66.1  \
             
-module list
+# module list
     
 # Activate your Python virtual environment
 source /p/project/cexalab/john2/NeuralOperators/py_venv/bin/activate
