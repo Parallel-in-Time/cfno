@@ -10,11 +10,14 @@ The code is based on python 3 (version 3.11) and the packages required can be in
 
 
 ## Data
+
 This code base focuses on the Rayleigh-Bénard convection (RBC) problem, as a starting point wave equation and darcy flow is solved using the data downloaded from https://zenodo.org/records/10406879 (~2.4GB). It covers instances of the Poisson, Wave, Navier-Stokes, Allen-Cahn, Transport and Compressible Euler equations and Darcy flow. 
 
 Run the script `download_data.py` which downloads all required data into the appropriate folder (it requires 'wget' to be installed on your system).
 
 For RBC problem the data is generated using [Dedalus](https://dedalus-project.readthedocs.io/en/latest/pages/examples/ivp_2d_rayleigh_benard.html)
+
+See also the [dedalus folder ...](./dedalus)
 
 ## Models Training
 
