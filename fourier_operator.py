@@ -126,18 +126,17 @@ class FNO1d(nn.Module):
         x = self.fc2(x)  # output layer
         return x.squeeze(-1)
     
- 
-    def print_size(self):
-        nparams = 0
-        nbytes = 0
+     def print_size(self):
+        properties = []
 
         for param in self.parameters():
-            nparams += param.numel()
-            nbytes += param.data.element_size() * param.numel()
-
-        print(f'Total number of model parameters: {nparams} (~{format_tensor_size(nbytes)})')
-
-        return nparams
+            properties.append([list(param.size()+(2,) if param.is_complex() else param.size()), param.numel(), (param.data.element_size() * param.numel())/1000])
+            
+        elementFrame = pd.DataFrame(properties, columns = ['ParamSize', 'NParams', 'Memory(KB)'])
+ 
+        print(f'Total number of model parameters: {elementFrame["NParams"].sum()} with (~{format_tensor_size(elementFrame["Memory(KB)"].sum()*1000)})')
+        return elementFrame
+    
     
     
 ################################################################
@@ -214,12 +213,9 @@ class FNO2d(nn.Module):
         self.activation  = activation_selection(fno_architecture["activation"])
         self.device = device
         
-        if self.include_grid == 1:
-            self.p = nn.Sequential(nn.Linear(self.input_dim +2, self.proj_scale),  # scaling: p layer
-                                   self.activation,
-                                   nn.Linear(self.proj_scale, self.width))  
-        else:
-            self.p = nn.Sequential(nn.Linear(self.input_dim, self.proj_scale),  # scaling: p layer
+      
+    
+        self.p = nn.Sequential(nn.Linear(self.input_dim, self.proj_scale),  # scaling: p layer
                                    self.activation,
                                    nn.Linear(self.proj_scale, self.width))   
         
@@ -234,24 +230,9 @@ class FNO2d(nn.Module):
         
         self.to(self.device)
                 
-    def get_grid(self, samples, size_x, size_y):
-        res_x = size_y
-        res_y = size_x
-        samples = samples
-        gridx = torch.tensor(np.linspace(0, 1, res_x), dtype=torch.float)
-        gridx = gridx.reshape(1, 1, res_x, 1).repeat([samples, res_y, 1, 1])
-        gridy = torch.tensor(np.linspace(0, 1, res_y), dtype=torch.float)
-        gridy = gridy.reshape(1, res_y, 1, 1).repeat([samples, 1, res_x, 1])
-        grid = torch.cat((gridy, gridx), dim=-1)
-
-        return grid
 
     def forward(self, x):
-                
-        if self.include_grid == 1:
-            grid = self.get_grid(x.shape[0], x.shape[1], x.shape[2]).to(self.device)
-            x = torch.cat((grid, x), -1)
-        
+ 
         x = self.p(x)
         x = x.permute(0, 3, 1, 2) # (batch_size, x, y, width) ---> (batch_size, width, x, y)
         
@@ -280,13 +261,13 @@ class FNO2d(nn.Module):
         return x
 
     def print_size(self):
-        nparams = 0
-        nbytes = 0
+        properties = []
 
         for param in self.parameters():
-            nparams += param.numel()
-            nbytes += param.data.element_size() * param.numel()
-
-        print(f'Total number of model parameters: {nparams} with {nbytes} (~{format_tensor_size(nbytes)})')
-
-        return nparams
+            properties.append([list(param.size()+(2,) if param.is_complex() else param.size()), param.numel(), (param.data.element_size() * param.numel())/1000])
+            
+        elementFrame = pd.DataFrame(properties, columns = ['ParamSize', 'NParams', 'Memory(KB)'])
+ 
+        print(f'Total number of model parameters: {elementFrame["NParams"].sum()} with (~{format_tensor_size(elementFrame["Memory(KB)"].sum()*1000)})')
+        return elementFrame
+    
