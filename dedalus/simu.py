@@ -183,7 +183,7 @@ class OutputFiles():
             out.append(spectrum)
         return out
 
-    def getFullMeanSpectrum(self, iBeg, iEnd):
+    def getFullMeanSpectrum(self, iBeg, iEnd=None):
         if iEnd is None:
             iEnd = self.nFiles
         sMean = []
