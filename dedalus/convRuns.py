@@ -3,6 +3,7 @@
 """
 Base script to run convergence studies in space
 """
+import os
 import numpy as np
 from simu import runSimu, OutputFiles, checkDNS
 
@@ -17,6 +18,7 @@ Rayleigh = RayleighInit
 for iRun in range(nRunMax):
 
     dirName = f"run_{iRun:02d}"
+    os.makedirs(dirName, exist_ok=True)
 
     print(f" -- running simulation with Rayleigh={Rayleigh} in {dirName}")
     runSimu(dirName, Rayleigh, resFactor)

@@ -1,9 +1,10 @@
 import h5py
 import glob
 import numpy as np
+from datetime import datetime
 import scipy.optimize as sco
 import dedalus.public as d3
-import logging
+
 
 def runSimu(dirName, Rayleigh, resFactor, baseDt=1e-2/2, seed=999):
     """
@@ -22,12 +23,11 @@ def runSimu(dirName, Rayleigh, resFactor, baseDt=1e-2/2, seed=999):
     seed : int, optional
         Seed for the random noise in the initial solution. The default is 999.
     """
-    logging.basicConfig(
-        filename=f"{dirName}/simu.log", filemode='a',
-        format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-        datefmt='%H:%M:%S',
-        level=logging.DEBUG)
-    logger = logging.getLogger(dirName)
+    def log(msg):
+        with open(f"{dirName}/simu.log", "a") as f:
+            f.write(f"{dirName} -- ")
+            f.write(datetime.now().strftime("%d/%m/%Y  %H:%M:%S"))
+            f.write(f" : {msg}\n")
 
     # Parameters
     Lx, Lz = 4, 1
@@ -41,9 +41,9 @@ def runSimu(dirName, Rayleigh, resFactor, baseDt=1e-2/2, seed=999):
     dtype = np.float64
 
     with open(f"{dirName}/00_infoSimu.txt", "w") as f:
-        f.write(f"Rayleigh : {Rayleigh}\n")
+        f.write(f"Rayleigh : {Rayleigh:1.2e}\n")
         f.write(f"Nx, Nz : {Nx}, {Nz}\n")
-        f.write(f"dt : {timestepper}\n")
+        f.write(f"dt : {timestep:1.2e}\n")
 
     # Bases
     coords = d3.CartesianCoordinates('x', 'z')
@@ -102,15 +102,13 @@ def runSimu(dirName, Rayleigh, resFactor, baseDt=1e-2/2, seed=999):
 
     # Main loop
     try:
-        logger.info('Starting main loop')
+        log('Starting main loop')
         while solver.proceed:
             solver.step(timestep)
             if (solver.iteration-1) % 10 == 0:
-                # max_Re = flow.max('Re')
-                logger.info(
-                    f'Iteration={solver.iteration}, Time={solver.sim_time}, dt={timestep}')
+                log(f'Iteration={solver.iteration}, Time={solver.sim_time}, dt={timestep}')
     except:
-        logger.error('Exception raised, triggering end of main loop.')
+        log('Exception raised, triggering end of main loop.')
         raise
     finally:
         solver.log_stats()
