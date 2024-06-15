@@ -4,3 +4,5 @@ TrainedModels_*
 .ipynb_checkpoints/
 __pycache__/
 data/
+.spyproject
+dedalus/run*
