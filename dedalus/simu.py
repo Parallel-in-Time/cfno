@@ -194,12 +194,12 @@ class OutputFiles():
         return sMean, self.k
 
 
-def checkDNS(sMean, k):
-    nValues = k.size//4
-    nThrown = 1
+def checkDNS(sMean, k, vRatio=4, nThrow=1):
+    nValues = k.size//vRatio
+    nThrow = nThrow
 
-    y = np.log(sMean[-nValues-nThrown:-nThrown])
-    x = np.log(k[-nValues-nThrown:-nThrown])
+    y = np.log(sMean[-nValues-nThrow:-nThrow])
+    x = np.log(k[-nValues-nThrow:-nThrow])
 
     def fun(coeffs):
         a, b, c = coeffs
