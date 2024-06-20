@@ -10,12 +10,12 @@ from simu import runSimu, OutputFiles, checkDNS
 
 
 nX, nZ = 256, 64
-resFactor = 1
+resFactor = 2
 baseDir = f"run_M{resFactor}"
 
-RayleighInit = 5.5e+06
-RayleighStep = 5e5
-iRunOffset = 7
+RayleighInit = 1e8
+RayleighStep = 5e7
+iRunOffset = 20
 
 print(f"Running convergence study for Nx, Nz = {nX}, {nZ}")
 nRunMax = 50

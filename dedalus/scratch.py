@@ -5,7 +5,7 @@ from simu import OutputFiles, checkDNS
 import matplotlib.pyplot as plt
 
 
-dirName = "run_M2/run_01"
+dirName = "run_M2/run_20"
 sMean, k = np.loadtxt(f"{dirName}/spectrum.txt")
 with open(f"{dirName}/00_infoSimu.txt", "r") as f:
     infos = f.read().strip()
