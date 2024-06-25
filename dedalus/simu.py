@@ -1,12 +1,14 @@
 import h5py
 import glob
+import random
 import numpy as np
 from datetime import datetime
 import scipy.optimize as sco
 import dedalus.public as d3
 
 
-def runSimu(dirName, Rayleigh, resFactor, baseDt=1e-2/2, seed=999):
+def runSimu(dirName, Rayleigh, resFactor, baseDt=1e-2/2, seed=999,
+            tEnd=150, writeVort=False):
     """
     Run RBC simulation in a given folder.
 
@@ -36,7 +38,7 @@ def runSimu(dirName, Rayleigh, resFactor, baseDt=1e-2/2, seed=999):
 
     Prandtl = 1
     dealias = 3/2
-    stop_sim_time = 150
+    stop_sim_time = tEnd
     timestepper = d3.RK443
     dtype = np.float64
 
@@ -44,6 +46,7 @@ def runSimu(dirName, Rayleigh, resFactor, baseDt=1e-2/2, seed=999):
         f.write(f"Rayleigh : {Rayleigh:1.2e}\n")
         f.write(f"Nx, Nz : {Nx}, {Nz}\n")
         f.write(f"dt : {timestep:1.2e}\n")
+        f.write(f"tEnd : {tEnd}\n")
 
     # Bases
     coords = d3.CartesianCoordinates('x', 'z')
@@ -98,7 +101,8 @@ def runSimu(dirName, Rayleigh, resFactor, baseDt=1e-2/2, seed=999):
         dirName, sim_dt=0.1, max_writes=50)
     snapshots.add_task(u, name='velocity')
     snapshots.add_task(b, name='buoyancy')
-    snapshots.add_task(-d3.div(d3.skew(u)), name='vorticity')
+    if writeVort:
+        snapshots.add_task(-d3.div(d3.skew(u)), name='vorticity')
 
     # Main loop
     try:
@@ -164,12 +168,15 @@ class OutputFiles():
     def nTimes(self, iFile):
         return self.times(iFile).size
 
-    def getMeanProfiles(self, iFile):
+    def getMeanProfiles(self, iFile, buoyancy=False):
         out = []
         for i in range(2):
             u = self.vData(iFile)[:, i]
             mean = np.mean(abs(u), axis=1)
             out.append(mean)
+        if buoyancy:
+            b = self.bData(iFile)
+            out.append(np.mean(b, axis=1))
         return out
 
     def getMeanSpectrum(self, iFile):
@@ -210,3 +217,38 @@ def checkDNS(sMean, k, vRatio=4, nThrow=1):
     status = "under-resolved" if a > 0 else "DNS !"
 
     return status, [a, b, c]
+
+
+def generateChunkPairs(dirName, N, M, tStep=1, xStep=1, zStep=1, shuffleSeed=None):
+    out = OutputFiles(dirName)
+
+    pairs = []
+    vData, bData = [], []
+    for iFile in range(10, out.nFiles):
+        vData.append(out.vData(iFile)[:, :, ::xStep, ::zStep])
+        bData.append(out.bData(iFile)[:, ::xStep, ::zStep])
+    # stack all arrays
+    vData = np.array(vData)
+    bData = np.array(bData)
+    # merge time dimension
+    vData = vData.reshape(-1, *vData.shape[2:])
+    bData = bData.reshape(-1, *bData.shape[2:])
+    # reshape -> (nTimes, 1, Nx//xStep, Nz//zStep)
+    bData = bData[:, None, :, ]
+
+    assert vData.shape[0] == bData.shape[0]
+    nTimes = vData.shape[0]
+
+    for i in range(0, nTimes-M-N+1, tStep):
+        chunk1 = np.concatenate((vData[i:i+M], bData[i:i+M]), axis=1)
+        chunk2 = np.concatenate((vData[i+N:i+N+M], bData[i+N:i+N+M]), axis=1)
+        # chunks are shape (M, 3, Nx//xStep, Nz//zStep)
+        assert chunk1.shape == chunk2.shape
+        pairs.append((chunk1, chunk2))
+
+    # shuffle if a seed is given
+    if shuffleSeed is not None:
+        random.seed(shuffleSeed)
+        random.shuffle(pairs)
+
+    return pairs

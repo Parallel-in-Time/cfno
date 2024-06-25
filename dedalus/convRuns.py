@@ -13,8 +13,8 @@ nX, nZ = 256, 64
 resFactor = 2
 baseDir = f"run_M{resFactor}"
 
-RayleighInit = 1e8
-RayleighStep = 5e7
+RayleighInit = 2e7
+RayleighStep = 5e6
 iRunOffset = 20
 
 print(f"Running convergence study for Nx, Nz = {nX}, {nZ}")
