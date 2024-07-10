@@ -2,7 +2,7 @@
 Plot 2D cartesian snapshots.
 
 Usage:
-    plot_snapshots.py <files>... [--output=<dir>]
+    python plot_snapshots.py <files>... [--output=<dir>]
 
 Options:
     --output=<dir>  Output directory [default: ./frames]

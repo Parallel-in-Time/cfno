@@ -1,10 +1,7 @@
-import os
-import math
+import h5py
 import torch
-import torch.nn as nn
 import numpy as np
-from math import sqrt
-import imageio
+import math
 
 units = {
     0: 'B',
@@ -34,29 +31,10 @@ def format_mem(x):
     # rounding leads to 2 or fewer decimal places, as required
     return round(scaled_x, 2), unit
 
-def print_tensor_mem(x, id_str=None):
-    """
-    Prints the memory required by tensor 'x'.
-
-    """
-    if not CudaMemoryDebugger.ENABLED:
-        return
-
-    desc = 'memory'
-
-    if id_str is not None:
-        desc += f' ({id_str})'
-
-    desc += ':'
-
-    val, unit = format_mem(x.element_size() * x.nelement())
-
-    print(f'{desc} {val}{unit}')
 
 def format_tensor_size(x):
     val, unit = format_mem(x)
     return f'{val}{unit}'
-
 
 class CudaMemoryDebugger():
     """
@@ -104,25 +82,51 @@ class CudaMemoryDebugger():
 
         CudaMemoryDebugger.LAST_MEM = cur_mem
 
+     
+class LpLoss(object):
+    def __init__(self, d=2, p=2, size_average=True, reduction=True):
+        super(LpLoss, self).__init__()
 
-def activation_selection(choice):
-    if choice in ['tanh', 'Tanh']:
-        return nn.Tanh()
-    elif choice in ['relu', 'ReLU']:
-        return nn.ReLU(inplace=True)
-    elif choice in ['lrelu', 'LReLU']:
-        return nn.LeakyReLU(inplace=True)
-    elif choice in ['sigmoid', 'Sigmoid']:
-        return nn.Sigmoid()
-    elif choice in ['softplus', 'Softplus']:
-        return nn.Softplus(beta=4)
-    elif choice in ['celu', 'CeLU']:
-        return nn.CELU()
-    elif choice in ['elu']:
-        return nn.ELU()
-    elif choice in ['mish']:
-        return nn.Mish()
-    else:
-        raise ValueError('Unknown activation function')
+        #Dimension and Lp-norm type are postive
+        assert d > 0 and p > 0
+
+        self.d = d
+        self.p = p
+        self.reduction = reduction
+        self.size_average = size_average
+
+    def abs(self, x, y):
+        num_examples = x.size()[0]
+
+        #Assume uniform mesh
+        h = 1.0 / (x.size()[1] - 1.0)
+
+        all_norms = (h**(self.d/self.p))*torch.norm(x.view(num_examples,-1) - y.view(num_examples,-1), self.p, 1)
+
+        if self.reduction:
+            if self.size_average:
+                return torch.mean(all_norms)
+            else:
+                return torch.sum(all_norms)
+
+        return all_norms
+
+    def rel(self, x, y):
+        num_examples = x.size()[0]
+
+        diff_norms = torch.norm(x.reshape(num_examples,-1) - y.reshape(num_examples,-1), self.p, 1)
+        y_norms = torch.norm(y.reshape(num_examples,-1), self.p, 1)
+
+        if self.reduction:
+            if self.size_average:
+                return torch.mean(diff_norms/y_norms)
+            else:
+                return torch.sum(diff_norms/y_norms)
+
+        return diff_norms/y_norms
+
+    def __call__(self, x, y):
+        return self.rel(x, y)
     
 
+     

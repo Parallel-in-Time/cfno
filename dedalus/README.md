@@ -4,17 +4,18 @@
 
 ## Utility libraries
 
-- [simu.py](./simu.py) : utility module containing functions and classes to generate data with Dedalus.
-- [conRuns.py](./convRuns.py) : script used to determine critical Rayleigh for one given space grid
+- [rbc_simulation.py](./rbc_simulation.py) : utility module containing function to generate data with Dedalus.
+- [convRuns.py](./convRuns.py) : script used to determine critical Rayleigh for one given space grid
 - [plotContours.py](./plotContours.py) : plotting script from dedalus
-- [post.py](./post.py) : script for quick post-processing (spectrum and profile extraction)
+- [data_processing.py](./data_processing.py) : script for quick post-processing (data, spectrum and profile extraction)
 
 ## Generate data
 
-Only the `simu.py` module is needed. Data generation can be executed with those two lines :
+Data generation can be executed as:
 
 ```python
-from simu import runSimu, generateChunkPairs
+from rbc_simulation import runSim
+from data_processing import generateChunkPairs
 
 dirName = "dataset"
 resFactor = 1   # use base resolution (256,64)
@@ -26,16 +27,17 @@ runSimu(dirName, Rayleigh, resFactor)
 
 N = 10
 M = 4
-pairs = generateChunkPairs(dirName, N, M)  
-# pairs of chunks of size M, covering N Delta_t = 1sec
-# -> chunk shape : (M, 3, Nx, Nz)
+pairs = generateChunkPairs(dirName, N, M) 
+# pairs shape: (nTimes-M-N+1, 2, M, 4, Nx, Nz) 
+# pairs of chunks of size M, covering N Delta_t = 10 * 0.1 sec = 1sec
+# -> chunk shape : (M, 4, Nx, Nz)
 ```
 
 The `generateChunkPairs` can be also used to generate chunks with smaller grid size, _e.g_ :
 
 ```python
 pairs = generateChunkPairs(dirName, N, M, xStep=2, zStep=2)  
-# -> chunk shape : (M, 3, Nx//2, Nz//2)
+# -> chunk shape : (M, 4, Nx//xStep, Nz//zStep)
 ```
 
 with a similar idea using a `tStep` parameter 

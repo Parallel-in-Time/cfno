@@ -4,8 +4,8 @@
 module purge 
 module load Stages/2024 
 module load GCC/12.3.0 
-module load Python/3.11.3 
-module load OpenMPI/4.1.5 \
+module load Python/3.11.3 \
+            OpenMPI/4.1.5 \
             CUDA/12 \
             FFTW/3.3.10 \
             HDF5/1.14.2 \
@@ -16,11 +16,17 @@ module load OpenMPI/4.1.5 \
             h5py/3.9.0-serial  \
             Pillow-SIMD/9.5.0  \
             tqdm/4.66.1  \
+            imageio/2.31.3
             
 # module list
-    
-# Activate your Python virtual environment
-source /p/project/cexalab/john2/NeuralOperators/py_venv/bin/activate
-    
-# Ensure python packages installed in the virtual environment are always prefered
-export PYTHONPATH=/p/project/cexalab/john2/NeuralOperators/py_venv/lib/python*/site-packages:${PYTHONPATH}
+if [[ "$SYSTEMNAME" = "juwelsbooster" ]]; then
+    echo "*********Using $SYSTEMNAME*********"
+    source /p/project1/cexalab/john2/NeuralOperators/py_venv/bin/activate   
+    export PYTHONPATH=/p/project1/cexalab/john2/NeuralOperators/py_venv/lib/python*/site-packages:${PYTHONPATH}
+elif [[ "$SYSTEMNAME" = "jurecadc" ]]; then 
+    echo "*********Using $SYSTEMNAME*********"
+    source /p/project1/cexalab/john2/NeuralOperators/no_jureca_env/bin/activate
+    export PYTHONPATH=/p/project1/cexalab/john2/NeuralOperators/no_jureca_env/lib/python*/site-packages:${PYTHONPATH}
+else
+    echo "Currently only JURECA-DC and JUWELS Booster are supported"
+fi
