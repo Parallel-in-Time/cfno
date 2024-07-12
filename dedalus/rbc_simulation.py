@@ -1,6 +1,4 @@
-import h5py
-import random
-import os
+import argparse
 import numpy as np
 from datetime import datetime
 import dedalus.public as d3
