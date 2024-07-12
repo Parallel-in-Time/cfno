@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
-from torchsummary import summary
+from torchsummary import summary    # TODO: is it really needed ?
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches

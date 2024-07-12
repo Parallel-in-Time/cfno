@@ -142,7 +142,7 @@ class OutputFiles():
     def data_process(self, xStep=1, zStep=1):
         index = 0
         inputs = []
-        filename = f'{processed_data}/input_data.h5'
+        filename = f'{processed_data}/input_data.h5'    # TODO: don't use a global variable here ...
         with h5py.File(filename, "w") as data:
             for i,file in enumerate(self.files):
                 iter_no = self.times(i).shape[0]
