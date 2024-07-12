@@ -16,11 +16,13 @@ For 2D Rayleigh Benard Convection (RBC) problem the data is generated using [Ded
 See also the [dedalus](../dedalus/) folder
 
 
-## Model Training
+## Model Training & Inference
 
-[Fourier Neural Operator 2D Spatial + Recurrent in time](./fno2d_recurrent.py) solver for RBC 2D
+[Fourier Neural Operator 2D Spatial + Recurrent in time](./fno2d_recurrent.py) and [Fourier Neural Operator 2D Spatial + 1D time](./fno3d.py) solver for RBC 2D
 
 Example submission script to train on JUWELS Booster is shown in [submit_juwels.sbatch](./submit_juwels.sbatch.sh)
+
+Model inference can be done using [inference.py](./inference.py)
 
 ## Note
 
@@ -35,7 +37,7 @@ Example submission script to train on JUWELS Booster is shown in [submit_juwels.
 - [examples](./examples/): Contains files for solving 
 	- Wave equation
 	- Darcy Flow equation
-	- Rayleigh Benard Convection 2D on 64 x 64 grid for Ra=10e4
+	- Rayleigh Benard Convection 2D on 64 x 64 grid for Ra=10e4 
 	
 ## Reference:
 

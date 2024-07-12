@@ -1,11 +1,12 @@
 import h5py
 import random
+import os
 import numpy as np
 from datetime import datetime
 import dedalus.public as d3
 
 
-def runSim(dirName, Rayleigh, resFactor, baseDt=1e-2/2, seed=999,
+def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
             tEnd=150, writeVort=False):
     """
     Run RBC simulation in a given folder.
@@ -118,5 +119,10 @@ def runSim(dirName, Rayleigh, resFactor, baseDt=1e-2/2, seed=999,
         solver.log_stats()
 
 
-
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Simulation')
+    parser.add_argument('--dir_name', type=str,
+                        help="Folder name to store simulation data")
+    args, unknown = parser.parse_known_args()
+    runSim(args.dir_Name)
 

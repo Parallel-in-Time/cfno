@@ -27,17 +27,6 @@ from matplotlib.lines import Line2D
 
 from utils import CudaMemoryDebugger, format_tensor_size, LpLoss
 
-parser = argparse.ArgumentParser(description='FNO Training')
-parser.add_argument('--model_save_path', type=str,default=os.getcwd(),
-                    help='path to which FNO model is saved')
-parser.add_argument('--load_checkpoint', action="store_true",
-                    help='load checkpoint')
-parser.add_argument('--data_path', type=str,
-                    help='path to data')
-parser.add_argument('--checkpoint_path', type=str,
-                    help='folder containing checkpoint')
-args = parser.parse_args()
-
 class SpectralConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, modes1, modes2):
         super(SpectralConv2d, self).__init__()
@@ -132,7 +121,7 @@ class FNO2d(nn.Module):
         grid = self.get_grid(x.shape, x.device)
         x = torch.cat((x, grid), dim=-1)
         x = self.p(x)
-        # memory.print("after p(x)")
+        #memory.print("after p(x)")
         x = x.permute(0, 3, 1, 2)
         # x = F.pad(x, [0,self.padding, 0,self.padding]) # pad the domain if input is non-periodic
 
@@ -141,31 +130,31 @@ class FNO2d(nn.Module):
         x2 = self.w0(x)
         x = x1 + x2
         x = nn.functional.gelu(x)
-        # memory.print("after FNO1")
+        #memory.print("after FNO1")
 
         x1 = self.norm(self.conv1(self.norm(x)))
         x1 = self.mlp1(x1)
         x2 = self.w1(x)
         x = x1 + x2
         x = nn.functional.gelu(x)
-        # memory.print("after FNO2")
+        #memory.print("after FNO2")
         
         x1 = self.norm(self.conv2(self.norm(x)))
         x1 = self.mlp2(x1)
         x2 = self.w2(x)
         x = x1 + x2
         x = nn.functional.gelu(x)
-        # memory.print("after FNO3")
+        #memory.print("after FNO3")
         
         x1 = self.norm(self.conv3(self.norm(x)))
         x1 = self.mlp3(x1)
         x2 = self.w3(x)
         x = x1 + x2
-        # memory.print("after FNO4")
+        #memory.print("after FNO4")
         
         # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
         x = self.q(x)
-        # memory.print("after q(x)")
+        #memory.print("after q(x)")
         x = x.permute(0, 2, 3, 1)
         return x
 
@@ -187,146 +176,120 @@ class FNO2d(nn.Module):
  
         print(f'Total number of model parameters: {elementFrame["NParams"].sum()} with (~{format_tensor_size(elementFrame["Memory(KB)"].sum()*1000)})')
         return elementFrame
-    
-## config
-ntrain = 100
-ntest = 50
-nval = 50
 
-modes = 12
-width = 20
 
-batch_size = 20
-learning_rate = 0.001
-epochs = 500
-iterations = epochs*(ntrain//batch_size)
+def train(args):  
+    ## config
+    ntrain = 100
+    nval = 50
+    # ntest = 50
 
-fno_path = Path(f'{args.model_save_path}/rbc_fno_2d_time_N{ntrain}_epoch{epochs}_m{modes}_w{width}')
-fno_path.mkdir(parents=True, exist_ok=True)
+    modes = 12
+    width = 20
 
-checkpoint_path = Path(f'{fno_path}/checkpoint')
-checkpoint_path.mkdir(parents=True, exist_ok=True)
+    batch_size = 5
+    learning_rate = 0.00039
+    weight_decay = 1e-05
+    scheduler_step = 10.0
+    scheduler_gamma = 0.98
+    epochs = 2
+    iterations = epochs*(ntrain//batch_size)
 
-writer = SummaryWriter(log_dir=f"{fno_path}/tensorboard")
+    gridx = 4*256
+    gridz = 64
 
-gridx = 4*256
-gridz = 64
+    xStep = 1
+    zStep = 1
+    tStep = 1
 
-xStep = 1
-zStep = 1
-tStep = 1
+    start_index = 500
+    T_in = 10
+    T = 10
 
-start_index = 500
-T_in = 10
-T = 10
+    ## load data
+    data_path = args.data_path
+    reader = h5py.File(data_path, mode="r")
+    train_a = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index: start_index+T_in],dtype=torch.float)
+    train_u = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index+T_in:T+start_index+T_in], dtype=torch.float)
 
-## load data
-ntrain = 100
-ntest = 50
-nval = 50
-data_path = args.data_path
-reader = h5py.File(data_path, mode="r")
-train_a = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index: start_index+T_in],dtype=torch.float)
-train_u = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index+T_in:T+start_index+T_in], dtype=torch.float)
+    val_a = torch.tensor(reader['val'][:nval, ::xStep, ::zStep, start_index: start_index+T_in],dtype=torch.float)
+    val_u = torch.tensor(reader['val'][:nval, ::xStep, ::zStep, start_index+T_in:T+start_index+T_in],dtype=torch.float)
 
-test_a = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index: start_index+T_in],dtype=torch.float)
-test_u = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index+T_in:T+start_index+T_in],dtype=torch.float)
+    # test_a = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index: start_index+T_in],dtype=torch.float)
+    # test_u = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index+T_in:T+start_index+T_in],dtype=torch.float)
 
-val_a = torch.tensor(reader['val'][:nval, ::xStep, ::zStep, start_index: start_index+T_in],dtype=torch.float)
-val_u = torch.tensor(reader['val'][:nval, ::xStep, ::zStep, start_index+T_in:T+start_index+T_in],dtype=torch.float)
+    print(f"Train data:{train_u.shape}")
+    print(f"Val data:{val_u.shape}")
+    assert (gridx == train_u.shape[-3])
+    assert (gridz == train_u.shape[-2])
+    assert (T == train_u.shape[-1])
 
-train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
-val_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(val_a, val_u), batch_size=batch_size, shuffle=False)
+    train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(val_a, val_u), batch_size=batch_size, shuffle=False)
+    # test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"Using {device}")
-torch.cuda.empty_cache()
-memory = CudaMemoryDebugger(print_mem=True)
 
-################################################################
-# training and evaluation
-################################################################
+    fno_path = Path(f'{args.model_save_path}/rbc_fno_2d_time_N{ntrain}_epoch{epochs}_m{modes}_w{width}_bs{batch_size}')
+    fno_path.mkdir(parents=True, exist_ok=True)
 
-model2d = FNO2d(modes, modes, width).to(device)
-# print(model2d.print_size())
-n_params = model2d.print_size()
-memory.print("after intialization")
+    checkpoint_path = Path(f'{fno_path}/checkpoint')
+    checkpoint_path.mkdir(parents=True, exist_ok=True)
 
-optimizer = torch.optim.Adam(model2d.parameters(), lr=learning_rate, weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iterations)
+    writer = SummaryWriter(log_dir=f"{fno_path}/tensorboard")
 
-myloss = LpLoss(size_average=False)
-start_epoch = 0
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using {device}")
+    torch.cuda.empty_cache()
+    memory = CudaMemoryDebugger(print_mem=True)
 
-if args.load_checkpoint:
-    checkpoint = torch.load(args.checkpoint_path)
-    model2d.load_state_dict(checkpoint['model'])
-    start_epoch = checkpoint['epoch']
-    print(f"Continuing training from {checkpoint_path} at {start_epoch}")
-    
-for epoch in range(start_epoch, epochs):
-    with tqdm(unit="batch", disable=False) as tepoch:
-        tepoch.set_description(f"Epoch {epoch}")
-        model2d.train()
-        # memory.print("after model.train()")
+    ################################################################
+    # training and evaluation
+    ################################################################
+
+    model2d = FNO2d(modes, modes, width).to(device)
+    # print(model2d.print_size())
+    n_params = model2d.print_size()
+    #memory.print("after intialization")
+
+    # optimizer = torch.optim.Adam(model2d.parameters(), lr=learning_rate, weight_decay=1e-4)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iterations)
+
+    optimizer = torch.optim.AdamW(model2d.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_gamma)
+
+    myloss = LpLoss(size_average=False)
+    start_epoch = 0
+
+    print(f"bs={batch_size}; \
+            lr={learning_rate}; \
+            weight_decay={weight_decay}; \
+            scheduler_step={scheduler_step};\
+            scheduler_gamma={scheduler_gamma};\
+            fno_path={fno_path}")
+
+    if args.load_checkpoint:
+        checkpoint = torch.load(args.checkpoint_path)
+        model2d.load_state_dict(checkpoint['model'])
+        start_epoch = checkpoint['epoch']
+        print(f"Continuing training from {checkpoint_path} at {start_epoch}")
         
-        t1 = default_timer()
-        train_l2_step = 0
-        train_l2_full = 0
-        
-        for step, (xx, yy) in enumerate(train_loader):
-            loss = 0
-            xx = xx.to(device)
-            yy = yy.to(device)
-            # memory.print("after loading first batch")
-
-            for t in tqdm(range(0,T, tStep), desc="Train loop"):
-                y = yy[..., t:t + tStep]
-                im = model2d(xx)
-                # print("ouput:",y.shape,"pred:", im.shape)
-                loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
-
-                if t == 0:
-                    pred = im
-                else:
-                    pred = torch.cat((pred, im), -1)
-
-                xx = torch.cat((xx[..., tStep:], im), dim=-1)
-
-            train_l2_step += loss.item()
-            l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
-            train_l2_full += l2_full.item()
-
-            optimizer.zero_grad()
+    for epoch in range(start_epoch, epochs):
+        with tqdm(unit="batch", disable=False) as tepoch:
+            tepoch.set_description(f"Epoch {epoch}")
+            model2d.train()
+            #memory.print("after model2d.train()")
             
-            loss.backward()
-            optimizer.step()
+            t1 = default_timer()
+            train_l2_step = 0
+            train_l2_full = 0
             
-            grads = [param.grad.detach().flatten() for param in model2d.parameters()if param.grad is not None]
-            grads_norm = torch.cat(grads).norm()
-            writer.add_histogram("train/GradNormStep",grads_norm, step)
-            
-            scheduler.step()
-            # memory.print("after backwardpass")
-            
-            tepoch.set_postfix({'Batch': step + 1, 'Train l2 loss (in progress)': train_l2_full,\
-                     'Train l2 step loss (in progress)': train_l2_step})
-
-        
-        writer.add_scalar("train_loss/train_l2loss", train_l2_full, epoch)
-        writer.add_scalar("train_loss/train_step_l2loss", train_l2_step, epoch)
-        writer.add_scalar("train/GradNorm", grads_norm, epoch)
-        
-        val_l2_step = 0
-        val_l2_full = 0
-        with torch.no_grad():
-            for step, (xx,yy) in enumerate(val_loader):
+            for step, (xx, yy) in enumerate(train_loader):
                 loss = 0
                 xx = xx.to(device)
                 yy = yy.to(device)
+                #memory.print("after loading first batch")
 
-                for t in tqdm(range(0, T, tStep), desc="Validation loop"):
+                for t in tqdm(range(0, T, tStep), desc="Train loop"):
                     y = yy[..., t:t + tStep]
                     im = model2d(xx)
                     loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
@@ -335,36 +298,101 @@ for epoch in range(start_epoch, epochs):
                         pred = im
                     else:
                         pred = torch.cat((pred, im), -1)
-
+                        
+                    print(f"{t}: y={y.shape},x={xx.shape},pred={pred.shape}")
                     xx = torch.cat((xx[..., tStep:], im), dim=-1)
-                    
+                    print(f"{t}: new_xx={xx.shape}")
 
-                val_l2_step += loss.item()
-                val_l2_full += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
-                # memory.print("after val first batch")
+                train_l2_step += loss.item()
+                l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
+                train_l2_full += l2_full.item()
 
-            writer.add_scalar("val_loss/val_step_l2loss", val_l2_step, epoch)
-            writer.add_scalar("val_loss/val_l2loss", val_l2_full, epoch)
+                optimizer.zero_grad()
+                
+                loss.backward()
+                optimizer.step()
+                scheduler.step()
+                
+                grads = [param.grad.detach().flatten() for param in model2d.parameters()if param.grad is not None]
+                grads_norm = torch.cat(grads).norm()
+                writer.add_histogram("train/GradNormStep",grads_norm, step)
+                
+                #memory.print("after backwardpass")
+                
+                tepoch.set_postfix({'Batch': step + 1, 'Train l2 loss (in progress)': train_l2_full,\
+                        'Train l2 step loss (in progress)': train_l2_step})
             
-        t2 = default_timer()
-        train_error = train_l2_full / ntrain
-        val_error = val_l2_full / nval
-        tepoch.set_postfix({ \
-            'Epoch': epoch, \
-            'Time per epoch': (t2-t1), \
-            'Train l2loss step': train_l2_step / ntrain / (T / tStep),\
-            'Train l2loss': train_error,\
-            'Val l2loss step': val_l2_step / nval / (T / tStep), \
-            'Val l2loss':  val_error 
-            })
-    tepoch.close()
+        
+            train_error = train_l2_full / ntrain
+            train_step_error = train_l2_step / ntrain / (T / tStep)
+            writer.add_scalar("train_loss/train_l2loss", train_error, epoch)
+            writer.add_scalar("train_loss/train_step_l2loss", train_step_error, epoch)
+            writer.add_scalar("train/GradNorm", grads_norm, epoch)
+            
+            val_l2_step = 0
+            val_l2_full = 0
+            model2d.eval()
+            with torch.no_grad():
+                for step, (xx,yy) in enumerate(val_loader):
+                    loss = 0
+                    xx = xx.to(device)
+                    yy = yy.to(device)
+
+                    for t in tqdm(range(0, T, tStep), desc="Validation loop"):
+                        y = yy[..., t:t + tStep]
+                        im = model2d(xx)
+                        loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+
+                        if t == 0:
+                            pred = im
+                        else:
+                            pred = torch.cat((pred, im), -1)
+
+                        xx = torch.cat((xx[..., tStep:], im), dim=-1)
+                        
+
+                    val_l2_step += loss.item()
+                    val_l2_full += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
+                    #memory.print("after val first batch")
+
+            val_error = val_l2_full / nval
+            val_step_error = val_l2_step / nval / (T / tStep)
+            writer.add_scalar("val_loss/val_step_l2loss", val_error, epoch)
+            writer.add_scalar("val_loss/val_l2loss", val_step_error, epoch)
+                
+            t2 = default_timer()
+            tepoch.set_postfix({ \
+                'Epoch': epoch, \
+                'Time per epoch': (t2-t1), \
+                'Train l2loss step': train_step_error ,\
+                'Train l2loss': train_error,\
+                'Val l2loss step': val_step_error, \
+                'Val l2loss':  val_error 
+                })
+            
+        tepoch.close()
+        
+        with open(f'{fno_path}/info.txt', 'w') as file:
+            file.write("Training Error: " + str(train_error) + "\n")
+            file.write("Validation Error: " + str(val_error) + "\n")
+            file.write("Current Epoch: " + str(epoch) + "\n")
+            file.write("batch_size:" + str(batch_size) + "\n")
+            file.write("learning_rate:" + str(learning_rate)+ "\n")
+            # file.write("Params: " + str(n_params) + "\n")
     
-    with open(f'{fno_path}/errors.txt', 'w') as file:
-        file.write("Training Error: " + str(train_error) + "\n")
-        file.write("Validation Error: " + str(val_error) + "\n")
-        file.write("Current Epoch: " + str(epoch) + "\n")
-        # file.write("Params: " + str(n_params) + "\n")
-  
+                
+        if epoch % 100 == 0 or epoch == epochs-1:
+            torch.save(model2d.state_dict(), f"{checkpoint_path}/model_checkpoint_{epoch}.pt")
             
-    if epoch % 100 == 0 or epoch == epochs-1:
-        torch.save(model2d.state_dict(), f"{checkpoint_path}/model_checkpoint_{epoch}.pt")
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='FNO Training')
+    parser.add_argument('--model_save_path', type=str,default=os.getcwd(),
+                        help='path to which FNO model is saved')
+    parser.add_argument('--load_checkpoint', action="store_true",
+                        help='load checkpoint')
+    parser.add_argument('--data_path', type=str,
+                        help='path to data')
+    parser.add_argument('--checkpoint_path', type=str,
+                        help='folder containing checkpoint')
+    args = parser.parse_args()
+    train(args)

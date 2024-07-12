@@ -29,27 +29,6 @@ from pathlib import Path
 import numpy as np
 import scipy.optimize as sco
 
-parser_data = argparse.ArgumentParser(description='Data Analysis')
-parser_data.add_argument('--dir_name', type=str,
-                    help="Folder name to store data")
-parser_data.add_argument('--spectrum_plot', action='store_true',
-                    help='plot spectrum vs k')
-parser_data.add_argument('--checkDNS_plot', action='store_true',
-                    help='check second order polynomial fit')
-parser_data.add_argument('--profile_plot', action='store_true',
-                    help='plotting z-coord profile for \
-                        velocity, buoyancy and pressure')
-args_data, unknown = parser_data.parse_known_args()
-
-dirName = args_data.dir_name
-if dirName is None:
-    dirName = '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1_seed999_train'
-    
-plot_path = Path(f'{dirName}/plots')
-plot_path.mkdir(parents=True, exist_ok=True)
-
-processed_data = Path(f'{dirName}/processed_data')
-processed_data.mkdir(parents=True, exist_ok=True)
 
 class OutputFiles():
 
@@ -230,91 +209,112 @@ def generateChunkPairs(folder, N, M, tStep=1, xStep=1, zStep=1, shuffleSeed=None
     return pairs
 
 
-info_file = Path(f"{dirName}/00_infoSimu.txt")
-
-if info_file.is_file():
-    with open(info_file, "r") as f:
-        infos = f.read().strip()
-    infos = {val.split(" : ")[0]: val.split(" : ")[1] for val in infos.split('\n')}
-    infos["Rayleigh"] = float(infos["Rayleigh"])
-    infos["Nx"], infos["Nz"] = [int(n) for n in infos["Nx, Nz"].split(", ")]
-else:
-    infos["Rayleigh"] = 1e-7
-    infos["Nx"] = 256
-    infos["Nz"] = 64
-
-print(f'Setting RayleighNumber={infos["Rayleigh"]}, Nx={infos["Nx"]} and Nz={infos["Nz"]}')
+def plotting(args_data):
     
-out = OutputFiles(dirName)
-sMean, k = out.getFullMeanSpectrum(0)
-sMean /= infos["Nx"]
-# sMean /= np.prod(infos["Nx, Nz"])
+    dirName = args_data.dir_name
+    plot_path = Path(f'{dirName}/plots')
+    plot_path.mkdir(parents=True, exist_ok=True)
 
-# Spectrum 
-if args_data.spectrum_plot: 
-    plt.figure("spectrum")
-    plt.title(fr"Mean Energy Spectrum vs Wave Number on {infos['Nx']} $\times$ {infos['Nz']} grid")
-    plt.xlabel("Wavenumber")
-    plt.ylabel("Mean Energy Spectrum")
-    plt.grid()
-    plt.loglog(k[:-1], sMean[:-1], label=f"Ra={infos['Rayleigh']:1.1e}")
-    plt.savefig(f"{dirName}/plots/spectrum.pdf")
+    processed_data = Path(f'{dirName}/processed_data')
+    processed_data.mkdir(parents=True, exist_ok=True)
+    info_file = Path(f"{dirName}/00_infoSimu.txt")
 
-## checkDNS
-if args_data.checkDNS_plot:
-    vRatio = 4
-    nThrow = 3
-    status, (a, b, c), x, y, nValues = checkDNS(sMean, k, vRatio, nThrow)
-    print(f"{status} (a={a})")
-    y1 = a*x**2 + b*x + c
-    x = np.exp(x)
-    y1 = np.exp(y1)
-    plt.title("Spectrum Fitting with second order polynomial")
-    plt.plot(x, np.exp(y), 'k--', label="spectrum")
-    plt.plot(x,y1,'r*', label=r"fit")
-    plt.legend()
-    plt.grid(True)
-    plt.xlabel("Wavenumber")
-    plt.ylabel("Spectrum")
-    plt.savefig(f"{dirName}/plots/polyfit.pdf")
+    if info_file.is_file():
+        with open(info_file, "r") as f:
+            infos = f.read().strip()
+        infos = {val.split(" : ")[0]: val.split(" : ")[1] for val in infos.split('\n')}
+        infos["Rayleigh"] = float(infos["Rayleigh"])
+        infos["Nx"], infos["Nz"] = [int(n) for n in infos["Nx, Nz"].split(", ")]
+    else:
+        infos["Rayleigh"] = 1e-7
+        infos["Nx"] = 256
+        infos["Nz"] = 64
+    print(f'Setting RayleighNumber={infos["Rayleigh"]}, Nx={infos["Nx"]} and Nz={infos["Nz"]}')
+        
+    out = OutputFiles(dirName)
+    sMean, k = out.getFullMeanSpectrum(0)
+    sMean /= infos["Nx"]
+    # sMean /= np.prod(infos["Nx, Nz"])
 
-# Profiles
-if args_data.profile_plot:
-    uxMean, uzMean, bVals, pVals = [], [], [], []
-    time = []
-    for i in range(out.nFiles):
-        ux, uz, b, p = out.getMeanProfiles(i, buoyancy=True, pressure=True)
-        time += list(out.times(i))
-        uxMean.append(ux)
-        uzMean.append(uz)
-        bVals.append(b)
-        pVals.append(p)
-    time = np.array(time)
-    uxMean = np.concatenate(uxMean)
-    uzMean = np.concatenate(uzMean)
-    bVals = np.concatenate(bVals)
-    pVals = np.concatenate(pVals)
+    # Spectrum 
+    if args_data.spectrum_plot: 
+        plt.figure("spectrum")
+        plt.title(fr"Mean Energy Spectrum vs Wave Number on {infos['Nx']} $\times$ {infos['Nz']} grid")
+        plt.xlabel("Wavenumber")
+        plt.ylabel("Mean Energy Spectrum")
+        plt.grid()
+        plt.loglog(k[:-1], sMean[:-1], label=f"Ra={infos['Rayleigh']:1.1e}")
+        plt.savefig(f"{dirName}/plots/spectrum.pdf")
 
-    plt.figure("mid-profile")
-    plt.title("Mid-profile mean velocity vs Time")
-    plt.plot(time, uxMean[:,  infos["Nz"]//2], label=r"$\bar{u}_x$")
-    plt.plot(time, uzMean[:,  infos["Nz"]//2], label=r"$\bar{u}_z$")
-    plt.legend()
-    plt.grid(True)
-    plt.xlabel("Time")
-    plt.ylabel("Mid-profile value")
-    plt.savefig(f"{dirName}/plots/mid_profile.pdf")
+    ## checkDNS
+    if args_data.checkDNS_plot:
+        vRatio = 4
+        nThrow = 3
+        status, (a, b, c), x, y, nValues = checkDNS(sMean, k, vRatio, nThrow)
+        print(f"{status} (a={a})")
+        y1 = a*x**2 + b*x + c
+        x = np.exp(x)
+        y1 = np.exp(y1)
+        plt.title("Spectrum Fitting with second order polynomial")
+        plt.plot(x, np.exp(y), 'k--', label="spectrum")
+        plt.plot(x,y1,'r*', label=r"fit")
+        plt.legend()
+        plt.grid(True)
+        plt.xlabel("Wavenumber")
+        plt.ylabel("Spectrum")
+        plt.savefig(f"{dirName}/plots/polyfit.pdf")
 
-    plt.figure("profiles")
-    plt.title(" Profile in Z-coordinate")
-    plt.plot(uxMean[500:].mean(axis=0), out.z, label=r"$\bar{u}_x$")
-    plt.plot(uzMean[500:].mean(axis=0), out.z, label=r"$\bar{u}_z$")
-    plt.plot(bVals[500:].mean(axis=0), out.z, label=r"$\bar{b}$")
-    plt.plot(pVals[500:].mean(axis=0),out.z, label=r"$\bar{p}$")
-    plt.legend()
-    plt.grid(True)
-    plt.xlabel("Profile")
-    plt.ylabel("z-coordinate")
-    plt.savefig(f"{dirName}/plots/profile.pdf")
+    # Profiles
+    if args_data.profile_plot:
+        uxMean, uzMean, bVals, pVals = [], [], [], []
+        time = []
+        for i in range(out.nFiles):
+            ux, uz, b, p = out.getMeanProfiles(i, buoyancy=True, pressure=True)
+            time += list(out.times(i))
+            uxMean.append(ux)
+            uzMean.append(uz)
+            bVals.append(b)
+            pVals.append(p)
+        time = np.array(time)
+        uxMean = np.concatenate(uxMean)
+        uzMean = np.concatenate(uzMean)
+        bVals = np.concatenate(bVals)
+        pVals = np.concatenate(pVals)
+
+        plt.figure("mid-profile")
+        plt.title("Mid-profile mean velocity vs Time")
+        plt.plot(time, uxMean[:,  infos["Nz"]//2], label=r"$\bar{u}_x$")
+        plt.plot(time, uzMean[:,  infos["Nz"]//2], label=r"$\bar{u}_z$")
+        plt.legend()
+        plt.grid(True)
+        plt.xlabel("Time")
+        plt.ylabel("Mid-profile value")
+        plt.savefig(f"{dirName}/plots/mid_profile.pdf")
+
+        plt.figure("profiles")
+        plt.title(" Profile in Z-coordinate")
+        plt.plot(uxMean[500:].mean(axis=0), out.z, label=r"$\bar{u}_x$")
+        plt.plot(uzMean[500:].mean(axis=0), out.z, label=r"$\bar{u}_z$")
+        plt.plot(bVals[500:].mean(axis=0), out.z, label=r"$\bar{b}$")
+        plt.plot(pVals[500:].mean(axis=0),out.z, label=r"$\bar{p}$")
+        plt.legend()
+        plt.grid(True)
+        plt.xlabel("Profile")
+        plt.ylabel("z-coordinate")
+        plt.savefig(f"{dirName}/plots/profile.pdf")
+        
     
-    
+if __name__ == '__main__':
+    parser_data = argparse.ArgumentParser(description='Data Analysis')
+    parser_data.add_argument('--dir_name', type=str,
+                        help="Folder name to store data")
+    parser_data.add_argument('--spectrum_plot', action='store_true',
+                        help='plot spectrum vs k')
+    parser_data.add_argument('--checkDNS_plot', action='store_true',
+                        help='check second order polynomial fit')
+    parser_data.add_argument('--profile_plot', action='store_true',
+                        help='plotting z-coord profile for \
+                            velocity, buoyancy and pressure')
+    args_data, unknown = parser_data.parse_known_args()
+    plotting(args_data)
+ 
