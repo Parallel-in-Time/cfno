@@ -23,7 +23,7 @@ Rayleigh = 1e7  # Rayleigh number below critical
 
 # run simulation and generate output data every 0.1 sec
 # -> may take some time, can be run on a separate script
-runSimu(dirName, Rayleigh, resFactor)   
+runSim(dirName, Rayleigh, resFactor)   
 
 N = 10
 M = 4
