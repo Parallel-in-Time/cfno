@@ -19,7 +19,6 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
-from torchsummary import summary    # TODO: is it really needed ?
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -113,9 +112,9 @@ class FNO3d(nn.Module):
         
         input: the solution of the first 10 timesteps + 3 locations (u(1, x, y), ..., u(10, x, y),  x, y, t).
         It's a constant function in time, except for the last index.
-        input shape: (batchsize,  x=sizex, y=sizey, t=40, c=13)
+        input shape: (batchsize,  x=sizex, y=sizey, t=T, c=13)
         output: the solution of the next 40 timesteps
-        output shape: (batchsize, x=sizex, y=sizey, t=40, c=1)
+        output shape: (batchsize, x=sizex, y=sizey, t=T, c=1)
         """
 
         self.modes1 = modes1
@@ -124,7 +123,7 @@ class FNO3d(nn.Module):
         self.width = width
         self.padding = 6 # pad the domain if input is non-periodic
         
-        # x = (batchsize,   x=sizex, y=sizey, t=40, c=13)
+        # x = (batchsize,   x=sizex, y=sizey, t=T, c=13)
         # input channel is 13: the solution of the first 10 timesteps + 3 locations (u(1, x, y), ..., u(10, x, y),  x, y, t)
         self.p = nn.Linear(13, self.width)
         self.conv0 = SpectralConv3d(self.width, self.width, self.modes1, self.modes2, self.modes3)
@@ -357,17 +356,17 @@ def train(args):
             for step, (xx, yy) in enumerate(train_loader):
                 xx = xx.to(device)
                 yy = yy.to(device)
-                memory.print("after loading first batch")
+                # memory.print("after loading first batch")
 
                 pred = model3d(xx).view(batch_size, gridx, gridz, T)
                 mse = nn.functional.mse_loss(pred, yy, reduction='mean')
                 
-                print(f"{step} with encoding: y={yy.shape},x={xx.shape},pred={pred.shape}")
+                # print(f"{step} with encoding: y={yy.shape},x={xx.shape},pred={pred.shape}")
                 
                 yy = y_normalizer.decode(yy)
                 pred = y_normalizer.decode(pred)
                 
-                print(f"{step} decoded: y={yy.shape},x={xx.shape},pred={pred.shape}")
+                # print(f"{step} decoded: y={yy.shape},x={xx.shape},pred={pred.shape}")
                 
                 l2 = myloss(pred.view(batch_size,-1), yy.view(batch_size, -1))
                 
@@ -383,7 +382,7 @@ def train(args):
                 grads_norm = torch.cat(grads).norm()
                 writer.add_histogram("train/GradNormStep",grads_norm, step)
                 
-                memory.print("after backwardpass")
+                # memory.print("after backwardpass")
                 
                 tepoch.set_postfix({'Batch': step + 1, 'Train l2 loss (in progress)': train_l2,\
                         'Train mse loss (in progress)': train_mse})

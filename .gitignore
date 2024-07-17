@@ -11,3 +11,5 @@ events*
 *.pt
 *.txt
 *.h5
+results/
+dedalus/plots/
