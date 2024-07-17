@@ -176,3 +176,24 @@ class UnitGaussianNormalizer(object):
     def cpu(self):
         self.mean = self.mean.cpu()
         self.std = self.std.cpu()
+        
+def rbc_data( filename, time, tasks=False, scales=False):
+    with h5py.File(filename, mode="r") as f:
+        b_t = f["tasks/buoyancy"][time]
+        vel_t = f["tasks/velocity"][time]
+        p_t = f["tasks/pressure"][time]
+        iteration = f["scales/iteration"][time]
+        sim_time  = f["scales/sim_time"][time]
+        time_step = f["scales/timestep"][time]
+        wall_time = f["scales/wall_time"][time]
+        write_no = f["scales/write_number"][time]
+
+    f.close()
+    if tasks and scales:
+         return vel_t,b_t, p_t, write_no, iteration, sim_time, time_step, wall_time
+    elif tasks:
+         return vel_t,b_t, p_t
+    elif scales:
+         return write_no, iteration, sim_time, time_step, wall_time
+    else:
+         raise ValueError("Nothing to return!")

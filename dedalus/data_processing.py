@@ -139,10 +139,10 @@ class OutputFiles():
         else:
              raise ValueError("Nothing to return!")
     
-    def data_process(self, xStep=1, zStep=1):
+    def data_process(self,data_path, xStep=1, zStep=1):
         index = 0
         inputs = []
-        filename = f'{processed_data}/input_data.h5'
+        filename = f'{data_path}/input_data.h5'
         with h5py.File(filename, "w") as data:
             for i,file in enumerate(self.files):
                 iter_no = self.times(i).shape[0]
