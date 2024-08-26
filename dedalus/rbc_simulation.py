@@ -1,11 +1,14 @@
 import argparse
 import numpy as np
 from datetime import datetime
-import dedalus.public as d3
 
+import dedalus.public as d3
+from sdc import SpectralDeferredCorrectionIMEX
 
 def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
-            tEnd=150, writeVort=False):
+            tEnd=150, useSDC=False,
+            dtWrite=0.1, writeVort=False, writeFull=False,
+            initFields=None):
     """
     Run RBC simulation in a given folder.
 
@@ -36,7 +39,7 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
     Prandtl = 1
     dealias = 3/2
     stop_sim_time = tEnd
-    timestepper = d3.RK443
+    timestepper = SpectralDeferredCorrectionIMEX if useSDC else d3.RK443
     dtype = np.float64
 
     with open(f"{dirName}/00_infoSimu.txt", "w") as f:
@@ -90,16 +93,32 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
     solver.stop_sim_time = stop_sim_time
 
     # Initial conditions
-    b.fill_random('g', seed=seed, distribution='normal', scale=1e-3) # Random noise
-    b['g'] *= z * (Lz - z) # Damp noise at walls
-    b['g'] += Lz - z # Add linear background
+    if initFields is None:
+        b.fill_random('g', seed=seed, distribution='normal', scale=1e-3) # Random noise
+        b['g'] *= z * (Lz - z) # Damp noise at walls
+        b['g'] += Lz - z # Add linear background
+    else:
+        b['g'] = initFields["buoyancy"][-1]
+        p['g'] = initFields["pressure"][-1]
+        u['g'] = initFields["velocity"][-1]
+        tau_p['g'] = initFields["tau_p"][-1]
+        tau_b1['g'] = initFields["tau_b1"][-1]
+        tau_b2['g'] = initFields["tau_b2"][-1]
+        tau_u1['g'] = initFields["tau_u1"][-1]
+        tau_u2['g'] = initFields["tau_u2"][-1]
 
     # Analysis
     snapshots = solver.evaluator.add_file_handler(
-        dirName, sim_dt=0.1, max_writes=1600)
+        dirName, sim_dt=dtWrite, max_writes=1600)
     snapshots.add_task(u, name='velocity')
     snapshots.add_task(b, name='buoyancy')
     snapshots.add_task(p, name='pressure')
+    if writeFull:
+        snapshots.add_task(tau_p, name='tau_p')
+        snapshots.add_task(tau_b1, name='tau_b1')
+        snapshots.add_task(tau_b2, name='tau_b2')
+        snapshots.add_task(tau_u1, name='tau_u1')
+        snapshots.add_task(tau_u2, name='tau_u2')
     if writeVort:
         snapshots.add_task(-d3.div(d3.skew(u)), name='vorticity')
 
@@ -108,8 +127,8 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         log('Starting main loop')
         while solver.proceed:
             solver.step(timestep)
-            if (solver.iteration-1) % 100 == 0:
-                log(f'Iteration={solver.iteration}, Time={solver.sim_time}, dt={timestep}')
+            # if (solver.iteration-1) % 100 == 0:
+            log(f'Iteration={solver.iteration}, Time={solver.sim_time}, dt={timestep}')
     except:
         log('Exception raised, triggering end of main loop.')
         raise
@@ -123,4 +142,3 @@ if __name__ == '__main__':
                         help="Folder name to store simulation data")
     args, unknown = parser.parse_known_args()
     runSim(args.dir_Name)
-
