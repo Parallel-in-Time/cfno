@@ -49,7 +49,7 @@ SpectralDeferredCorrectionIMEX.setParameters(
 
 plt.figure("convergence")
 
-dtSizes = [1e-2/8, 1e-2/4, 1e-2/2]
+dtSizes = [1e-2/8, 1e-2/4, 1e-2/2, 1e-2]
 errors = []
 for i, dt in enumerate(dtSizes):
     dirName = f"{baseDir}/run_sdc_dt{dt:1.1e}"
@@ -67,7 +67,7 @@ plt.loglog(dtSizes, errors, label="SDC")
 
 
 # non-SDC runs
-dtSizes = [1e-2/8, 1e-2/4, 1e-2/2]
+dtSizes = [1e-2/8, 1e-2/4, 1e-2/2, 1e-2]
 errors = []
 for i, dt in enumerate(dtSizes):
     dirName = f"{baseDir}/run_nosdc_dt{dt:1.1e}"
