@@ -9,6 +9,7 @@ import scipy
 import pickle
 import scipy.io
 import argparse
+import time
 import numpy as np
 from importlib import reload
 from pathlib import Path
@@ -24,7 +25,10 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.lines import Line2D
 
-from utils import CudaMemoryDebugger, format_tensor_size, LpLoss
+from utils import CudaMemoryDebugger, format_tensor_size, LpLoss, get_signal_handler, _set_signal_handler
+
+_GLOBAL_SIGNAL_HANDLER = None
+_TRAIN_START_TIME = time.time()
 
 class SpectralConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, modes1, modes2):
@@ -79,7 +83,7 @@ class MLP(nn.Module):
 class FNO2d(nn.Module):
     memory = CudaMemoryDebugger(print_mem=True)
     
-    def __init__(self, modes1, modes2, width):
+    def __init__(self, modes1, modes2, width, T_in, T):
         super(FNO2d, self).__init__()
 
         """
@@ -98,9 +102,11 @@ class FNO2d(nn.Module):
         self.modes1 = modes1
         self.modes2 = modes2
         self.width = width
+        self.T_in = T_in
+        self.T = T
         self.padding = 8 # pad the domain if input is non-periodic
 
-        self.p = nn.Linear(12, self.width) # input channel is 12: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
+        self.p = nn.Linear(self.T_in+2, self.width) # input channel is T_in+2: the solution of the previous T_in timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
         self.conv0 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
         self.conv1 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
         self.conv2 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
@@ -181,7 +187,7 @@ def train(args):
     ## config
     ntrain = 100
     nval = 50
-    # ntest = 50
+    ntest = 50
 
     modes = 12
     width = 20
@@ -191,6 +197,7 @@ def train(args):
     weight_decay = 1e-05
     scheduler_step = 10.0
     scheduler_gamma = 0.98
+    
     epochs = 2
     iterations = epochs*(ntrain//batch_size)
 
@@ -208,14 +215,14 @@ def train(args):
     ## load data
     data_path = args.data_path
     reader = h5py.File(data_path, mode="r")
-    train_a = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index: start_index+T_in],dtype=torch.float)
-    train_u = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index+T_in:T+start_index+T_in], dtype=torch.float)
+    train_a = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep],dtype=torch.float)
+    train_u = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep], dtype=torch.float)
 
-    val_a = torch.tensor(reader['val'][:nval, ::xStep, ::zStep, start_index: start_index+T_in],dtype=torch.float)
-    val_u = torch.tensor(reader['val'][:nval, ::xStep, ::zStep, start_index+T_in:T+start_index+T_in],dtype=torch.float)
+    val_a = torch.tensor(reader['val'][:nval, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep],dtype=torch.float)
+    val_u = torch.tensor(reader['val'][:nval, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep],dtype=torch.float)
 
-    # test_a = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index: start_index+T_in],dtype=torch.float)
-    # test_u = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index+T_in:T+start_index+T_in],dtype=torch.float)
+    # test_a = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep],dtype=torch.float)
+    # test_u = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep],dtype=torch.float)
 
     print(f"Train data:{train_u.shape}")
     print(f"Val data:{val_u.shape}")
@@ -227,8 +234,9 @@ def train(args):
     val_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(val_a, val_u), batch_size=batch_size, shuffle=False)
     # test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
 
-
-    fno_path = Path(f'{args.model_save_path}/rbc_fno_2d_time_N{ntrain}_epoch{epochs}_m{modes}_w{width}_bs{batch_size}')
+    run = args.run
+    
+    fno_path = Path(f'{args.model_save_path}/rbc_fno2d_time_N{ntrain}_epoch{epochs}_m{modes}_w{width}_bs{batch_size}_run{run}')
     fno_path.mkdir(parents=True, exist_ok=True)
 
     checkpoint_path = Path(f'{fno_path}/checkpoint')
@@ -245,7 +253,7 @@ def train(args):
     # training and evaluation
     ################################################################
 
-    model2d = FNO2d(modes, modes, width).to(device)
+    model2d = FNO2d(modes, modes, width, T_in, T).to(device)
     # print(model2d.print_size())
     n_params = model2d.print_size()
     #memory.print("after intialization")
@@ -259,24 +267,53 @@ def train(args):
     myloss = LpLoss(size_average=False)
     start_epoch = 0
 
-    print(f"bs={batch_size}; \
-            lr={learning_rate}; \
-            weight_decay={weight_decay}; \
-            scheduler_step={scheduler_step};\
-            scheduler_gamma={scheduler_gamma};\
+    print(f"fno_modes={modes}\n \
+            layer_width={width}\n \
+            (Tin,Tout):{T_in,T}\n \
+            batch_size={batch_size}\n \
+            optimizer={optimizer}\n \
+            lr_scheduler={scheduler}\n \
+            lr_scheduler_step={scheduler_step}\n \
+            lr_scheduler_gamma={scheduler_gamma}\n\
             fno_path={fno_path}")
+    
+    with open(f'{fno_path}/info.txt', 'w') as file:
+        file.write("-------------------------------------------------\n")
+        file.write(f"Model Card for FNO-2D with (x,z) and Recurrent in Time\n")
+        file.write("-------------------------------------------------\n")
+        file.write(f"model_params:{n_params}\n")
+        file.write(f"fno_modes:{modes}\n")
+        file.write(f"layer_widths:{width}\n")
+        file.write(f"(Tin,Tout):{T_in,T}\n")
+        file.write(f"(ntrain, nval, ntest): {ntrain, nval, ntest}\n")
+        file.write(f"batch_size: {batch_size}\n")
+        file.write(f"optimizer: {optimizer}\n")
+        file.write(f"lr_scheduler: {scheduler}\n")
+        file.write(f"lr_scheduler_step: {scheduler_step}\n")
+        file.write(f"lr_scheduler_gamma: {scheduler_gamma}\n")
+        file.write(f"input_time_steps: {T_in}\n")
+        file.write(f"output_time_steps: {T}\n")
+        file.write(f"time_start_index: {start_index}\n")
+        file.write(f"(x_step, z_step, t_step): {xStep, zStep, tStep}\n")
+        file.write(f"grid(x,z): ({gridx,gridz})\n")
+        file.write(f"train_data (a,u): {train_a.shape, train_u.shape}\n")
+        file.write(f"model_path: {fno_path}\n")
+        file.write("-------------------------------------------------\n")
 
     if args.load_checkpoint:
         checkpoint = torch.load(args.checkpoint_path)
-        model2d.load_state_dict(checkpoint['model'])
+        model2d.load_state_dict(checkpoint['model_state_dict'])
         start_epoch = checkpoint['epoch']
-        print(f"Continuing training from {checkpoint_path} at {start_epoch}")
+        start_train_loss = checkpoint['train_loss']
+        start_val_loss = checkpoint['val_loss']
+        print(f"Continuing training from {checkpoint_path} at {start_epoch} with Train-L2-loss {start_train_loss},\
+                and Val-L2-loss {start_val_loss}")
         
     for epoch in range(start_epoch, epochs):
         with tqdm(unit="batch", disable=False) as tepoch:
             tepoch.set_description(f"Epoch {epoch}")
             model2d.train()
-            #memory.print("after model2d.train()")
+            #memory.print("After model2d.train()")
             
             t1 = default_timer()
             train_l2_step = 0
@@ -286,7 +323,7 @@ def train(args):
                 loss = 0
                 xx = xx.to(device)
                 yy = yy.to(device)
-                #memory.print("after loading first batch")
+                #memory.print("After loading first batch")
 
                 for t in tqdm(range(0, T, tStep), desc="Train loop"):
                     y = yy[..., t:t + tStep]
@@ -316,7 +353,7 @@ def train(args):
                 grads_norm = torch.cat(grads).norm()
                 writer.add_histogram("train/GradNormStep",grads_norm, step)
                 
-                #memory.print("after backwardpass")
+                #memory.print("After backwardpass")
                 
                 tepoch.set_postfix({'Batch': step + 1, 'Train l2 loss (in progress)': train_l2_full,\
                         'Train l2 step loss (in progress)': train_l2_step})
@@ -352,7 +389,7 @@ def train(args):
 
                     val_l2_step += loss.item()
                     val_l2_full += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
-                    #memory.print("after val first batch")
+                    #memory.print("After val first batch")
 
             val_error = val_l2_full / nval
             val_step_error = val_l2_step / nval / (T / tStep)
@@ -362,7 +399,7 @@ def train(args):
             t2 = default_timer()
             tepoch.set_postfix({ \
                 'Epoch': epoch, \
-                'Time per epoch': (t2-t1), \
+                'Time per epoch (s)': (t2-t1), \
                 'Train l2loss step': train_step_error ,\
                 'Train l2loss': train_error,\
                 'Val l2loss step': val_step_error, \
@@ -371,27 +408,75 @@ def train(args):
             
         tepoch.close()
         
-        with open(f'{fno_path}/info.txt', 'w') as file:
-            file.write("Training Error: " + str(train_error) + "\n")
-            file.write("Validation Error: " + str(val_error) + "\n")
-            file.write("Current Epoch: " + str(epoch) + "\n")
-            file.write("batch_size:" + str(batch_size) + "\n")
-            file.write("learning_rate:" + str(learning_rate)+ "\n")
-            # file.write("Params: " + str(n_params) + "\n")
-    
-                
-        if epoch % 100 == 0 or epoch == epochs-1:
-            torch.save(model2d.state_dict(), f"{checkpoint_path}/model_checkpoint_{epoch}.pt")
+        if epoch > 0 and epoch % 100 == 0 :
+            with open(f'{fno_path}/info.txt', 'a') as file:
+                    file.write(f"Training Error at {epoch}: {train_error}\n")
+                    file.write(f"Validation Error at {epoch}: {val_error}\n")
+            torch.save(
+                {
+                'epoch': epoch,
+                'model_state_dict': model2d.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'train_loss': train_error,
+                'val_loss': val_error,
+                }, f"{checkpoint_path}/model_checkpoint_{epoch}.pt")
+        if args.exit_signal_handler:
+            signal_handler = get_signal_handler()
+            if any(signal_handler.signals_received()):
+                with open(f'{fno_path}/info.txt', 'a') as file:
+                    file.write(f"Training Error at {epoch}: {train_error}\n")
+                    file.write(f"Validation Error at {epoch}: {val_error}\n")
+                torch.save(
+                    {
+                    'epoch': epoch,
+                    'model_state_dict': model2d.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'train_loss': train_error,
+                    'val_loss': val_error,
+                    }, f"{checkpoint_path}/model_checkpoint_{epoch}.pt")
+                print('exiting program after receiving SIGTERM.')
+        
+        if args.exit_duration_in_mins:
+            train_time = (time.time() - _TRAIN_START_TIME) / 60.0
+            done_check = torch.tensor(
+                [train_time > args.exit_duration_in_mins],
+                dtype=torch.int, device=device)
+            done = done_check.item()
+            if done:
+                with open(f'{fno_path}/info.txt', 'a') as file:
+                    file.write(f"Training Error at {epoch}: {train_error}\n")
+                    file.write(f"Validation Error at {epoch}: {val_error}\n")
+                torch.save(
+                    {
+                    'epoch': epoch,
+                    'model_state_dict': model2d.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'train_loss': train_error,
+                    'val_loss': val_error,
+                    }, f"{checkpoint_path}/model_checkpoint_{epoch}.pt")
+                print('exiting program after {} minutes'.format(train_time))
+          
             
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='FNO Training')
     parser.add_argument('--model_save_path', type=str,default=os.getcwd(),
                         help='path to which FNO model is saved')
-    parser.add_argument('--load_checkpoint', action="store_true",
-                        help='load checkpoint')
     parser.add_argument('--data_path', type=str,
                         help='path to data')
+    parser.add_argument('--load_checkpoint', action="store_true",
+                        help='load checkpoint')
     parser.add_argument('--checkpoint_path', type=str,
                         help='folder containing checkpoint')
+    parser.add_argument('--exit-signal-handler', action='store_true',
+                       help='Dynamically save the checkpoint and shutdown the '
+                       'training if SIGTERM is received')
+    parser.add_argument('--run', type=int, default=1,
+                        help='training tracking number')
+    parser.add_argument('--exit-duration-in-mins', type=int, default=None,
+                       help='Exit the program after this many minutes.')
     args = parser.parse_args()
+    
+    if args.exit_signal_handler:
+        _set_signal_handler()
+        
     train(args)
