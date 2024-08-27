@@ -77,7 +77,7 @@ def extract(result, gridx, gridz, t):
     uz = result[gridx:2*gridx, :gridz, :t]
     b = result[2*gridx:3*gridx, :gridz,:t]
     p = result[3*gridx:, :gridz,:t]
-    print(ux.shape, uz.shape, b.shape, p.shape)
+    # print(ux.shape, uz.shape, b.shape, p.shape)
     return ux, uz, b, p
 
 def time_extract(file, start_index, t_in, t_out):
@@ -86,13 +86,13 @@ def time_extract(file, start_index, t_in, t_out):
         # print(rbc_data(file,i, False, True))
         _,_,time,_,_ = rbc_data(file,i, False, True)
         time_in.append(time)
-    print("Input", time_in)
+    print("Input Time", time_in)
     time_out = []
     for i in range(start_index+t_in, start_index+t_in+t_out):
         # print(rbc_data(file,i, False, True))
         _,_,time,_,_ = rbc_data(file,i, False, True)
         time_out.append(time)
-    print("Output", time_out)
+    print("Output Time", time_out)
     return time_in, time_out
 
 def inferPlot(ux, vx, vx1,
@@ -244,17 +244,17 @@ def inferErrorPlot( ux, vx, vx1,
         fno_patch = Line2D([0], [0], label=f'FNO at t={np.round(time_out[t],2)}',marker='o', linestyle='--', color='r')
         inp_patch = Line2D([0], [0], label=f'Input at t={np.round(time_in[t],2)}',marker='o', color='b')
         fig.legend(handles=[inp_patch,ded_patch, fno_patch], loc="upper right")
-        fig.tight_layout()
+        # fig.tight_layout()
         fig.show()
         # fig.savefig(f"{fno_path}/{dim}_NX{gridx}_NZ{gridz}_error_{t}.pdf")
         fig.savefig(f"{fno_path}/{dim}_NX{gridx}_NZ{gridz}_error_{t}.png")
 
 def model_inference(data_path):
     reader = h5py.File(data_path, mode="r")
-    train_a = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index: start_index+T_in],dtype=torch.float)
-    train_u = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index+T_in:T+start_index+T_in], dtype=torch.float)
-    test_a = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index: start_index+T_in], dtype=torch.float)
-    test_u = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index+T_in: T+start_index+T_in], dtype=torch.float)
+    train_a = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep],dtype=torch.float)
+    train_u = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep], dtype=torch.float)
+    test_a = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep], dtype=torch.float)
+    test_u = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep], dtype=torch.float)
 
 
     # Model
@@ -264,16 +264,21 @@ def model_inference(data_path):
         y_normalizer = UnitGaussianNormalizer(train_u)
         test_u = y_normalizer.encode(test_u)
         test_a = test_a.reshape(ntest, gridx, gridz, 1, T_in).repeat([1,1,1,T,1])
-        model = FNO3d(modes, modes, modes, width).to(device)
+        model = FNO3d(modes, modes, modes, width, T_in, T).to(device)
     else:
-        model = FNO2d(modes, modes, width).to(device)
+        model = FNO2d(modes, modes, width, T_in, T).to(device)
 
-    model.load_state_dict(torch.load(args.model, map_location=lambda storage, loc: storage))   
+    checkpoint = torch.load(args.model, map_location=lambda storage, loc: storage)
+    if 'model_state_dict' in checkpoint.keys():
+        model.load_state_dict(checkpoint['model_state_dict'])   
+    else:
+        model.load_state_dict(checkpoint)  
     test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
     print(f"Test input data:{test_a.shape}, Test output data: {test_u.shape}")
 
     # Inference
-    pred = torch.zeros([iterations, batch_size, gridx, gridz, T])
+    # pred = torch.zeros([iterations, batch_size, gridx, gridz, T])
+    pred = torch.zeros([batch_size, gridx, gridz, T])
     index = 0
     inputs = []
     outputs = []
@@ -289,7 +294,8 @@ def model_inference(data_path):
                 # print(out.shape)
                 out = y_normalizer.decode(out)
                 test_l2 += myloss(out.view(1, -1), yy.view(1, -1)).item()
-                pred[step]= out
+                # pred[step]= out
+                pred = out 
             else:
                 for t in range(0, T, tStep):
                     y = yy[..., t:t + tStep]
@@ -307,6 +313,8 @@ def model_inference(data_path):
             inputs.append(xx_org)
             outputs.append(yy)
             predictions.append(pred)
+            if step == 0:
+                print(f"index:{step} , xx:{xx_org.shape}, yy:{yy.shape}, pred:{pred.shape}")
             
             # file.write(f"index:{step} , xx:{xx.shape}, yy:{yy.shape}, pred:{np.array(predictions).shape},loss:{test_l2}, \
             #             \nprediction: {predictions},\n \
@@ -318,7 +326,6 @@ def model_inference(data_path):
         data['input'] = inputs
         data['output'] = outputs
         data['prediction'] = predictions
-    data.close()
     return np.array(inputs), np.array(outputs), np.array(predictions)
 
 # Config
@@ -334,8 +341,8 @@ zStep = 1
 tStep = 1
 
 start_index = 500
-T_in = 10
-T = 10
+T_in = 5
+T = 5
 time_in, time_out = time_extract(args.time_file, start_index, T_in, T)
 
 myloss = LpLoss(size_average=False)
@@ -348,31 +355,29 @@ iterations = int(ntest/batch_size)
 fno_path = Path(f'{args.folder}/rbc_{args.dim}_N{ntest}_m{modes}_w{width}_bs{batch_size}_inference')
 fno_path.mkdir(parents=True, exist_ok=True)
 
-
 if args.plotFile:
     infFile = f'{fno_path}/inference.h5'
     with h5py.File(infFile, "r") as data:
         inputs = data['input'][:]
         outputs = data['output'][:]
         predictions = data ['prediction'][:]
-    data.close()
 else:
     inputs, outputs, predictions = model_inference(args.data_path)
 
-
+print(f"Model Inference: {inputs.shape}, {outputs.shape}, {predictions.shape}")
+batches = predictions.shape[0]
+batchsize = predictions.shape[1]
+batch_num = np.random.randint(0,batches)
+sample = np.random.randint(0,batchsize)
+print(f"Batch Number: {batch_num}, Sample: {sample}")
 ## Plotting
-sample_size = predictions.shape[0]
-batch_sample = predictions.shape[1]
-sample = np.random.randint(0,sample_size)
-batch = np.random.randint(0,batch_sample)
-
 if args.dim == "FNO3D":
-    ux, uz, b_in, p_in = extract(inputs[sample, batch,:,:,0,:], gridx//4, gridz, T_in)
-    vx1, vz1, b_out1, p_out1 = extract(predictions[0,sample,batch,:,:], gridx//4, gridz, T)
+    ux, uz, b_in, p_in = extract(inputs[batch_num, sample, :, :, 0, :], gridx//4, gridz, T_in)
 else:
-    ux, uz, b_in, p_in = extract(inputs[sample, batch,:,:], gridx//4, gridz, T_in)
-    vx1, vz1, b_out1, p_out1 = extract(predictions[sample,batch,:,:], gridx//4, gridz,T)
-vx, vz, b_out, p_out = extract(outputs[sample,batch,:,:], gridx//4, gridz, T)
+    ux, uz, b_in, p_in = extract(inputs[batch_num, sample, :, :, :], gridx//4, gridz, T_in)
+    
+vx1, vz1, b_out1, p_out1 = extract(predictions[batch_num, sample, :, :, :], gridx//4, gridz,T)
+vx, vz, b_out, p_out = extract(outputs[batch_num, sample, :, :, :], gridx//4, gridz, T)
 
 inferErrorPlot(ux, vx, vx1,uz, vz, vz1,b_in, b_out, b_out1,p_in, p_out, p_out1,
                time_out, time_in, args.dim, fno_path ,gridx//4, gridz)
