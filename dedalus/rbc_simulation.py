@@ -3,7 +3,12 @@ import numpy as np
 from datetime import datetime
 
 import dedalus.public as d3
+from mpi4py import MPI
 from sdc import SpectralDeferredCorrectionIMEX
+
+COMM_WORLD = MPI.COMM_WORLD
+MPI_SIZE = COMM_WORLD.Get_size()
+MPI_RANK = COMM_WORLD.Get_rank()
 
 def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
             tEnd=150, useSDC=False,
@@ -26,10 +31,12 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         Seed for the random noise in the initial solution. The default is 999.
     """
     def log(msg):
-        with open(f"{dirName}/simu.log", "a") as f:
-            f.write(f"{dirName} -- ")
-            f.write(datetime.now().strftime("%d/%m/%Y  %H:%M:%S"))
-            f.write(f" : {msg}\n")
+        if MPI_RANK == 0:
+            with open(f"{dirName}/simu.log", "a") as f:
+                f.write(f"{dirName} -- ")
+                f.write(datetime.now().strftime("%d/%m/%Y  %H:%M:%S"))
+                f.write(f", MPI rank {MPI_RANK} ({MPI_SIZE})")
+                f.write(f" : {msg}\n")
 
     # Parameters
     Lx, Lz = 4, 1
