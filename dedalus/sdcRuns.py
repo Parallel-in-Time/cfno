@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from rbc_simulation import runSim
 from data_processing import OutputFiles
-from sdc import SpectralDeferredCorrectionIMEX
+from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX
 
 nX, nZ = 256, 64
 resFactor = 1
@@ -21,7 +21,7 @@ Rayleigh = 1.5e7
 dirName = f"{baseDir}/run_init"
 os.makedirs(dirName, exist_ok=True)
 dt = 1e-2/2
-if False:
+if True:
     print(f" -- running initial simulation with dt={dt:1.1e} in {dirName}")
     runSim(dirName, Rayleigh, resFactor, baseDt=dt, useSDC=False, tEnd=100,
            dtWrite=1, writeFull=True)
@@ -29,27 +29,32 @@ if False:
 initFields = OutputFiles(dirName).file(0)['tasks']
 
 
+tEnd = 1
+dtRef = 1e-6
+dtBase = 1e-2/2
+dtSizes = [dtBase/2**i for i in range(4)]
+var = "velocity"
+
+
 # Reference solution
 dirName = f"{baseDir}/run_ref"
 os.makedirs(dirName, exist_ok=True)
-dt = 1e-4
-if False:
+if True:
     print(f" -- running reference simulation with dt={dt:1.1e} in {dirName}")
-    runSim(dirName, Rayleigh, resFactor, baseDt=dt, useSDC=False,
-           tEnd=1, dtWrite=0.1, initFields=initFields)
+    runSim(dirName, Rayleigh, resFactor, baseDt=dtRef, useSDC=False,
+           tEnd=tEnd, dtWrite=tEnd, initFields=initFields)
 refFields = OutputFiles(dirName).file(0)['tasks']
 
 
 # SDC runs
 SpectralDeferredCorrectionIMEX.setParameters(
-    nSweep=4,
-    M=4,
-    implSweep=["MIN-SR-FLEX"]*4,
+    nSweeps=4,
+    nNodes=4,
+    implSweep="MIN-SR-FLEX",
     explSweep="PIC")
 
 plt.figure("convergence")
 
-dtSizes = [1e-2/8, 1e-2/4, 1e-2/2, 1e-2]
 errors = []
 for i, dt in enumerate(dtSizes):
     dirName = f"{baseDir}/run_sdc_dt{dt:1.1e}"
@@ -57,17 +62,18 @@ for i, dt in enumerate(dtSizes):
     if True:
         print(f" -- running SDC simulation with dt={dt:1.1e} in {dirName}")
         runSim(dirName, Rayleigh, resFactor, baseDt=dt, useSDC=True,
-               tEnd=1, dtWrite=0.1, initFields=initFields)
+               tEnd=tEnd, dtWrite=tEnd, initFields=initFields)
     numFields = OutputFiles(dirName).file(0)['tasks']
+    diff = numFields[var][-1] - refFields[var][-1]
     err = np.linalg.norm(
-        numFields["buoyancy"][-1] - refFields["buoyancy"][-1],
-        ord=np.inf)
+        diff, ord=np.inf, axis=(1,2) if var == "velocity" else None)
+    if var == "velocity":
+        err = np.mean(err)
     errors.append(err)
 plt.loglog(dtSizes, errors, label="SDC")
 
 
 # non-SDC runs
-dtSizes = [1e-2/8, 1e-2/4, 1e-2/2, 1e-2]
 errors = []
 for i, dt in enumerate(dtSizes):
     dirName = f"{baseDir}/run_nosdc_dt{dt:1.1e}"
@@ -75,11 +81,14 @@ for i, dt in enumerate(dtSizes):
     if True:
         print(f" -- running non-SDC simulation with dt={dt:1.1e} in {dirName}")
         runSim(dirName, Rayleigh, resFactor, baseDt=dt, useSDC=False,
-               tEnd=1, dtWrite=0.1, initFields=initFields)
+               tEnd=tEnd, dtWrite=tEnd, initFields=initFields)
     numFields = OutputFiles(dirName).file(0)['tasks']
+    diff = numFields[var][-1] - refFields[var][-1]
     err = np.linalg.norm(
-        numFields["buoyancy"][-1] - refFields["buoyancy"][-1],
-        ord=np.inf)
+        diff, ord=np.inf, axis=(1,2) if var == "velocity" else None)
+    if var == "velocity":
+        err = np.mean(err)
     errors.append(err)
+
 plt.loglog(dtSizes, errors, label="RK443")
 plt.legend()
