@@ -4,7 +4,7 @@ from datetime import datetime
 
 import dedalus.public as d3
 from mpi4py import MPI
-from sdc import SpectralDeferredCorrectionIMEX
+from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX
 
 COMM_WORLD = MPI.COMM_WORLD
 MPI_SIZE = COMM_WORLD.Get_size()

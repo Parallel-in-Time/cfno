@@ -21,7 +21,7 @@ Rayleigh = 1.5e7
 dirName = f"{baseDir}/run_init"
 os.makedirs(dirName, exist_ok=True)
 dt = 1e-2/2
-if True:
+if False:
     print(f" -- running initial simulation with dt={dt:1.1e} in {dirName}")
     runSim(dirName, Rayleigh, resFactor, baseDt=dt, useSDC=False, tEnd=100,
            dtWrite=1, writeFull=True)
@@ -39,7 +39,7 @@ var = "velocity"
 # Reference solution
 dirName = f"{baseDir}/run_ref"
 os.makedirs(dirName, exist_ok=True)
-if True:
+if False:
     print(f" -- running reference simulation with dt={dt:1.1e} in {dirName}")
     runSim(dirName, Rayleigh, resFactor, baseDt=dtRef, useSDC=False,
            tEnd=tEnd, dtWrite=tEnd, initFields=initFields)
@@ -55,22 +55,23 @@ SpectralDeferredCorrectionIMEX.setParameters(
 
 plt.figure("convergence")
 
-errors = []
-for i, dt in enumerate(dtSizes):
-    dirName = f"{baseDir}/run_sdc_dt{dt:1.1e}"
-    os.makedirs(dirName, exist_ok=True)
-    if True:
-        print(f" -- running SDC simulation with dt={dt:1.1e} in {dirName}")
-        runSim(dirName, Rayleigh, resFactor, baseDt=dt, useSDC=True,
-               tEnd=tEnd, dtWrite=tEnd, initFields=initFields)
-    numFields = OutputFiles(dirName).file(0)['tasks']
-    diff = numFields[var][-1] - refFields[var][-1]
-    err = np.linalg.norm(
-        diff, ord=np.inf, axis=(1,2) if var == "velocity" else None)
-    if var == "velocity":
-        err = np.mean(err)
-    errors.append(err)
-plt.loglog(dtSizes, errors, label="SDC")
+if False:
+    errors = []
+    for i, dt in enumerate(dtSizes):
+        dirName = f"{baseDir}/run_sdc_dt{dt:1.1e}"
+        os.makedirs(dirName, exist_ok=True)
+        if False:
+            print(f" -- running SDC simulation with dt={dt:1.1e} in {dirName}")
+            runSim(dirName, Rayleigh, resFactor, baseDt=dt, useSDC=True,
+                   tEnd=tEnd, dtWrite=tEnd, initFields=initFields)
+        numFields = OutputFiles(dirName).file(0)['tasks']
+        diff = numFields[var][-1] - refFields[var][-1]
+        err = np.linalg.norm(
+            diff, ord=np.inf, axis=(1,2) if var == "velocity" else None)
+        if var == "velocity":
+            err = np.mean(err)
+        errors.append(err)
+    plt.loglog(dtSizes, errors, label="SDC")
 
 
 # non-SDC runs
