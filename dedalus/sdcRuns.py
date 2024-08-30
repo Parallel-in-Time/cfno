@@ -50,9 +50,9 @@ refFields = refFiles.file(0)['tasks']
 
 # SDC runs
 SpectralDeferredCorrectionIMEX.setParameters(
-    nSweeps=3,
-    nNodes=4,
-    implSweep="MIN-SR-S",
+    nSweeps=4,
+    nNodes=3,
+    implSweep="MIN-SR-FLEX",
     explSweep="PIC")
 
 plt.figure("convergence")
@@ -91,6 +91,6 @@ for i, dt in enumerate(dtSizes):
         err = np.mean(err)
     errors.append(err)
 
-plt.ylim(ymax=1e-2)
+plt.grid(True)
 plt.loglog(dtSizes, errors, 'o-', label="RK443")
 plt.legend()
