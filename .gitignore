@@ -7,6 +7,7 @@ data/
 .spyproject
 dedalus/run*
 dedalus/frames*
+dedalus/scripts
 events*
 *.pt
 *.txt

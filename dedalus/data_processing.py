@@ -124,8 +124,7 @@ class OutputFiles():
             time_step = f["scales/timestep"][time]
             wall_time = f["scales/wall_time"][time]
             write_no = f["scales/write_number"][time]
-
-        f.close()
+            
         if tasks and scales:
              return vel_t,b_t, p_t, write_no, iteration, sim_time, time_step, wall_time
         elif tasks:
@@ -135,22 +134,32 @@ class OutputFiles():
         else:
              raise ValueError("Nothing to return!")
 
-    def data_process(self,data_path, xStep=1, zStep=1):
+    def data_process(self,data_path=None, xStep=1, zStep=1, tStep=1, start_iteration=0, end_iteration=100):
         index = 0
         inputs = []
-        filename = f'{data_path}/input_data.h5'
-        with h5py.File(filename, "w") as data:
+        if data_path is not None:
+            filename = f'{data_path}/input_data.h5'
+            with h5py.File(filename, "w") as data:
+                for i,file in enumerate(self.files):
+                    total_iterations = self.times(i).shape[0]
+                    print(f"index: {i}, file: {file}, total_iterations: {total_iterations}")
+                    print(f"Extracting iterations {start_iteration} to {end_iteration}....")
+                    for t in range(start_iteration, end_iteration+1, tStep):
+                        vel_t,b_t, p_t, write_no, iteration, sim_time, time_step, wall_time = self.rbc_data(file, t, True, True)
+                        inputs.append(np.concatenate((vel_t[0,::xStep,::zStep], vel_t[1,::xStep,::zStep], b_t, p_t), axis = 0))
+                        index = index + 1
+                data['input'] = inputs
+        else:
             for i,file in enumerate(self.files):
-                iter_no = self.times(i).shape[0]
-                # print(i, file, iter_no)
-                for t in range(iter_no):
+                total_iterations = self.times(i).shape[0]
+                print(f"index: {i}, file: {file}, total_iterations: {total_iterations}")
+                print(f"Extracting iterations {start_iteration} to {end_iteration}....")
+                for t in range(start_iteration, end_iteration+1, tStep):
                     vel_t,b_t, p_t, write_no, iteration, sim_time, time_step, wall_time = self.rbc_data(file, t, True, True)
                     inputs.append(np.concatenate((vel_t[0,::xStep,::zStep], vel_t[1,::xStep,::zStep], b_t, p_t), axis = 0))
                     index = index + 1
-            data['input'] = inputs
-            data.close()
-            return np.array(inputs)
-
+    
+        return np.array(inputs)
 
 def checkDNS(sMean, k, vRatio=4, nThrow=1):
     nValues = k.size//vRatio
@@ -222,7 +231,7 @@ def plotting(args_data):
         infos["Rayleigh"] = float(infos["Rayleigh"])
         infos["Nx"], infos["Nz"] = [int(n) for n in infos["Nx, Nz"].split(", ")]
     else:
-        infos["Rayleigh"] = 1e-7
+        infos["Rayleigh"] = 1.5e7
         infos["Nx"] = 256
         infos["Nz"] = 64
     print(f'Setting RayleighNumber={infos["Rayleigh"]}, Nx={infos["Nx"]} and Nz={infos["Nz"]}')
