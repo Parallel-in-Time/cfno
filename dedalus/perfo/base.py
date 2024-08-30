@@ -28,15 +28,15 @@ nX, nZ, nSteps = 512, 128, 1/(1e-2/4)
 tComp = np.array([456.6, 269.1, 132.3, 70.97, 42.08, 29.43, 20.64, 18])
 nProc = np.array([1, 2, 4, 8, 16, 32, 64, 128])
 
-tScaled = tComp/(nX*nZ*nSteps)
+tScaled = tComp/(nSteps)
 speedup = tComp[0]/nProc[0]/tComp
 efficiency = speedup/nProc
 
 plt.figure("tScaled")
 plt.loglog(nProc, tScaled, 'o-')
 plt.loglog(nProc, tScaled[0]/nProc[0]/nProc, '--', c='gray')
-plt.text(1.1, 7e-7, f"Max. speedup : {speedup.max():1.2f}")
-plt.ylabel("Scaled runtime $t_{wall}/N_{dof}/N_{steps}$")
+plt.text(1.1, 7e-2, f"Max. speedup : {speedup.max():1.2f}")
+plt.ylabel("Scaled runtime $t_{wall}/N_{steps}$")
 
 plt.figure("speedup")
 plt.loglog(nProc, speedup, 'o-')
