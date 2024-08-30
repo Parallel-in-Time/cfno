@@ -1,34 +1,55 @@
-import h5py
-import random
-import os
+import argparse
 import numpy as np
 from datetime import datetime
-import dedalus.public as d3
 
+import dedalus.public as d3
+from mpi4py import MPI
+# from sdc import SpectralDeferredCorrectionIMEX
+
+COMM_WORLD = MPI.COMM_WORLD
+MPI_SIZE = COMM_WORLD.Get_size()
+MPI_RANK = COMM_WORLD.Get_rank()
 
 def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
-            tEnd=150, writeVort=False):
+            tEnd=150, dtWrite=0.1, useSDC=False,
+            writeVort=False, writeFull=False,
+            initFields=None):
     """
     Run RBC simulation in a given folder.
 
     Parameters
     ----------
-    dirName : str
+    dirName: str
         Name of directory where to store snapshots and run infos
-    Rayleigh : float
+    Rayleigh: float
         Rayleigh number.
-    resFactor : int
+    resFactor: int
         Resolution factor, considering a base space grid size of (256,64).
-    baseDt : float, optional
+    baseDt: float
         Base time-step for the base space resolution. The default is 1e-2/2.
-    seed : int, optional
+    seed: int, optional
         Seed for the random noise in the initial solution. The default is 999.
+    tEnd: float
+        Simulation end time
+    dtWrite: float
+        Snapshot save interval
+    useSDC: boolean, optional
+        Use SDC timestepper
+    writeVort: boolean, optional
+        Write vorticity to snapshot
+    writeFull: boolean, optional
+        Write Tau variables to snapshot
+    initFields: dictionary, optional
+        Initial conditions
+    
     """
     def log(msg):
-        with open(f"{dirName}/simu.log", "a") as f:
-            f.write(f"{dirName} -- ")
-            f.write(datetime.now().strftime("%d/%m/%Y  %H:%M:%S"))
-            f.write(f" : {msg}\n")
+        if MPI_RANK == 0:
+            with open(f"{dirName}/simu.log", "a") as f:
+                f.write(f"{dirName} -- ")
+                f.write(datetime.now().strftime("%d/%m/%Y  %H:%M:%S"))
+                f.write(f", MPI rank {MPI_RANK} ({MPI_SIZE})")
+                f.write(f" : {msg}\n")
 
     # Parameters
     Lx, Lz = 4, 1
@@ -38,6 +59,7 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
     Prandtl = 1
     dealias = 3/2
     stop_sim_time = tEnd
+    # timestepper = SpectralDeferredCorrectionIMEX if useSDC else d3.RK443
     timestepper = d3.RK443
     dtype = np.float64
 
@@ -46,7 +68,8 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         f.write(f"Seed : {seed}\n")
         f.write(f"Nx, Nz : {int(Nx)}, {int(Nz)}\n")
         f.write(f"dt : {timestep:1.2e}\n")
-        f.write(f"tEnd : {tEnd}\n")
+        f.write(f"tEnd : {stop_sim_time}\n")
+        f.write(f"dtWrite : {dtWrite}\n")
 
     # Bases
     coords = d3.CartesianCoordinates('x', 'z')
@@ -92,16 +115,32 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
     solver.stop_sim_time = stop_sim_time
 
     # Initial conditions
-    b.fill_random('g', seed=seed, distribution='normal', scale=1e-3) # Random noise
-    b['g'] *= z * (Lz - z) # Damp noise at walls
-    b['g'] += Lz - z # Add linear background
+    if initFields is None:
+        b.fill_random('g', seed=seed, distribution='normal', scale=1e-3) # Random noise
+        b['g'] *= z * (Lz - z) # Damp noise at walls
+        b['g'] += Lz - z # Add linear background
+    else:
+        b['g'] = initFields["buoyancy"][-1]
+        p['g'] = initFields["pressure"][-1]
+        u['g'] = initFields["velocity"][-1]
+        tau_p['g'] = initFields["tau_p"][-1]
+        tau_b1['g'] = initFields["tau_b1"][-1]
+        tau_b2['g'] = initFields["tau_b2"][-1]
+        tau_u1['g'] = initFields["tau_u1"][-1]
+        tau_u2['g'] = initFields["tau_u2"][-1]
 
     # Analysis
     snapshots = solver.evaluator.add_file_handler(
-        dirName, sim_dt=0.1, max_writes=1600)
+        dirName, sim_dt=dtWrite, max_writes=stop_sim_time/timestep)
     snapshots.add_task(u, name='velocity')
     snapshots.add_task(b, name='buoyancy')
     snapshots.add_task(p, name='pressure')
+    if writeFull:
+        snapshots.add_task(tau_p, name='tau_p')
+        snapshots.add_task(tau_b1, name='tau_b1')
+        snapshots.add_task(tau_b2, name='tau_b2')
+        snapshots.add_task(tau_u1, name='tau_u1')
+        snapshots.add_task(tau_u2, name='tau_u2')
     if writeVort:
         snapshots.add_task(-d3.div(d3.skew(u)), name='vorticity')
 
@@ -110,7 +149,7 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         log('Starting main loop')
         while solver.proceed:
             solver.step(timestep)
-            if (solver.iteration-1) % 100 == 0:
+            if (solver.iteration-1) % 10000 == 0:
                 log(f'Iteration={solver.iteration}, Time={solver.sim_time}, dt={timestep}')
     except:
         log('Exception raised, triggering end of main loop.')
@@ -125,4 +164,3 @@ if __name__ == '__main__':
                         help="Folder name to store simulation data")
     args, unknown = parser.parse_known_args()
     runSim(args.dir_Name)
-

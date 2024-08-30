@@ -27,7 +27,7 @@ for iRun in range(nRunMax):
     os.makedirs(dirName, exist_ok=True)
 
     print(f" -- running simulation with Rayleigh={Rayleigh:1.2e} in {dirName}")
-    runSimu(dirName, Rayleigh, resFactor)
+    runSim(dirName, Rayleigh, resFactor)
 
     out = OutputFiles(dirName)
     sMean, k = out.getFullMeanSpectrum(10)
