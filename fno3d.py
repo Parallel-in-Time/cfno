@@ -254,13 +254,13 @@ def train(args):
     ntest = 50
 
     modes = 12
-    width = 32
+    width = 20
 
     batch_size = 5
-    learning_rate = 0.001
-    weight_decay = 1e-4
-    scheduler_step = 100.0
-    scheduler_gamma = 0.5
+    learning_rate = 0.00039
+    weight_decay = 1e-05
+    scheduler_step = 10.0
+    scheduler_gamma = 0.98
 
     epochs = 200
     iterations = epochs*(ntrain//batch_size)
@@ -273,8 +273,8 @@ def train(args):
     tStep = 1
 
     start_index = 500
-    T_in = 5
-    T = 5
+    T_in = 10
+    T = 10
 
     ## load data
     data_path = args.data_path
@@ -329,11 +329,11 @@ def train(args):
     n_params = model3d.print_size()
     memory.print("After intialization")
 
-    # optimizer = torch.optim.Adam(model3d.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iterations)
+    optimizer = torch.optim.Adam(model3d.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iterations)
 
-    optimizer = torch.optim.AdamW(model3d.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_gamma)
+    # optimizer = torch.optim.AdamW(model3d.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_gamma)
     
     y_normalizer.to(device)
     myloss = LpLoss(size_average=False)
@@ -413,7 +413,7 @@ def train(args):
                 optimizer.zero_grad()
                 l2.backward()
                 optimizer.step()
-                # scheduler.step()
+                scheduler.step()
                 
                 train_mse += mse.item()
                 train_l2 += l2.item()
@@ -427,7 +427,7 @@ def train(args):
                 tepoch.set_postfix({'Batch': step + 1, 'Train l2 loss (in progress)': train_l2,\
                         'Train mse loss (in progress)': train_mse})
             
-            scheduler.step()
+            # scheduler.step()
             train_l2_error = train_l2 / ntrain
             train_mse_error = train_mse / ntrain 
             writer.add_scalar("train_loss/train_l2loss", train_l2_error, epoch)

@@ -4,14 +4,16 @@ Perform inference and plot results for 2D Rayleigh Benard Convection
 Usage:
     python inference.py \
              --model=<checkpoint> \
-             --data_path=<test_data> \
+             --train_data_path=<train_data_path> (only when using FNO3D) \
+             --test_data_path=<test_data_path> (only when test and train data in multiple files) \
+             --single_data_path=<data_path> (only when test and train data in single file) \
              --dim=FNO2D or FNO3D \
              --modes=12 \
              --width=20 \
              --batch_size=50 \
              --folder=results  \
              --time_file=<dedalus_datafile> \
-             --plotFile
+             --plotFile (only to plot without model_inference)
 
 """
 
@@ -47,8 +49,12 @@ from fno2d_recurrent import FNO2d
 parser = argparse.ArgumentParser(description='Inference')
 parser.add_argument('--model', type=str,
                     help=" Torch model state path")
-parser.add_argument('--data_path', type=str,
-                    help='path to data')
+parser.add_argument('--single_data_path', type=str,default=None,
+                        help='path to hdf5 file containing train, val and test data')
+parser.add_argument('--train_data_path', type=str,default=None,
+                    help='path to train data hdf5 file')
+parser.add_argument('--test_data_path', type=str,default=None,
+                    help='path to test data hdf5 file')
 parser.add_argument('--dim', type=str,default="FNO2D",
                     help="FNO2D+recurrent time or FNO3D")
 parser.add_argument('--modes', type=int, default=12,
@@ -66,11 +72,11 @@ parser.add_argument('--plotFile', action="store_true",
 args = parser.parse_args()
 
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"Using {device}")
-if device == 'cuda':
-    torch.cuda.empty_cache()
-    memory = CudaMemoryDebugger(print_mem=True)
+# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# print(f"Using {device}")
+# if device == 'cuda':
+#     torch.cuda.empty_cache()
+#     memory = CudaMemoryDebugger(print_mem=True)
 
 def extract(result, gridx, gridz, t):
     ux = result[:gridx, :gridz, :t]
@@ -240,23 +246,40 @@ def inferErrorPlot( ux, vx, vx1,
         ax8.set_xlabel("X Grid")
 
         fig.suptitle(f'RBC-2D with {gridx}'+r'$\times$'+f'{gridz} grid and $Ra=10^7, Pr=1$ using {dim}')  
-        ded_patch = Line2D([0], [0], label=f'Dedalus at t={np.round(time_out[t],2)}',marker='o', color='g')
-        fno_patch = Line2D([0], [0], label=f'FNO at t={np.round(time_out[t],2)}',marker='o', linestyle='--', color='r')
-        inp_patch = Line2D([0], [0], label=f'Input at t={np.round(time_in[t],2)}',marker='o', color='b')
+        ded_patch = Line2D([0], [0], label=f'Dedalus at t={np.round(time_out[t],4)}',marker='o', color='g')
+        fno_patch = Line2D([0], [0], label=f'FNO at t={np.round(time_out[t],4)}',marker='o', linestyle='--', color='r')
+        inp_patch = Line2D([0], [0], label=f'Input at t={np.round(time_in[t],4)}',marker='o', color='b')
         fig.legend(handles=[inp_patch,ded_patch, fno_patch], loc="upper right")
         # fig.tight_layout()
         fig.show()
         # fig.savefig(f"{fno_path}/{dim}_NX{gridx}_NZ{gridz}_error_{t}.pdf")
-        fig.savefig(f"{fno_path}/{dim}_NX{gridx}_NZ{gridz}_error_{t}.png")
+        fig.savefig(f"{fno_path}/{dim}_NX{gridx}_NZ{gridz}_error_{np.round(time_out[t],4)}.png")
 
-def model_inference(data_path):
-    reader = h5py.File(data_path, mode="r")
-    train_a = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep],dtype=torch.float)
-    train_u = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep], dtype=torch.float)
-    test_a = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep], dtype=torch.float)
-    test_u = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep], dtype=torch.float)
-
-
+def model_inference(args):
+    inference_func_start = default_timer()
+    print(f'Entered model_inference() at {inference_func_start}')
+    
+    if args.single_data_path is not None:
+        test_data_path = train_data_path  = args.single_data_path
+        test_reader = train_reader = h5py.File(train_data_path, mode="r")
+    else:  
+        if args.dim =='FNO3D':
+            train_data_path = args.train_data_path
+            train_reader = h5py.File(train_data_path, mode="r")
+        test_data_path = args.test_data_path
+        test_reader = h5py.File(test_data_path, mode="r")
+    
+    dataloader_time_start = default_timer()
+    print('Starting data loading....')
+    if args.dim == 'FNO3D':
+        train_a = torch.tensor(train_reader['train'][:ntrain, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep],dtype=torch.float)
+        train_u = torch.tensor(train_reader['train'][:ntrain, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep], dtype=torch.float)
+    
+    test_a = torch.tensor(test_reader['test'][:ntest, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep], dtype=torch.float)
+    test_u = torch.tensor(test_reader['test'][:ntest, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep], dtype=torch.float)
+    dataloader_time_stop = default_timer()
+    print(f'Total time taken for dataloading: {dataloader_time_stop - dataloader_time_start} sec')
+    
     # Model
     if args.dim == 'FNO3D':
         a_normalizer = UnitGaussianNormalizer(train_a)
@@ -277,6 +300,8 @@ def model_inference(data_path):
     print(f"Test input data:{test_a.shape}, Test output data: {test_u.shape}")
 
     # Inference
+    print(f'Starting model inference...')
+    inference_time_start = default_timer()
     # pred = torch.zeros([iterations, batch_size, gridx, gridz, T])
     pred = torch.zeros([batch_size, gridx, gridz, T])
     index = 0
@@ -285,7 +310,7 @@ def model_inference(data_path):
     predictions = []
     with torch.no_grad():
         # with open(f'{fno_path}/info.txt', 'w') as file:
-        for step, (xx, yy) in enumerate(test_loader):
+        for step, (xx, yy) in enumerate(tqdm(test_loader)):
             test_l2 = 0
             xx, yy = xx.to(device), yy.to(device)
             xx_org = xx
@@ -321,14 +346,29 @@ def model_inference(data_path):
             #             \ninput: {xx_org}\n, \
             #             \ndiff:{np.array(predictions)-np.array(xx_org)}\n")
 
+    
+    
+    predictions_cpu = torch.stack(predictions).cpu()
+    inference_time_stop = default_timer()
+    print(f'Total time taken for model inference for {T} steps of {ntest} samples with batchsize {batch_size} on {device}: {inference_time_stop - inference_time_start} sec')
+    
+    inputs_cpu = torch.stack(inputs).cpu()
+    outputs_cpu = torch.stack(outputs).cpu()
     # Storing inference result
     with h5py.File(f'{fno_path}/inference.h5', "w") as data:
-        data['input'] = inputs
-        data['output'] = outputs
-        data['prediction'] = predictions
-    return np.array(inputs), np.array(outputs), np.array(predictions)
+        data['input'] = inputs_cpu
+        data['output'] = outputs_cpu
+        data['prediction'] = predictions_cpu
+    
+    inference_func_stop = default_timer()
+    print(f'Exiting model_inference()...')
+    print(f'Total time in model_inference() function: {inference_func_stop - inference_func_start} sec')
+    return np.array(inputs_cpu), np.array(outputs_cpu), np.array(predictions_cpu)
 
 # Config
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using {device}")
+
 modes = args.modes
 width = args.width
 batch_size = args.batch_size
@@ -340,44 +380,47 @@ xStep = 1
 zStep = 1
 tStep = 1
 
-start_index = 500
-T_in = 5
-T = 5
-time_in, time_out = time_extract(args.time_file, start_index, T_in, T)
+dt = 1e-3
+ntrain = 100
+ntest = args.batch_size
+iterations = int(ntest/batch_size)
+
+fno_path = Path(f'{args.folder}/rbc_{args.dim}_N{ntest}_m{modes}_w{width}_bs{batch_size}_inference_{device}')
+fno_path.mkdir(parents=True, exist_ok=True)
 
 myloss = LpLoss(size_average=False)
 
-# Load data
-ntrain = 100
-ntest = 50
-iterations = int(ntest/batch_size)
+start = 0
+stop = 2900
+step_time = 150
+for start_index in range(start,stop,step_time):
+    start_index_org = 80000 + start_index
+    T_in = 1
+    T = 1
+    time_in, time_out = time_extract(args.time_file, start_index_org, T_in, T)
+    if args.plotFile:
+        infFile = f'{fno_path}/inference.h5'
+        with h5py.File(infFile, "r") as data:
+            inputs = data['input'][:]
+            outputs = data['output'][:]
+            predictions = data ['prediction'][:]
+    else:
+        inputs, outputs, predictions = model_inference(args)
 
-fno_path = Path(f'{args.folder}/rbc_{args.dim}_N{ntest}_m{modes}_w{width}_bs{batch_size}_inference')
-fno_path.mkdir(parents=True, exist_ok=True)
+    print(f"Model Inference: Input{inputs.shape}, Output{outputs.shape}, Prediction{predictions.shape}")
+    batches = predictions.shape[0]
+    batchsize = predictions.shape[1]
+    batch_num = np.random.randint(0,batches)
+    sample = np.random.randint(0,batchsize)
+    print(f"Plotting Batch Number: {batch_num}, Sample: {sample}")
+    ## Plotting
+    if args.dim == "FNO3D":
+        ux, uz, b_in, p_in = extract(inputs[batch_num, sample, :, :, 0, :], gridx//4, gridz, T_in)
+    else:
+        ux, uz, b_in, p_in = extract(inputs[batch_num, sample, :, :, :], gridx//4, gridz, T_in)
+        
+    vx1, vz1, b_out1, p_out1 = extract(predictions[batch_num, sample, :, :, :], gridx//4, gridz,T)
+    vx, vz, b_out, p_out = extract(outputs[batch_num, sample, :, :, :], gridx//4, gridz, T)
 
-if args.plotFile:
-    infFile = f'{fno_path}/inference.h5'
-    with h5py.File(infFile, "r") as data:
-        inputs = data['input'][:]
-        outputs = data['output'][:]
-        predictions = data ['prediction'][:]
-else:
-    inputs, outputs, predictions = model_inference(args.data_path)
-
-print(f"Model Inference: {inputs.shape}, {outputs.shape}, {predictions.shape}")
-batches = predictions.shape[0]
-batchsize = predictions.shape[1]
-batch_num = np.random.randint(0,batches)
-sample = np.random.randint(0,batchsize)
-print(f"Batch Number: {batch_num}, Sample: {sample}")
-## Plotting
-if args.dim == "FNO3D":
-    ux, uz, b_in, p_in = extract(inputs[batch_num, sample, :, :, 0, :], gridx//4, gridz, T_in)
-else:
-    ux, uz, b_in, p_in = extract(inputs[batch_num, sample, :, :, :], gridx//4, gridz, T_in)
-    
-vx1, vz1, b_out1, p_out1 = extract(predictions[batch_num, sample, :, :, :], gridx//4, gridz,T)
-vx, vz, b_out, p_out = extract(outputs[batch_num, sample, :, :, :], gridx//4, gridz, T)
-
-inferErrorPlot(ux, vx, vx1,uz, vz, vz1,b_in, b_out, b_out1,p_in, p_out, p_out1,
-               time_out, time_in, args.dim, fno_path ,gridx//4, gridz)
+    inferErrorPlot(ux, vx, vx1,uz, vz, vz1,b_in, b_out, b_out1,p_in, p_out, p_out1,
+                time_out, time_in, args.dim, fno_path ,gridx//4, gridz)

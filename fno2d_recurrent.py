@@ -182,47 +182,58 @@ class FNO2d(nn.Module):
         print(f'Total number of model parameters: {elementFrame["NParams"].sum()} with (~{format_tensor_size(elementFrame["Memory(KB)"].sum()*1000)})')
         return elementFrame
 
+def multi_data(reader, start_time, end_time, timestep, samples):
+    a = []
+    u = []
+    for start_index in range(start_time, end_time, timestep):
+        a.append(torch.tensor(reader[task][:samples, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep], dtype=torch.float))
+        u.append(torch.tensor(reader[task][:samples, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep], dtype=torch.float))
+    a = torch.stack(a)
+    u = torch.stack(u)
+    
+    a_multi = a.reshape(a.shape[0]*a.shape[1], a.shape[2], a.shape[3], a.shape[4])
+    u_multi = u.reshape(u.shape[0]*u.shape[1], u.shape[2], u.shape[3], u.shape[4])
+    
+    return a_multi, u_multi
 
 def train(args):  
     ## config
-    ntrain = 100
-    nval = 50
-    ntest = 50
-
     modes = 12
     width = 20
 
     batch_size = 5
     learning_rate = 0.00039
     weight_decay = 1e-05
-    scheduler_step = 10.0
+    scheduler_step = 100.0
     scheduler_gamma = 0.98
     
-    epochs = 2
+    epochs = 3000
     iterations = epochs*(ntrain//batch_size)
 
     gridx = 4*256
     gridz = 64
 
-    xStep = 1
-    zStep = 1
-    tStep = 1
-
-    start_index = 500
-    T_in = 10
-    T = 10
-
     ## load data
-    data_path = args.data_path
-    reader = h5py.File(data_path, mode="r")
-    train_a = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep],dtype=torch.float)
-    train_u = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep], dtype=torch.float)
+    if args.single_data_path is not None:
+        train_data_path = val_data_path = test_data_path = args.single_data_path
+        train_reader = val_reader = test_reader = h5py.File(train_data_path, mode="r")
+    else:  
+        train_data_path = args.train_data_path
+        train_reader = h5py.File(train_data_path, mode="r")
+        val_data_path = args.val_data_path
+        val_reader = h5py.File(val_data_path, mode="r")
+        # test_data_path = args.test_data_path
+        # test_reader = h5py.File(test_data_path, mode="r")
+    
+    if args.multi_step:
+        train_a, train_u = multi_data(train_reader, start_index, stop_index, timestep, ntrain)
+        val_a, val_u = multi_data(val_reader, start_index, stop_index, timestep, nval)
+    else:
+        train_a = torch.tensor(train_reader['train'][:ntrain, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep],dtype=torch.float)
+        train_u = torch.tensor(train_reader['train'][:ntrain, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep], dtype=torch.float)
 
-    val_a = torch.tensor(reader['val'][:nval, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep],dtype=torch.float)
-    val_u = torch.tensor(reader['val'][:nval, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep],dtype=torch.float)
-
-    # test_a = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep],dtype=torch.float)
-    # test_u = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep],dtype=torch.float)
+        val_a = torch.tensor(val_reader['val'][:nval, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep],dtype=torch.float)
+        val_u = torch.tensor(val_reader['val'][:nval, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep],dtype=torch.float)
 
     print(f"Train data:{train_u.shape}")
     print(f"Val data:{val_u.shape}")
@@ -256,12 +267,12 @@ def train(args):
     model2d = FNO2d(modes, modes, width, T_in, T).to(device)
     # print(model2d.print_size())
     n_params = model2d.print_size()
-    #memory.print("after intialization")
+    # memory.print("after intialization")
 
-    # optimizer = torch.optim.Adam(model2d.parameters(), lr=learning_rate, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model2d.parameters(), lr=learning_rate, weight_decay=1e-4)
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iterations)
 
-    optimizer = torch.optim.AdamW(model2d.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    # optimizer = torch.optim.AdamW(model2d.parameters(), lr=learning_rate, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_gamma)
 
     myloss = LpLoss(size_average=False)
@@ -277,7 +288,7 @@ def train(args):
             lr_scheduler_gamma={scheduler_gamma}\n\
             fno_path={fno_path}")
     
-    with open(f'{fno_path}/info.txt', 'w') as file:
+    with open(f'{fno_path}/info.txt', 'a') as file:
         file.write("-------------------------------------------------\n")
         file.write(f"Model Card for FNO-2D with (x,z) and Recurrent in Time\n")
         file.write("-------------------------------------------------\n")
@@ -303,6 +314,7 @@ def train(args):
     if args.load_checkpoint:
         checkpoint = torch.load(args.checkpoint_path)
         model2d.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch']
         start_train_loss = checkpoint['train_loss']
         start_val_loss = checkpoint['val_loss']
@@ -335,9 +347,9 @@ def train(args):
                     else:
                         pred = torch.cat((pred, im), -1)
                         
-                    print(f"{t}: y={y.shape},x={xx.shape},pred={pred.shape}")
+                    # print(f"{t}: y={y.shape},x={xx.shape},pred={pred.shape}")
                     xx = torch.cat((xx[..., tStep:], im), dim=-1)
-                    print(f"{t}: new_xx={xx.shape}")
+                    # print(f"{t}: new_xx={xx.shape}")
 
                 train_l2_step += loss.item()
                 l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
@@ -386,7 +398,6 @@ def train(args):
 
                         xx = torch.cat((xx[..., tStep:], im), dim=-1)
                         
-
                     val_l2_step += loss.item()
                     val_l2_full += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
                     #memory.print("After val first batch")
@@ -400,15 +411,13 @@ def train(args):
             tepoch.set_postfix({ \
                 'Epoch': epoch, \
                 'Time per epoch (s)': (t2-t1), \
-                'Train l2loss step': train_step_error ,\
                 'Train l2loss': train_error,\
-                'Val l2loss step': val_step_error, \
                 'Val l2loss':  val_error 
                 })
             
         tepoch.close()
         
-        if epoch > 0 and epoch % 100 == 0 :
+        if epoch > 0 and (epoch % 100 == 0 or epoch == epochs-1):
             with open(f'{fno_path}/info.txt', 'a') as file:
                     file.write(f"Training Error at {epoch}: {train_error}\n")
                     file.write(f"Validation Error at {epoch}: {val_error}\n")
@@ -420,6 +429,7 @@ def train(args):
                 'train_loss': train_error,
                 'val_loss': val_error,
                 }, f"{checkpoint_path}/model_checkpoint_{epoch}.pt")
+            
         if args.exit_signal_handler:
             signal_handler = get_signal_handler()
             if any(signal_handler.signals_received()):
@@ -459,24 +469,43 @@ def train(args):
             
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='FNO Training')
+    parser.add_argument('--run', type=int, default=1,
+                        help='training tracking number')
     parser.add_argument('--model_save_path', type=str,default=os.getcwd(),
                         help='path to which FNO model is saved')
-    parser.add_argument('--data_path', type=str,
-                        help='path to data')
+    parser.add_argument('--single_data_path', type=str,default=None,
+                        help='path to hdf5 file containing train, val and test data')
+    parser.add_argument('--train_data_path', type=str,
+                        help='path to train data hdf5 file')
+    parser.add_argument('--val_data_path', type=str,
+                        help='path to validation data hdf5 file')
+    parser.add_argument('--test_data_path', type=str,
+                        help='path to test data hdf5 file')
     parser.add_argument('--load_checkpoint', action="store_true",
                         help='load checkpoint')
+    parser.add_argument('--multi_step', action="store_true",
+                        help='take multiple step data')
     parser.add_argument('--checkpoint_path', type=str,
                         help='folder containing checkpoint')
     parser.add_argument('--exit-signal-handler', action='store_true',
                        help='Dynamically save the checkpoint and shutdown the '
                        'training if SIGTERM is received')
-    parser.add_argument('--run', type=int, default=1,
-                        help='training tracking number')
     parser.add_argument('--exit-duration-in-mins', type=int, default=None,
                        help='Exit the program after this many minutes.')
     args = parser.parse_args()
     
     if args.exit_signal_handler:
         _set_signal_handler()
-        
+    
+    ntrain = 100
+    nval = 50
+    xStep = 1
+    zStep = 1
+    tStep = 1
+    T_in = 1
+    T = 10
+    start_index = 0
+    stop_index = 990
+    timestep = 100
+    
     train(args)
