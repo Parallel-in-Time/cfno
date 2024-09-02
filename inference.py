@@ -18,9 +18,6 @@ Usage:
 """
 
 import os
-import sys
-import functools
-import operator
 import h5py
 import math
 import copy
@@ -37,7 +34,7 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
-from torchsummary import summary    # TODO: is it really needed ?
+from torchsummary import summary    # TODO : is it really needed ?
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -84,7 +81,7 @@ def time_extract(file, start_index, t_in, t_out):
     time_in = []
     for i in range(start_index, start_index+t_in):
         # print(rbc_data(file,i, False, True))
-        _,_,time,_,_ = rbc_data(file,i, False, True)
+        _,_,time,_,_ = rbc_data(file, i, False, True)
         time_in.append(time)
     print("Input Time", time_in)
     time_out = []
@@ -98,8 +95,8 @@ def time_extract(file, start_index, t_in, t_out):
 def inferPlot(ux, vx, vx1,
               uz, vz, vz1,
               b_in, b_out, b_out1,
-              p_in, p_out, p_out1, 
-              time_out, time_in, 
+              p_in, p_out, p_out1,
+              time_out, time_in,
               dim, fno_path,
               gridx, gridz):
     for t in range(len(time_out)):
@@ -169,8 +166,8 @@ def inferPlot(ux, vx, vx1,
 def inferErrorPlot( ux, vx, vx1,
                     uz, vz, vz1,
                     b_in, b_out, b_out1,
-                    p_in, p_out, p_out1, 
-                    time_out, time_in, 
+                    p_in, p_out, p_out1,
+                    time_out, time_in,
                     dim, fno_path,
                     gridx, gridz):
     for t in range(len(time_out)):
@@ -194,29 +191,29 @@ def inferErrorPlot( ux, vx, vx1,
         ax6 = ax[1][1]
         ax7 = ax[1][2]
         ax8 = ax[1][3]
-   
-        ax1.set_title(fr'Velocity: $u(x)$')
+
+        ax1.set_title(r'Velocity: $u(x)$')
         # ax1.plot(x,ux[::xStep,::zStep,t],color='b',marker ='o',label="ux")
         ax1.plot(x,vx[::xStep,::zStep,t],color='g',marker ='o',label="ded-vx")
         ax1.plot(x,vx1[::xStep,::zStep,t],color='r',marker ='o',ls='--',label="fno-vx")
         # ax1.set_ylabel("Z grid")
         ax1.grid()
 
-        ax2.set_title(fr'Velocity: $u(z)$ ')
+        ax2.set_title(r'Velocity: $u(z)$ ')
         # ax2.plot(x,uz[::xStep,::zStep,t],color='b',marker ='o',label="uz")
         ax2.plot(x,vz[::xStep,::zStep,t],marker ='o',color='g',label="ded-vz")
         ax2.plot(x,vz1[::xStep,::zStep,t],marker ='o',color='r',linestyle='--',label="fno-vz")
         # ax2.set_ylabel("Z grid")
         ax2.grid()
 
-        ax3.set_title(fr'Pressure: $p(x,z)$')
+        ax3.set_title(r'Pressure: $p(x,z)$')
         # ax3.plot(x,p_in[::xStep,::zStep,t],color='b',marker ='o',label="p_in")
         ax3.plot(x,p_out[::xStep,::zStep,t],marker ='o',color='g',label="ded-p")
         ax3.plot(x,p_out1[::xStep,::zStep,t],marker ='o',color='r',linestyle='--',label="fno-p")
         # ax3.set_ylabel("Z grid")
         ax3.grid()
 
-        ax4.set_title(fr'Buoyancy: $b(x,z)$')
+        ax4.set_title(r'Buoyancy: $b(x,z)$')
         # ax4.plot(x,b_in[::xStep,::zStep,t],marker ='o',color='b',label="b_in")
         ax4.plot(x,b_out[::xStep,::zStep,t],marker ='o',color='g',label="ded-b")
         ax4.plot(x,b_out1[::xStep,::zStep,t],marker ='o',linestyle='--',color='r',label="fno-b")
@@ -239,7 +236,7 @@ def inferErrorPlot( ux, vx, vx1,
         ax8.set_ylabel(r"$\overline{|b_{ded}-b_{fno}|}_{z}$")
         ax8.set_xlabel("X Grid")
 
-        fig.suptitle(f'RBC-2D with {gridx}'+r'$\times$'+f'{gridz} grid and $Ra=10^7, Pr=1$ using {dim}')  
+        fig.suptitle(f'RBC-2D with {gridx}'+r'$\times$'+f'{gridz} grid and $Ra=10^7, Pr=1$ using {dim}')
         ded_patch = Line2D([0], [0], label=f'Dedalus at t={np.round(time_out[t],4)}',marker='o', color='g')
         fno_patch = Line2D([0], [0], label=f'FNO at t={np.round(time_out[t],4)}',marker='o', linestyle='--', color='r')
         inp_patch = Line2D([0], [0], label=f'Input at t={np.round(time_in[0],4)}:{np.round(time_in[-1],4)}',marker='o', color='b')
@@ -252,28 +249,29 @@ def inferErrorPlot( ux, vx, vx1,
 def model_inference(args):
     inference_func_start = default_timer()
     print(f'Entered model_inference() at {inference_func_start}')
-    
+
     if args.single_data_path is not None:
         test_data_path = train_data_path  = args.single_data_path
         test_reader = train_reader = h5py.File(train_data_path, mode="r")
-    else:  
+    else:
         if args.dim =='FNO3D':
             train_data_path = args.train_data_path
             train_reader = h5py.File(train_data_path, mode="r")
         test_data_path = args.test_data_path
         test_reader = h5py.File(test_data_path, mode="r")
-    
+    # TODO : why do you need test data when evaluating the model ?
+
     dataloader_time_start = default_timer()
     print('Starting data loading....')
     if args.dim == 'FNO3D':
         train_a = torch.tensor(train_reader['train'][:ntrain, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep],dtype=torch.float)
         train_u = torch.tensor(train_reader['train'][:ntrain, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep], dtype=torch.float)
-    
+
     test_a = torch.tensor(test_reader['test'][:ntest, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep], dtype=torch.float)
     test_u = torch.tensor(test_reader['test'][:ntest, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep], dtype=torch.float)
     dataloader_time_stop = default_timer()
     print(f'Total time taken for dataloading: {dataloader_time_stop - dataloader_time_start} sec')
-    
+
     # Model
     if args.dim == 'FNO3D':
         a_normalizer = UnitGaussianNormalizer(train_a)
@@ -287,18 +285,18 @@ def model_inference(args):
 
     checkpoint = torch.load(args.model, map_location=lambda storage, loc: storage)
     if 'model_state_dict' in checkpoint.keys():
-        model.load_state_dict(checkpoint['model_state_dict'])   
+        model.load_state_dict(checkpoint['model_state_dict'])
     else:
-        model.load_state_dict(checkpoint)  
+        model.load_state_dict(checkpoint)
     test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
     print(f"Test input data:{test_a.shape}, Test output data: {test_u.shape}")
 
     # Inference
-    print(f'Starting model inference...')
+    print('Starting model inference...')
     inference_time_start = default_timer()
     # pred = torch.zeros([iterations, batch_size, gridx, gridz, T])
     pred = torch.zeros([batch_size, gridx, gridz, T])
-    index = 0
+    index = 0   # TODO : index is assigned but never used
     inputs = []
     outputs = []
     predictions = []
@@ -314,10 +312,10 @@ def model_inference(args):
                 out = y_normalizer.decode(out)
                 test_l2 += myloss(out.view(1, -1), yy.view(1, -1)).item()
                 # pred[step]= out
-                pred = out 
+                pred = out
             else:
                 for t in range(0, T, tStep):
-                    y = yy[..., t:t + tStep]
+                    y = yy[..., t:t + tStep]    # TODO : y is assigned but never used
                     im = model(xx)
                     if t == 0:
                         pred = im
@@ -334,7 +332,7 @@ def model_inference(args):
             predictions.append(pred)
             if step == 0:
                 print(f"index:{step} , xx:{xx_org.shape}, yy:{yy.shape}, pred:{pred.shape}")
-            
+
             # file.write(f"index:{step} , xx:{xx.shape}, yy:{yy.shape}, pred:{np.array(predictions).shape},loss:{test_l2}, \
             #             \nprediction: {predictions},\n \
             #             \ninput: {xx_org}\n, \
@@ -344,12 +342,12 @@ def model_inference(args):
     inference_time_stop = default_timer()
     print(f'Total time taken for model inference for {T} steps of {ntest} samples \
             with batchsize {batch_size} on {device}: {inference_time_stop - inference_time_start} sec')
-    
+
     inputs_cpu = torch.stack(inputs).cpu()
     outputs_cpu = torch.stack(outputs).cpu()
-    
+
     inference_func_stop = default_timer()
-    print(f'Exiting model_inference()...')
+    print('Exiting model_inference()...')
     print(f'Total time in model_inference() function: {inference_func_stop - inference_func_start} sec')
     return np.array(inputs_cpu), np.array(outputs_cpu), np.array(predictions_cpu)
 
@@ -357,108 +355,110 @@ def model_inference(args):
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using {device}")
 
-modes = args.modes
-width = args.width
-batch_size = args.batch_size
+if __name__ == "__main__":
 
-gridx = 4*256
-gridz = 64
+    modes = args.modes
+    width = args.width
+    batch_size = args.batch_size
 
-xStep = 1
-zStep = 1
-tStep = 1
+    gridx = 4*256   # TODO : why 4*256, but not for gridz ?
+    gridz = 64
 
-dt = 1e-1
-ntrain = 100
-ntest = args.batch_size
-iterations = int(ntest/batch_size)
+    xStep = 1
+    zStep = 1
+    tStep = 1
 
-fno_path = Path(f'{args.folder}/rbc_{args.dim}_N{ntest}_m{modes}_w{width}_bs{batch_size}_inference_{device}')
-fno_path.mkdir(parents=True, exist_ok=True)
+    dt = 1e-1       # TODO : why is this hardcoded ?
+    ntrain = 100
+    ntest = args.batch_size
+    iterations = int(ntest/batch_size)
 
-myloss = LpLoss(size_average=False)
+    fno_path = Path(f'{args.folder}/rbc_{args.dim}_N{ntest}_m{modes}_w{width}_bs{batch_size}_inference_{device}')
+    fno_path.mkdir(parents=True, exist_ok=True)
 
-start = 500
-stop = 820
-step_time = 10
-T_in = 10
-T = 1
+    myloss = LpLoss(size_average=False)
 
-if args.plotFile:
-    infFile = f'{fno_path}/inference.h5'
-    with h5py.File(fno_file, "r") as data:
-        for iteration in range(len(data.keys())):
-            time_in = []
-            time_out = []
-            ux = np.zeros((gridx//4, gridz, T_in))
-            uz = np.zeros((gridx//4, gridz, T_in))
-            vx = np.zeros((gridx//4, gridz, T))
-            vz = np.zeros((gridx//4, gridz, T))
-            vx1 = np.zeros((gridx//4, gridz, T))
-            vz1 = np.zeros((gridx//4, gridz, T))
-            p_in = np.zeros((gridx//4, gridz, T_in))
-            p_out = np.zeros((gridx//4, gridz, T))
-            p_out1 = np.zeros((gridx//4, gridz, T))
-            b_in = np.zeros((gridx//4, gridz, T_in))
-            b_out = np.zeros((gridx//4, gridz, T))
-            b_out1 = np.zeros((gridx//4, gridz, T))      
-            for index_in in range(T_in):
-                time_in.append(data[f'inference_{iteration}/scales/sim_timein_{index_in}'])
-                ux[:,:,index_in] = data[f'inference_{iteration}/tasks/input/velocity_{index_in}'][0,:]
-                uz[:,:,index_in] = data[f'inference_{iteration}/tasks/input/velocity_{index_in}'][1,:]
-                b_in[:,:,index_in] = data[f'inference_{iteration}/tasks/input/buoyancy_{index_in}'][:]
-                p_in[:,:,index_in] = data[f'inference_{iteration}/tasks/input/pressure_{index_in}'][:]
-            for index_out in range(T):
-                time_out.append(data[f'inference_{iteration}/scales/sim_timeout_{index_out}'])
-                vx[:,:,index_out] = data[f'inference_{iteration}/tasks/output/velocity_{index_out}'][0,:]
-                vz[:,:,index_out] = data[f'inference_{iteration}/tasks/output/velocity_{index_out}'][1,:]
-                b_out[:,:,index_out] = data[f'inference_{iteration}/tasks/output/buoyancy_{index_out}'][:]
-                p_out[:,:,index_out] = data[f'inference_{iteration}/tasks/output/pressure_{index_out}'][:]
-                vx1[:,:,index_out] = data[f'inference_{iteration}/tasks/model_output/velocity_{index_out}'][0,:]
-                vz1[:,:,index_out] = data[f'inference_{iteration}/tasks/model_output/velocity_{index_out}'][1,:]
-                b_out1[:,:,index_out] = data[f'inference_{iteration}/tasks/model_output/buoyancy_{index_out}'][:]
-                p_out1[:,:,index_out] = data[f'inference_{iteration}/tasks/model_output/pressure_{index_out}'][:]
+    start = 500 # TODO : why is this hardcoded ?
+    stop = 820  # TODO : why is this hardcoded ?
+    step_time = 10 # TODO : why is this hardcoded ?
+    T_in = 10   # TODO : why T_in=10 is hardcoded ?
+    T = 1
 
-            # print(ux.shape, vz.shape, b_out1.shape)
-            inferErrorPlot(ux, vx, vx1, uz, vz, vz1, b_in, b_out, b_out1, p_in, p_out, p_out1,
-                time_out, time_in, args.dim, fno_path ,gridx//4, gridz)
-else:
-    for iteration, start_index in enumerate(range(start,stop,step_time)):
-        start_index_org = 0 + start_index
-        time_in, time_out = time_extract(args.time_file, start_index_org, T_in, T)
-        
-        inputs, outputs, predictions = model_inference(args)
-        print(f"Model Inference: Input{inputs.shape}, Output{outputs.shape}, Prediction{predictions.shape}")
-        
-        batches = predictions.shape[0]
-        batchsize = predictions.shape[1]
-        batch_num = np.random.randint(0,batches)
-        sample = np.random.randint(0,batchsize)
-        
-        if args.dim == "FNO3D":
-            ux, uz, b_in, p_in = extract(inputs[batch_num, sample, :, :, 0, :], gridx//4, gridz, T_in)
-        else:
-            ux, uz, b_in, p_in = extract(inputs[batch_num, sample, :, :, :], gridx//4, gridz, T_in)
-            
-        vx1, vz1, b_out1, p_out1 = extract(predictions[batch_num, sample, :, :, :], gridx//4, gridz,T)
-        vx, vz, b_out, p_out = extract(outputs[batch_num, sample, :, :, :], gridx//4, gridz, T)
+    if args.plotFile:
+        infFile = f'{fno_path}/inference.h5'
+        with h5py.File(infFile, "r") as data:
+            for iteration in range(len(data.keys())):
+                time_in = []
+                time_out = []
+                ux = np.zeros((gridx//4, gridz, T_in))
+                uz = np.zeros((gridx//4, gridz, T_in))
+                vx = np.zeros((gridx//4, gridz, T))
+                vz = np.zeros((gridx//4, gridz, T))
+                vx1 = np.zeros((gridx//4, gridz, T))
+                vz1 = np.zeros((gridx//4, gridz, T))
+                p_in = np.zeros((gridx//4, gridz, T_in))
+                p_out = np.zeros((gridx//4, gridz, T))
+                p_out1 = np.zeros((gridx//4, gridz, T))
+                b_in = np.zeros((gridx//4, gridz, T_in))
+                b_out = np.zeros((gridx//4, gridz, T))
+                b_out1 = np.zeros((gridx//4, gridz, T))
+                for index_in in range(T_in):
+                    time_in.append(data[f'inference_{iteration}/scales/sim_timein_{index_in}'])
+                    ux[:,:,index_in] = data[f'inference_{iteration}/tasks/input/velocity_{index_in}'][0,:]
+                    uz[:,:,index_in] = data[f'inference_{iteration}/tasks/input/velocity_{index_in}'][1,:]
+                    b_in[:,:,index_in] = data[f'inference_{iteration}/tasks/input/buoyancy_{index_in}'][:]
+                    p_in[:,:,index_in] = data[f'inference_{iteration}/tasks/input/pressure_{index_in}'][:]
+                for index_out in range(T):
+                    time_out.append(data[f'inference_{iteration}/scales/sim_timeout_{index_out}'])
+                    vx[:,:,index_out] = data[f'inference_{iteration}/tasks/output/velocity_{index_out}'][0,:]
+                    vz[:,:,index_out] = data[f'inference_{iteration}/tasks/output/velocity_{index_out}'][1,:]
+                    b_out[:,:,index_out] = data[f'inference_{iteration}/tasks/output/buoyancy_{index_out}'][:]
+                    p_out[:,:,index_out] = data[f'inference_{iteration}/tasks/output/pressure_{index_out}'][:]
+                    vx1[:,:,index_out] = data[f'inference_{iteration}/tasks/model_output/velocity_{index_out}'][0,:]
+                    vz1[:,:,index_out] = data[f'inference_{iteration}/tasks/model_output/velocity_{index_out}'][1,:]
+                    b_out1[:,:,index_out] = data[f'inference_{iteration}/tasks/model_output/buoyancy_{index_out}'][:]
+                    p_out1[:,:,index_out] = data[f'inference_{iteration}/tasks/model_output/pressure_{index_out}'][:]
 
-        # Storing inference result
-        with h5py.File(f'{fno_path}/inference.h5', "a") as data:
-            for index_in in range(len(time_in)):
-                data[f'inference_{iteration}/scales/sim_timein_{index_in}'] = time_in[index_in]
-                data[f'inference_{iteration}/tasks/input/velocity_{index_in}'] = np.stack([ux[::xStep,::zStep, index_in], uz[::xStep,::zStep, index_in]], axis=0)
-                data[f'inference_{iteration}/tasks/input/buoyancy_{index_in}'] = b_in[::xStep, ::zStep, index_in]
-                data[f'inference_{iteration}/tasks/input/pressure_{index_in}'] = p_in[::xStep, ::zStep, index_in]
-            for index_out in range(len(time_out)):
-                data[f'inference_{iteration}/scales/sim_timeout_{index_out}']= time_out[index_out]
-                data[f'inference_{iteration}/tasks/output/velocity_{index_out}']= np.stack([vx[::xStep,::zStep, index_out], vz[::xStep,::zStep, index_out]], axis=0)
-                data[f'inference_{iteration}/tasks/output/buoyancy_{index_out}'] = b_out[::xStep, ::zStep, index_out]
-                data[f'inference_{iteration}/tasks/output/pressure_{index_out}']= p_out[::xStep, ::zStep, index_out]
-                data[f'inference_{iteration}/tasks/model_output/velocity_{index_out}']= np.stack([vx1[::xStep,::zStep, index_out], vz1[::xStep,::zStep, index_out]], axis=0)
-                data[f'inference_{iteration}/tasks/model_output/buoyancy_{index_out}']= b_out1[::xStep, ::zStep, index_out]
-                data[f'inference_{iteration}/tasks/model_output/pressure_{index_out}']= p_out1[::xStep, ::zStep, index_out]
-        
-        print(f"Plotting Batch Number: {batch_num}, Sample: {sample}")  
-        inferErrorPlot(ux, vx, vx1,uz, vz, vz1,b_in, b_out, b_out1,p_in, p_out, p_out1,
-                time_out, time_in, args.dim, fno_path ,gridx//4, gridz)
+                # print(ux.shape, vz.shape, b_out1.shape)
+                inferErrorPlot(ux, vx, vx1, uz, vz, vz1, b_in, b_out, b_out1, p_in, p_out, p_out1,
+                    time_out, time_in, args.dim, fno_path ,gridx//4, gridz)
+    else:
+        for iteration, start_index in enumerate(range(start,stop,step_time)):
+            start_index_org = 0 + start_index
+            time_in, time_out = time_extract(args.time_file, start_index_org, T_in, T)
+
+            inputs, outputs, predictions = model_inference(args)
+            print(f"Model Inference: Input{inputs.shape}, Output{outputs.shape}, Prediction{predictions.shape}")
+
+            batches = predictions.shape[0]
+            batchsize = predictions.shape[1]
+            batch_num = np.random.randint(0,batches)
+            sample = np.random.randint(0,batchsize)
+
+            if args.dim == "FNO3D":
+                ux, uz, b_in, p_in = extract(inputs[batch_num, sample, :, :, 0, :], gridx//4, gridz, T_in)
+            else:
+                ux, uz, b_in, p_in = extract(inputs[batch_num, sample, :, :, :], gridx//4, gridz, T_in)
+
+            vx1, vz1, b_out1, p_out1 = extract(predictions[batch_num, sample, :, :, :], gridx//4, gridz,T)
+            vx, vz, b_out, p_out = extract(outputs[batch_num, sample, :, :, :], gridx//4, gridz, T)
+
+            # Storing inference result
+            with h5py.File(f'{fno_path}/inference.h5', "a") as data:
+                for index_in in range(len(time_in)):
+                    data[f'inference_{iteration}/scales/sim_timein_{index_in}'] = time_in[index_in]
+                    data[f'inference_{iteration}/tasks/input/velocity_{index_in}'] = np.stack([ux[::xStep,::zStep, index_in], uz[::xStep,::zStep, index_in]], axis=0)
+                    data[f'inference_{iteration}/tasks/input/buoyancy_{index_in}'] = b_in[::xStep, ::zStep, index_in]
+                    data[f'inference_{iteration}/tasks/input/pressure_{index_in}'] = p_in[::xStep, ::zStep, index_in]
+                for index_out in range(len(time_out)):
+                    data[f'inference_{iteration}/scales/sim_timeout_{index_out}']= time_out[index_out]
+                    data[f'inference_{iteration}/tasks/output/velocity_{index_out}']= np.stack([vx[::xStep,::zStep, index_out], vz[::xStep,::zStep, index_out]], axis=0)
+                    data[f'inference_{iteration}/tasks/output/buoyancy_{index_out}'] = b_out[::xStep, ::zStep, index_out]
+                    data[f'inference_{iteration}/tasks/output/pressure_{index_out}']= p_out[::xStep, ::zStep, index_out]
+                    data[f'inference_{iteration}/tasks/model_output/velocity_{index_out}']= np.stack([vx1[::xStep,::zStep, index_out], vz1[::xStep,::zStep, index_out]], axis=0)
+                    data[f'inference_{iteration}/tasks/model_output/buoyancy_{index_out}']= b_out1[::xStep, ::zStep, index_out]
+                    data[f'inference_{iteration}/tasks/model_output/pressure_{index_out}']= p_out1[::xStep, ::zStep, index_out]
+
+            print(f"Plotting Batch Number: {batch_num}, Sample: {sample}")
+            inferErrorPlot(ux, vx, vx1,uz, vz, vz1,b_in, b_out, b_out1,p_in, p_out, p_out1,
+                    time_out, time_in, args.dim, fno_path ,gridx//4, gridz)
