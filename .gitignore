@@ -14,4 +14,4 @@ events*
 *.h5
 results/
 dedalus/plots/
-dedalus/perfo/*.pdf
+dedalus/scripts
