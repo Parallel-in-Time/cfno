@@ -3,19 +3,19 @@ Train a FNO2D model to map solution at previous T_in timesteps
     to next T timesteps by recurrently propogating in time domain
     
 Usage:
-    python  fno2d_recurrent.py \
-     --run=<run_tracker> \
-             --model_save_path=<save_dir> \
-             --train_data_path=<train_data> \
-             --val_data_path=<val_data> \
-             --train_samples=<train_samples> \
-             --val_samples=<validation_samples> \
-             --input_timesteps=<T_in> \
-             --output_timesteps=<T> \
-             --start_index=<dedalus_start_index> \
-             --stop_index=<dedalus_stop_index> \
-             --time_slice=<dedalus_time_slice> \
-             --dt=<dedalus_data_dt>
+    python fno2d_recurrent.py \
+        --run=<run_tracker> \
+        --model_save_path=<save_dir> \
+        --train_data_path=<train_data> \
+        --val_data_path=<val_data> \
+        --train_samples=<train_samples> \
+        --val_samples=<validation_samples> \
+        --input_timesteps=<T_in> \
+        --output_timesteps=<T> \
+        --start_index=<dedalus_start_index> \
+        --stop_index=<dedalus_stop_index> \
+        --time_slice=<dedalus_time_slice> \
+        --dt=<dedalus_data_dt>
                  
     optional args:
         --single_data_path=<path to hdf5 file containing train, val and test data>
@@ -377,7 +377,7 @@ def train(args):
 
     model2d = FNO2d(modes, modes, width, T_in, T).to(device)
     n_params = model2d.print_size()
-    #memory.print("after intialization")
+    # memory.print("after intialization")
 
     optimizer = torch.optim.Adam(model2d.parameters(), lr=learning_rate, weight_decay=weight_decay)
     # optimizer = torch.optim.AdamW(model2d.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -402,6 +402,10 @@ def train(args):
         file.write("-------------------------------------------------\n")
         file.write(f"Model Card for FNO-2D with (x,z) and Recurrent in Time\n")
         file.write("-------------------------------------------------\n")
+        file.write(f"{n_params}\n")
+        file.write("-------------------------------------------------\n")
+        file.write(f"FNO config\n")
+        file.write("-------------------------------------------------\n")
         file.write(f"Fourier modes:{modes}\n")
         file.write(f"Layer width:{width}\n")
         file.write(f"(nTrain, nVal): {nTrain, nVal}\n")
@@ -420,7 +424,7 @@ def train(args):
         file.write(f"Grid(x,y): ({gridx, gridy})\n")
         file.write(f"Training data(input,output): {train_a.shape, train_u.shape}\n")
         file.write(f"FNO model path: {fno_path}\n")
-        file.write("-------------------------------------------------\n")
+        file.write("-------------------------------------------------\n")----------\n")
 
     if args.load_checkpoint:
         checkpoint = torch.load(args.checkpoint_path)
@@ -590,7 +594,7 @@ def train(args):
         
             
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='FNO3D Training')
+    parser = argparse.ArgumentParser(description='FNO2D Training')
     parser.add_argument('--run', type=int, default=1,
                         help='training tracking number')
     parser.add_argument('--model_save_path', type=str,default=os.getcwd(),
@@ -601,25 +605,16 @@ if __name__ == '__main__':
                         help='path to train data hdf5 file')
     parser.add_argument('--val_data_path', type=str,
                         help='path to validation data hdf5 file')
+    parser.add_argument('--train_samples', type=int, default=100,
+                        help='Number of training samples')
+    parser.add_argument('--val_samples', type=int, default=50,
+                        help='Number of validation samples')
     parser.add_argument('--load_checkpoint', action="store_true",
                         help='load checkpoint')
     parser.add_argument('--checkpoint_path', type=str,
                         help='folder containing checkpoint')
     parser.add_argument('--multi_step', action="store_true",
                         help='take multiple step data')
-    parser.add_argument('--checkpoint_path', type=str,
-                        help='folder containing checkpoint')
-    parser.add_argument('--exit-signal-handler', action='store_true',
-                       help='Dynamically save the checkpoint and shutdown the '
-                       'training if SIGTERM is received')
-    parser.add_argument('--run', type=int, default=1,
-                        help='training tracking number')
-    parser.add_argument('--exit-duration-in-mins', type=int, default=None,
-                       help='Exit the program after this many minutes.')
-    parser.add_argument('--train_samples', type=int, default=100,
-                        help='Number of training samples')
-    parser.add_argument('--val_samples', type=int, default=50,
-                        help='Number of validation samples')
     parser.add_argument('--input_timesteps', type=int, default=1,
                         help='number of input timesteps to FNO')
     parser.add_argument('--output_timesteps', type=int, default=1,
@@ -632,9 +627,15 @@ if __name__ == '__main__':
                         help='slicer for dedalus data')
     parser.add_argument('--dt', type=float, 
                         help='dedalus data dt')
+    parser.add_argument('--exit-signal-handler', action='store_true',
+                       help='Dynamically save the checkpoint and shutdown the '
+                       'training if SIGTERM is received')
+    parser.add_argument('--exit-duration-in-mins', type=int, default=None,
+                       help='Exit the program after this many minutes.')
     args = parser.parse_args()
     
     if args.exit_signal_handler:
         _set_signal_handler()
     
     train(args)
+    

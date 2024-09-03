@@ -210,7 +210,7 @@ def inferErrorPlot( ux, vx, vx_pred,
         fig.legend(handles=[inp_patch, ded_patch, fno_patch], loc="upper right")
         # fig.tight_layout()
         fig.show()
-        fig.savefig(f"{fno_path}/{dim}_NX{gridx}_NY{gridy}_error_{np.round(time_out[t],4)}.png")
+        fig.savefig(f"{fno_path}/{dim}_NX{gridx}_NY{gridy}_{np.round(time_out[t],4)}.png")
 
 def model_inference(args, *argv):
     inference_func_start = default_timer()

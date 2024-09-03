@@ -2,19 +2,19 @@
 Train a FNO3D model to map solution at T_in timesteps to next T timesteps
     
 Usage:
-    python  fno3d.py \
-             --run=<run_tracker> \
-             --model_save_path=<save_dir> \
-             --train_data_path=<train_data> \
-             --val_data_path=<val_data> \
-             --train_samples=<train_samples> \
-             --val_samples=<validation_samples> \
-             --input_timesteps=<T_in> \
-             --output_timesteps=<T> \
-             --start_index=<dedalus_start_index> \
-             --stop_index=<dedalus_stop_index> \
-             --time_slice=<dedalus_time_slice> \
-             --dt=<dedalus_data_dt>
+    python fno3d.py \
+            --run=<run_tracker> \
+            --model_save_path=<save_dir> \
+            --train_data_path=<train_data> \
+            --val_data_path=<val_data> \
+            --train_samples=<train_samples> \
+            --val_samples=<validation_samples> \
+            --input_timesteps=<T_in> \
+            --output_timesteps=<T> \
+            --start_index=<dedalus_start_index> \
+            --stop_index=<dedalus_stop_index> \
+            --time_slice=<dedalus_time_slice> \
+            --dt=<dedalus_data_dt>
                  
     optional args:
         --single_data_path=<path to hdf5 file containing train, val and test data>
@@ -618,21 +618,16 @@ if __name__ == '__main__':
                         help='path to train data hdf5 file')
     parser.add_argument('--val_data_path', type=str,
                         help='path to validation data hdf5 file')
+    parser.add_argument('--train_samples', type=int, default=100,
+                        help='Number of training samples')
+    parser.add_argument('--val_samples', type=int, default=50,
+                        help='Number of validation samples')
     parser.add_argument('--load_checkpoint', action="store_true",
                         help='load checkpoint')
     parser.add_argument('--checkpoint_path', type=str,
                         help='folder containing checkpoint')
     parser.add_argument('--multi_step', action="store_true",
                         help='take multiple step data')
-    parser.add_argument('--exit-signal-handler', action='store_true',
-                       help='Dynamically save the checkpoint and shutdown the '
-                       'training if SIGTERM is received')
-    parser.add_argument('--exit-duration-in-mins', type=int, default=None,
-                       help='Exit the program after this many minutes.')
-    parser.add_argument('--train_samples', type=int, default=100,
-                        help='Number of training samples')
-    parser.add_argument('--val_samples', type=int, default=50,
-                        help='Number of validation samples')
     parser.add_argument('--input_timesteps', type=int, default=1,
                         help='number of input timesteps to FNO')
     parser.add_argument('--output_timesteps', type=int, default=1,
@@ -645,9 +640,15 @@ if __name__ == '__main__':
                         help='slicer for dedalus data')
     parser.add_argument('--dt', type=float, 
                         help='dedalus data dt')
+    parser.add_argument('--exit-signal-handler', action='store_true',
+                       help='Dynamically save the checkpoint and shutdown the '
+                       'training if SIGTERM is received')
+    parser.add_argument('--exit-duration-in-mins', type=int, default=None,
+                       help='Exit the program after this many minutes.')
     args = parser.parse_args()
-    
+
     if args.exit_signal_handler:
         _set_signal_handler()
     
     train(args)
+    
