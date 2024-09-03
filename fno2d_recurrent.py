@@ -425,7 +425,7 @@ def train(args):
         file.write(f"Grid(x,y): ({gridx, gridy})\n")
         file.write(f"Training data(input,output): {train_a.shape, train_u.shape}\n")
         file.write(f"FNO model path: {fno_path}\n")
-        file.write("-------------------------------------------------\n")----------\n")
+        file.write("-------------------------------------------------\n")
 
     if args.load_checkpoint:
         checkpoint = torch.load(args.checkpoint_path)
