@@ -4,10 +4,10 @@ This repository contains implementation of [Fourier Neural Operators](https://ar
 
 
 ## Requirements
-The code is based on python 3 (version 3.11) and the packages required can be installed with
-
+The code is based on python3 (version 3.11) and the packages required can be installed with
+```bash
 	python3 -m pip install -r requirements.txt
-
+```
 
 ## Data
 
@@ -37,8 +37,8 @@ Model inference can be done using [inference.py](./inference.py)
 - [examples](./examples/): Contains files for solving 
 	- Wave equation
 	- Darcy Flow equation
-	- Rayleigh Benard Convection 2D on 64 x 64 grid for Ra=10e4 
+	- Rayleigh Benard Convection 2D on 64 x 64 grid for Ra=10000 
 	
 ## Reference:
 
-- [neural_operator](https://github.com/neuraloperator/neuraloperator/blob/master)
+- [neural_operator](https://github.com/neuraloperator/neuraloperator.git)
