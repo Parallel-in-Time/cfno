@@ -1,29 +1,48 @@
+"""
+Train a FNO2D model to map solution at previous T_in timesteps 
+    to next T timesteps by recurrently propogating in time domain
+    
+Usage:
+    python  fno2d_recurrent.py \
+     --run=<run_tracker> \
+             --model_save_path=<save_dir> \
+             --train_data_path=<train_data> \
+             --val_data_path=<val_data> \
+             --train_samples=<train_samples> \
+             --val_samples=<validation_samples> \
+             --input_timesteps=<T_in> \
+             --output_timesteps=<T> \
+             --start_index=<dedalus_start_index> \
+             --stop_index=<dedalus_stop_index> \
+             --time_slice=<dedalus_time_slice> \
+             --dt=<dedalus_data_dt>
+                 
+    optional args:
+        --single_data_path=<path to hdf5 file containing train, val and test data>
+        --multi_step
+        --load_checkpoint
+        --checkpoint_path=<checkpoint_dir>
+        --exit-signal-handler
+        --exit-duration-in-mins
+    
+"""
+
+
 import os
 import sys
-import functools
-import operator
 import h5py
-import math
-import copy
-import scipy
-import pickle
-import scipy.io
 import argparse
-import time
-import numpy as np
-from importlib import reload
 from pathlib import Path
-import pandas as pd
+import time
 from tqdm import tqdm
 from timeit import default_timer
+import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader, TensorDataset, Dataset
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.lines import Line2D
 
 from utils import CudaMemoryDebugger, format_tensor_size, LpLoss, get_signal_handler, _set_signal_handler
 
@@ -40,32 +59,39 @@ class SpectralConv2d(nn.Module):
 
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.modes1 = modes1              #Number of Fourier modes to multiply, at most floor(N/2) + 1
+        # Number of Fourier modes to multiply, at most floor(N/2) + 1
+        # k_max = 12 in http://arxiv.org/pdf/2010.08895
+        self.modes1 = modes1           
         self.modes2 = modes2
 
+        # R
         self.scale = (1 / (in_channels * out_channels))
         self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, dtype=torch.cfloat))
         self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, dtype=torch.cfloat))
 
     # Complex multiplication
     def compl_mul2d(self, input, weights):
-        # (batch, in_channel, x,y ), (in_channel, out_channel, x,y) -> (batch, out_channel, x,y)
+        # (batch, in_channel, x, y), (in_channel, out_channel, x, y) -> (batch, out_channel, x, y)
+        # summation along in_channel
         return torch.einsum("bixy,ioxy->boxy", input, weights)
 
     def forward(self, x):
+        # x = [batchsize, width, size_x+padding, size_y+padding]
         batchsize = x.shape[0]
-        #Compute Fourier coeffcients up to factor of e^(- something constant)
+        
+        # Compute Fourier coeffcients up to factor of e^(- something constant)
         x_ft = torch.fft.rfft2(x)
-
+        # [batchsize, width, size_x+padding, if (size_y+padding) is even ((size_y+padding)/2 +1) else (size_y+padding)/2]
+    
         # Multiply relevant Fourier modes
         out_ft = torch.zeros(batchsize, self.out_channels, x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
-        out_ft[:, :,  :self.modes1, :self.modes2] = \
+        out_ft[:, :, :self.modes1, :self.modes2] = \
             self.compl_mul2d(x_ft[:, :, :self.modes1, :self.modes2], self.weights1)
         out_ft[:, :, -self.modes1:, :self.modes2] = \
             self.compl_mul2d(x_ft[:, :, -self.modes1:, :self.modes2], self.weights2)
 
-        #Return to physical space
-        x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
+        # Return to physical space
+        x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1))) # x = [batchsize, width, size_x+padding, size_y+padding]
         return x
 
 class MLP(nn.Module):
@@ -76,27 +102,35 @@ class MLP(nn.Module):
 
     def forward(self, x):
         x = self.mlp1(x)
+        # input: [batchsize, in_channel=width, size_x+padding, size_y+padding]
+        # weight: [mid_channel=width, in_channel=width, 1,1]
+        # output: [batchsize, out_channel=mid_channel, size_x+padding, size_y+padding]
         x = nn.functional.gelu(x)
+        # input: [batchsize, mid_channel, size_x+padding, size_y+padding]
+        # output: [batchsize, mide_channel, size_x+padding, size_y+padding]
         x = self.mlp2(x)
+        # input: [batchsize, in_channel=mid_channel=width, size_x+padding, size_y+padding]
+        # weight: [out_channel=width, mid_channel=width, 1, 1]
+        # output: [batchsize, out_channel=width, size_x+padding, size_y+padding]
+
         return x
 
 class FNO2d(nn.Module):
-    memory = CudaMemoryDebugger(print_mem=True)
     
     def __init__(self, modes1, modes2, width, T_in, T):
         super(FNO2d, self).__init__()
 
         """
         The overall network. It contains 4 layers of the Fourier layer.
-        1. Lift the input to the desire channel dimension by self.fc0 .
-        2. 4 layers of the integral operators u' = (W + K)(u).
-            W defined by self.w; K defined by self.conv .
-        3. Project from the channel space to the output space by self.fc1 and self.fc2 .
+        1. Lift the input to the desire channel dimension by self.p 
+        2. 4 layers of the integral operators u' = (W + K)(u)
+            W defined by self.w; K defined by self.conv + self.mlp 
+        3. Project from the channel space to the output space by self.q
         
-        input: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
-        input shape: (batchsize, x=4*sizex//xStep, z=sizez/zStep, c=12)
-        output: the solution of the next timestep
-        output shape: (batchsize, x=4*sizex//xStep, z=sizez//zStep, c=1)
+        input: the solution of the previous T_in timesteps + 2 locations ((u(1, x, y), ..., u(T_in, x, y), x, y)
+        input shape: (batchsize, x=4*size_x//xStep, y=size_y/yStep, c=T_in+2)
+        output: the solution of the next timestep 
+        output shape: (batchsize, x=4*size_x//xStep, y=size_y//yStep, c=1)
         """
 
         self.modes1 = modes1
@@ -106,7 +140,9 @@ class FNO2d(nn.Module):
         self.T = T
         self.padding = 8 # pad the domain if input is non-periodic
 
-        self.p = nn.Linear(self.T_in+2, self.width) # input channel is T_in+2: the solution of the previous T_in timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
+        # input channel is T_in+2: the solution of the T_in timesteps + 2 locations (u(t, x, y), ..., u(t+T_in, x, y), x, y)
+        # x = (batchsize, x=size_x, y=size_y, c=T_in+2)
+        self.p = nn.Linear(self.T_in+2, self.width) 
         self.conv0 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
         self.conv1 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
         self.conv2 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
@@ -120,47 +156,105 @@ class FNO2d(nn.Module):
         self.w2 = nn.Conv2d(self.width, self.width, 1)
         self.w3 = nn.Conv2d(self.width, self.width, 1)
         self.norm = nn.InstanceNorm2d(self.width)
-        self.q = MLP(self.width, 1, self.width * 4) # output channel is 1: u(x, y)
+        self.q = MLP(self.width, 1, self.width * 4) 
+        
+        self.memory = CudaMemoryDebugger(print_mem=True)
 
     def forward(self, x):
-        grid = self.get_grid(x.shape, x.device)
-        x = torch.cat((x, grid), dim=-1)
+        grid = self.get_grid(x.shape, x.device) 
+        x = torch.cat((x, grid), dim=-1) # [batchsize, size_x, size_y, c=T_in] ---> [batchsize, size_x, size_y, c=T_in+2]
+        
         x = self.p(x)
-        #memory.print("after p(x)")
-        x = x.permute(0, 3, 1, 2)
-        # x = F.pad(x, [0,self.padding, 0,self.padding]) # pad the domain if input is non-periodic
+        # nn.Linear(self.T_in+2, self.width) 
+            # input: [batchsize, size_x, size_y, c=T_in+2]
+            # Weight: [width, T_in+2]
+            # Output: [batchsize, size_x, size_y, c=width]
+            
+        # self.memory.print("after p(x)")
+        
+        x = x.permute(0, 3, 1, 2)   # [batchsize, size_x, size_y, c=width] ---> [batchsize, width, size_x, size_y]
+        
+        # https://pytorch.org/docs/stable/generated/torch.nn.functional.pad.html
+        # padding order:(padding_left,padding_right, 
+        #                 padding_top,padding_bottom,
+        #                 padding_front,padding_back)
+        # x = F.pad(x, [0, self.padding, 0, self.padding]) # pad the (x,y) domain if input is non-periodic
+        # [batchsize, width, size_x+padding, size_y+padding]
+        
+        x1 = self.norm(self.conv0(self.norm(x)))  
+        # SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
+            # input: [batchsize, width, size_x+padding, size_y+padding]
+            # weight: torch.rand(in_channels=width, out_channels=width, self.modes1, self.modes2, dtype=torch.cfloat)
+            # Output: [batchsize, out_channel=width, size_x+padding, size_y+padding]
+            
+        x1 = self.mlp0(x1) 
+        # MLP(self.width, self.width, self.width)
+            # x = self.mlp1(x)
+            # input: [batchsize, in_channel=width, size_x+padding, size_y+padding]
+            # weight: [mid_channel=width, in_channel=width, 1,1]
+            # output: [batchsize, out_channel=mid_channel, size_x+padding, size_y+padding]
+            # x = nn.functional.gelu(x)
+            # input: [batchsize, width, size_x+padding, size_y+padding]
+            # output: [batchsize, width, size_x+padding, size_y+padding]
+            # x = self.mlp2(x)
+            # input: [batchsize, in_channel=mid_channel=width, size_x+padding, size_y+padding]
+            # weight: [out_channel=width, mid_channel=width, 1, 1]
+            # output: [batchsize, out_channel=width, size_x+padding, size_y+padding]
+     
 
-        x1 = self.norm(self.conv0(self.norm(x)))
-        x1 = self.mlp0(x1)
-        x2 = self.w0(x)
+        x2 = self.w0(x) 
+        # nn.Conv2d(self.width, self.width, 1)
+            # input: [batchsize, in_channel=width, size_x+padding, size_y+padding]
+            # weight: [out_channel=width, in_channel=width, 1, 1]
+            # output: [batchsize, out_channel=width, size_x+padding, size_y+padding]
+
         x = x1 + x2
         x = nn.functional.gelu(x)
-        #memory.print("after FNO1")
+        # input: [batchsize, out_channel=width, size_x+padding, size_y+padding]
+        # output: [batchsize, out_channel=width, size_x+padding, size_y+padding]
+        
+        # self.memory.print("after FNO1")
 
         x1 = self.norm(self.conv1(self.norm(x)))
         x1 = self.mlp1(x1)
         x2 = self.w1(x)
         x = x1 + x2
         x = nn.functional.gelu(x)
-        #memory.print("after FNO2")
+        # self.memory.print("after FNO2")
         
         x1 = self.norm(self.conv2(self.norm(x)))
         x1 = self.mlp2(x1)
         x2 = self.w2(x)
         x = x1 + x2
         x = nn.functional.gelu(x)
-        #memory.print("after FNO3")
+        # self.memory.print("after FNO3")
         
         x1 = self.norm(self.conv3(self.norm(x)))
         x1 = self.mlp3(x1)
         x2 = self.w3(x)
         x = x1 + x2
-        #memory.print("after FNO4")
+        # self.memory.print("after FNO4")
         
-        # x = x[..., :-self.padding, :-self.padding] # pad the domain if input is non-periodic
-        x = self.q(x)
-        #memory.print("after q(x)")
-        x = x.permute(0, 2, 3, 1)
+        # x = x[..., :-self.padding, :-self.padding] # unpad the domain 
+        # [batchsize, out_channel=width, size_x+padding, size_y+padding] ---> [batchsize, out_channel=width, size_x, size_y]
+        
+        x = self.q(x) 
+        # MLP(self.width, 1, self.width*4)
+            # x = self.mlp1(x)
+            # input: [batchsize, in_channel=width, size_x, size_y]
+            # weight: [mid_channel=4*width, in_channel=width, 1,1]
+            # output: [batchsize, out_channel=mid_channel=4*width, size_x, size_y]
+            # x = torch.nn.Functional.gelu(x)
+            # input:  [batchsize, out_channel=mid_channel=4*width, size_x, size_y]
+            # output: [batchsize, out_channel=mid_channel=4*width, size_x, size_y]
+            # x = self.mlp2(x)
+            # input: [batchsize, in_channel=mid_channel=4*width, size_x, size_y]
+            # weight: [out_channel=1, mid_channel=4*width, 1, 1]
+            # output: [batchsize, out_channel=1, size_x, size_y]
+
+        # self.memory.print("after q(x)")
+        
+        x = x.permute(0, 2, 3, 1) # [batchsize, out_channel=1, size_x, size_y] ---> [batchsize, size_x, size_y, out_channel=1]
         return x
 
     def get_grid(self, shape, device):
@@ -169,7 +263,7 @@ class FNO2d(nn.Module):
         gridx = gridx.reshape(1, size_x, 1, 1).repeat([batchsize, 1, size_y, 1])
         gridy = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
         gridy = gridy.reshape(1, 1, size_y, 1).repeat([batchsize, size_x, 1, 1])
-        return torch.cat((gridx, gridy), dim=-1).to(device)
+        return torch.cat((gridx, gridy), dim=-1).to(device) # [batchsize, size_x, size_y, 3]
     
     def print_size(self):
         properties = []
@@ -182,61 +276,89 @@ class FNO2d(nn.Module):
         print(f'Total number of model parameters: {elementFrame["NParams"].sum()} with (~{format_tensor_size(elementFrame["Memory(KB)"].sum()*1000)})')
         return elementFrame
 
+def multi_data(reader, task, start_time, end_time, timestep, samples, T_in=1, T=1, xStep=1, yStep=1, tStep=1):
+    a = []
+    u = []
+    for index in range(start_time, end_time, timestep):
+        a.append(torch.tensor(reader[task][:samples, ::xStep, ::yStep, index: index + (T_in*tStep): tStep], dtype=torch.float))
+        u.append(torch.tensor(reader[task][:samples, ::xStep, ::yStep, index + (T_in*tStep): index + (T_in + T)*tStep: tStep], dtype=torch.float))
+    a = torch.stack(a)
+    u = torch.stack(u)
+    
+    a_multi = a.reshape(a.shape[0]*a.shape[1], a.shape[2], a.shape[3], a.shape[4])
+    u_multi = u.reshape(u.shape[0]*u.shape[1], u.shape[2], u.shape[3], u.shape[4])
+    
+    return a_multi, u_multi
 
 def train(args):  
     ## config
-    ntrain = 100
-    nval = 50
-    ntest = 50
-
+    train_samples = args.train_samples
+    val_samples = args.val_samples
+   
+    T_in = args.input_timesteps
+    T = args.output_timesteps
+    start_index = args.start_index
+    stop_index = args.stop_index
+    timestep = args.time_slice
+    dt = args.dt
+    
+    xStep = 1
+    yStep = 1
+    tStep = 1
+    
     modes = 12
     width = 20
-
+    
+    epochs = 3000
     batch_size = 5
     learning_rate = 0.00039
     weight_decay = 1e-05
     scheduler_step = 10.0
     scheduler_gamma = 0.98
     
-    epochs = 2
-    iterations = epochs*(ntrain//batch_size)
-
-    gridx = 4*256
-    gridz = 64
-
-    xStep = 1
-    zStep = 1
-    tStep = 1
-
-    start_index = 500
-    T_in = 10
-    T = 10
+    gridx = 4*256 # stacking [velx,velz,buoyancy,pressure]
+    gridy = 64
 
     ## load data
-    data_path = args.data_path
-    reader = h5py.File(data_path, mode="r")
-    train_a = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep],dtype=torch.float)
-    train_u = torch.tensor(reader['train'][:ntrain, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep], dtype=torch.float)
+    if args.single_data_path is not None:
+        train_data_path = val_data_path = args.single_data_path
+        train_reader = val_reader = h5py.File(train_data_path, mode="r")
+    else:  
+        train_data_path = args.train_data_path
+        train_reader = h5py.File(train_data_path, mode="r")
+        val_data_path = args.val_data_path
+        val_reader = h5py.File(val_data_path, mode="r") 
+    
+    print('Starting data loading....')
+    dataloader_time_start = default_timer()
+    if args.multi_step:
+        train_a, train_u = multi_data(train_reader,'train', start_index, stop_index, timestep, train_samples, T_in, T, xStep, yStep, tStep)
+        val_a, val_u = multi_data(val_reader,'val', start_index, stop_index, timestep, val_samples, T_in, T, xStep, yStep, tStep)
+    else:
+        train_a = torch.tensor(train_reader['train'][:train_samples, ::xStep, ::yStep, start_index: start_index + (T_in*tStep): tStep], dtype=torch.float)
+        train_u = torch.tensor(train_reader['train'][:train_samples, ::xStep, ::yStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep], dtype=torch.float)
 
-    val_a = torch.tensor(reader['val'][:nval, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep],dtype=torch.float)
-    val_u = torch.tensor(reader['val'][:nval, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep],dtype=torch.float)
-
-    # test_a = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index: start_index + (T_in*tStep): tStep],dtype=torch.float)
-    # test_u = torch.tensor(reader['test'][:ntest, ::xStep, ::zStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep],dtype=torch.float)
+        val_a = torch.tensor(val_reader['val'][:val_samples, ::xStep, ::yStep, start_index: start_index + (T_in*tStep): tStep], dtype=torch.float)
+        val_u = torch.tensor(val_reader['val'][:val_samples, ::xStep, ::yStep, start_index + (T_in*tStep):  start_index + (T_in + T)*tStep: tStep], dtype=torch.float)
 
     print(f"Train data:{train_u.shape}")
     print(f"Val data:{val_u.shape}")
     assert (gridx == train_u.shape[-3])
-    assert (gridz == train_u.shape[-2])
+    assert (gridy == train_u.shape[-2])
     assert (T == train_u.shape[-1])
+    
+    nTrain = train_a.shape[0]
+    nVal = val_a.shape[0]
 
     train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
     val_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(val_a, val_u), batch_size=batch_size, shuffle=False)
-    # test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
-
-    run = args.run
+    dataloader_time_stop = default_timer()
+    print(f'Total time taken for dataloading (s): {dataloader_time_stop - dataloader_time_start}')
     
-    fno_path = Path(f'{args.model_save_path}/rbc_fno2d_time_N{ntrain}_epoch{epochs}_m{modes}_w{width}_bs{batch_size}_run{run}')
+    iterations = epochs*(nTrain//batch_size)
+    
+    run = args.run
+    fno_path = Path(f'{args.model_save_path}/rbc_fno2d_time_N{nTrain}_epoch{epochs}_m{modes}_w{width}_bs{batch_size}_dt{dt}_tin{T_in}_run{run}')
     fno_path.mkdir(parents=True, exist_ok=True)
 
     checkpoint_path = Path(f'{fno_path}/checkpoint')
@@ -247,57 +369,57 @@ def train(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using {device}")
     torch.cuda.empty_cache()
-    memory = CudaMemoryDebugger(print_mem=True)
+    # memory = CudaMemoryDebugger(print_mem=True)
 
     ################################################################
     # training and evaluation
     ################################################################
 
     model2d = FNO2d(modes, modes, width, T_in, T).to(device)
-    # print(model2d.print_size())
     n_params = model2d.print_size()
     #memory.print("after intialization")
 
-    # optimizer = torch.optim.Adam(model2d.parameters(), lr=learning_rate, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model2d.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    # optimizer = torch.optim.AdamW(model2d.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iterations)
-
-    optimizer = torch.optim.AdamW(model2d.parameters(), lr=learning_rate, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_gamma)
 
     myloss = LpLoss(size_average=False)
     start_epoch = 0
 
-    print(f"fno_modes={modes}\n \
-            layer_width={width}\n \
-            (Tin,Tout):{T_in,T}\n \
-            batch_size={batch_size}\n \
-            optimizer={optimizer}\n \
-            lr_scheduler={scheduler}\n \
-            lr_scheduler_step={scheduler_step}\n \
-            lr_scheduler_gamma={scheduler_gamma}\n\
-            fno_path={fno_path}")
+    print(f"fourier_modes: {modes}\n \
+            layer_width: {width}\n \
+            (Tin, Tout):{T_in, T}\n \
+            batch_size: {batch_size}\n \
+            optimizer: {optimizer}\n \
+            lr_scheduler: {scheduler}\n \
+            lr_scheduler_step: {scheduler_step}\n \
+            lr_scheduler_gamma: {scheduler_gamma}\n\
+            fno_path: {fno_path}")
     
-    with open(f'{fno_path}/info.txt', 'w') as file:
+    with open(f'{fno_path}/info.txt', 'a') as file:
         file.write("-------------------------------------------------\n")
         file.write(f"Model Card for FNO-2D with (x,z) and Recurrent in Time\n")
         file.write("-------------------------------------------------\n")
-        file.write(f"model_params:{n_params}\n")
-        file.write(f"fno_modes:{modes}\n")
-        file.write(f"layer_widths:{width}\n")
-        file.write(f"(Tin,Tout):{T_in,T}\n")
-        file.write(f"(ntrain, nval, ntest): {ntrain, nval, ntest}\n")
-        file.write(f"batch_size: {batch_size}\n")
-        file.write(f"optimizer: {optimizer}\n")
-        file.write(f"lr_scheduler: {scheduler}\n")
-        file.write(f"lr_scheduler_step: {scheduler_step}\n")
-        file.write(f"lr_scheduler_gamma: {scheduler_gamma}\n")
-        file.write(f"input_time_steps: {T_in}\n")
-        file.write(f"output_time_steps: {T}\n")
-        file.write(f"time_start_index: {start_index}\n")
-        file.write(f"(x_step, z_step, t_step): {xStep, zStep, tStep}\n")
-        file.write(f"grid(x,z): ({gridx,gridz})\n")
-        file.write(f"train_data (a,u): {train_a.shape, train_u.shape}\n")
-        file.write(f"model_path: {fno_path}\n")
+        file.write(f"Fourier modes:{modes}\n")
+        file.write(f"Layer width:{width}\n")
+        file.write(f"(nTrain, nVal): {nTrain, nVal}\n")
+        file.write(f"Batchsize: {batch_size}\n")
+        file.write(f"Optimizer: {optimizer}\n")
+        file.write(f"LR scheduler: {scheduler}\n")
+        file.write(f"LR scheduler step: {scheduler_step}\n")
+        file.write(f"LR scheduler gamma: {scheduler_gamma}\n")
+        file.write(f"Input timesteps given to FNO: {T_in}\n")
+        file.write(f"Output timesteps given by FNO: {T}\n")
+        file.write(f"Dedalus data dt: {dt}\n")
+        file.write(f"Dedalus data start index: {start_index}\n")
+        file.write(f"Dedalus data stop index: {stop_index}\n")
+        file.write(f"Dedalus data slicing: {timestep}\n")
+        file.write(f"(xStep, yStep, tStep): {xStep, yStep, tStep}\n")
+        file.write(f"Grid(x,y): ({gridx, gridy})\n")
+        file.write(f"Training data(input,output): {train_a.shape, train_u.shape}\n")
+        file.write(f"FNO model path: {fno_path}\n")
         file.write("-------------------------------------------------\n")
 
     if args.load_checkpoint:
@@ -308,14 +430,17 @@ def train(args):
         start_val_loss = checkpoint['val_loss']
         print(f"Continuing training from {checkpoint_path} at {start_epoch} with Train-L2-loss {start_train_loss},\
                 and Val-L2-loss {start_val_loss}")
-        
+    
+    print(f'Starting model training...')
+    train_time_start = default_timer()
     for epoch in range(start_epoch, epochs):
         with tqdm(unit="batch", disable=False) as tepoch:
             tepoch.set_description(f"Epoch {epoch}")
-            model2d.train()
-            #memory.print("After model2d.train()")
             
             t1 = default_timer()
+            model2d.train()
+            # memory.print("After model2d.train()")
+            
             train_l2_step = 0
             train_l2_full = 0
             
@@ -323,7 +448,7 @@ def train(args):
                 loss = 0
                 xx = xx.to(device)
                 yy = yy.to(device)
-                #memory.print("After loading first batch")
+                # memory.print("After loading first batch")
 
                 for t in tqdm(range(0, T, tStep), desc="Train loop"):
                     y = yy[..., t:t + tStep]
@@ -344,7 +469,6 @@ def train(args):
                 train_l2_full += l2_full.item()
 
                 optimizer.zero_grad()
-                
                 loss.backward()
                 optimizer.step()
                 scheduler.step()
@@ -353,14 +477,14 @@ def train(args):
                 grads_norm = torch.cat(grads).norm()
                 writer.add_histogram("train/GradNormStep",grads_norm, step)
                 
-                #memory.print("After backwardpass")
+                # memory.print("After backwardpass")
                 
                 tepoch.set_postfix({'Batch': step + 1, 'Train l2 loss (in progress)': train_l2_full,\
                         'Train l2 step loss (in progress)': train_l2_step})
             
         
-            train_error = train_l2_full / ntrain
-            train_step_error = train_l2_step / ntrain / (T / tStep)
+            train_error = train_l2_full / nTrain
+            train_step_error = train_l2_step / nTrain / (T / tStep)
             writer.add_scalar("train_loss/train_l2loss", train_error, epoch)
             writer.add_scalar("train_loss/train_step_l2loss", train_step_error, epoch)
             writer.add_scalar("train/GradNorm", grads_norm, epoch)
@@ -375,7 +499,7 @@ def train(args):
                     yy = yy.to(device)
 
                     for t in tqdm(range(0, T, tStep), desc="Validation loop"):
-                        y = yy[..., t:t + tStep]
+                        y = yy[..., t:t + tStep] 
                         im = model2d(xx)
                         loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
 
@@ -389,10 +513,10 @@ def train(args):
 
                     val_l2_step += loss.item()
                     val_l2_full += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
-                    #memory.print("After val first batch")
+                    # memory.print("After val first batch")
 
-            val_error = val_l2_full / nval
-            val_step_error = val_l2_step / nval / (T / tStep)
+            val_error = val_l2_full / nVal
+            val_step_error = val_l2_step / nVal / (T / tStep)
             writer.add_scalar("val_loss/val_step_l2loss", val_error, epoch)
             writer.add_scalar("val_loss/val_l2loss", val_step_error, epoch)
                 
@@ -410,8 +534,8 @@ def train(args):
         
         if epoch > 0 and epoch % 100 == 0 :
             with open(f'{fno_path}/info.txt', 'a') as file:
-                    file.write(f"Training Error at {epoch}: {train_error}\n")
-                    file.write(f"Validation Error at {epoch}: {val_error}\n")
+                    file.write(f"Training loss at {epoch} epoch: {train_error}\n")
+                    file.write(f"Validation loss at {epoch} epoch: {val_error}\n")
             torch.save(
                 {
                 'epoch': epoch,
@@ -424,8 +548,8 @@ def train(args):
             signal_handler = get_signal_handler()
             if any(signal_handler.signals_received()):
                 with open(f'{fno_path}/info.txt', 'a') as file:
-                    file.write(f"Training Error at {epoch}: {train_error}\n")
-                    file.write(f"Validation Error at {epoch}: {val_error}\n")
+                    file.write(f"Training loss at {epoch} epoch: {train_error}\n")
+                    file.write(f"Validation loss at {epoch} epoch: {val_error}\n")
                 torch.save(
                     {
                     'epoch': epoch,
@@ -435,6 +559,9 @@ def train(args):
                     'val_loss': val_error,
                     }, f"{checkpoint_path}/model_checkpoint_{epoch}.pt")
                 print('exiting program after receiving SIGTERM.')
+                train_time_stop = default_timer()
+                print(f'Total training+validation time (s): {train_time_stop - train_time_start}')
+                sys.exit()
         
         if args.exit_duration_in_mins:
             train_time = (time.time() - _TRAIN_START_TIME) / 60.0
@@ -444,8 +571,8 @@ def train(args):
             done = done_check.item()
             if done:
                 with open(f'{fno_path}/info.txt', 'a') as file:
-                    file.write(f"Training Error at {epoch}: {train_error}\n")
-                    file.write(f"Validation Error at {epoch}: {val_error}\n")
+                    file.write(f"Training loss at {epoch} epoch: {train_error}\n")
+                    file.write(f"Validation loss at {epoch} epoch: {val_error}\n")
                 torch.save(
                     {
                     'epoch': epoch,
@@ -455,16 +582,31 @@ def train(args):
                     'val_loss': val_error,
                     }, f"{checkpoint_path}/model_checkpoint_{epoch}.pt")
                 print('exiting program after {} minutes'.format(train_time))
-          
+                sys.exit()
+    
+    train_time_stop = default_timer()
+    print(f'Exiting train()...')
+    print(f'Total training+validation time (s): {train_time_stop - train_time_start}')
+        
             
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='FNO Training')
+    parser = argparse.ArgumentParser(description='FNO3D Training')
+    parser.add_argument('--run', type=int, default=1,
+                        help='training tracking number')
     parser.add_argument('--model_save_path', type=str,default=os.getcwd(),
                         help='path to which FNO model is saved')
-    parser.add_argument('--data_path', type=str,
-                        help='path to data')
+    parser.add_argument('--single_data_path', type=str,default=None,
+                        help='path to hdf5 file containing train, val and test data')
+    parser.add_argument('--train_data_path', type=str,
+                        help='path to train data hdf5 file')
+    parser.add_argument('--val_data_path', type=str,
+                        help='path to validation data hdf5 file')
     parser.add_argument('--load_checkpoint', action="store_true",
                         help='load checkpoint')
+    parser.add_argument('--checkpoint_path', type=str,
+                        help='folder containing checkpoint')
+    parser.add_argument('--multi_step', action="store_true",
+                        help='take multiple step data')
     parser.add_argument('--checkpoint_path', type=str,
                         help='folder containing checkpoint')
     parser.add_argument('--exit-signal-handler', action='store_true',
@@ -474,9 +616,25 @@ if __name__ == '__main__':
                         help='training tracking number')
     parser.add_argument('--exit-duration-in-mins', type=int, default=None,
                        help='Exit the program after this many minutes.')
+    parser.add_argument('--train_samples', type=int, default=100,
+                        help='Number of training samples')
+    parser.add_argument('--val_samples', type=int, default=50,
+                        help='Number of validation samples')
+    parser.add_argument('--input_timesteps', type=int, default=1,
+                        help='number of input timesteps to FNO')
+    parser.add_argument('--output_timesteps', type=int, default=1,
+                        help='number of output timesteps to FNO')
+    parser.add_argument('--start_index', type=int, 
+                        help='starting time index for dedalus data')
+    parser.add_argument('--stop_index', type=int, 
+                        help='stopping time index for dedalus data')
+    parser.add_argument('--time_slice', type=int, 
+                        help='slicer for dedalus data')
+    parser.add_argument('--dt', type=float, 
+                        help='dedalus data dt')
     args = parser.parse_args()
     
     if args.exit_signal_handler:
         _set_signal_handler()
-        
+    
     train(args)
