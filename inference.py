@@ -219,17 +219,18 @@ def inferErrorPlot( ux, vx, vx_pred,
 def model_inference(args, *argv):
     inference_func_start = default_timer()
     print(f'Entered model_inference() at {inference_func_start}')
-    
+
     if args.single_data_path is not None:
         test_data_path = train_data_path  = args.single_data_path
         test_reader = train_reader = h5py.File(train_data_path, mode="r")
-    else:  
+    else:
         if args.dim =='FNO3D':
             train_data_path = args.train_data_path
             train_reader = h5py.File(train_data_path, mode="r")
         test_data_path = args.test_data_path
         test_reader = h5py.File(test_data_path, mode="r")
-    
+    # TODO : why do you need test data when evaluating the model ?
+
     dataloader_time_start = default_timer()
     print('Starting data loading....')
     if args.dim == 'FNO3D':
@@ -255,14 +256,14 @@ def model_inference(args, *argv):
 
     checkpoint = torch.load(args.model, map_location=lambda storage, loc: storage)
     if 'model_state_dict' in checkpoint.keys():
-        model.load_state_dict(checkpoint['model_state_dict'])   
+        model.load_state_dict(checkpoint['model_state_dict'])
     else:
-        model.load_state_dict(checkpoint)  
+        model.load_state_dict(checkpoint)
     test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
     print(f"Test input data:{test_a.shape}, Test output data: {test_u.shape}")
 
     # Inference
-    print(f'Starting model inference...')
+    print('Starting model inference...')
     inference_time_start = default_timer()
 
     pred = torch.zeros([batch_size, gridx_state, gridy, T])
@@ -286,7 +287,7 @@ def model_inference(args, *argv):
             else:
                 step_loss = 0
                 for t in range(0, T, tStep):
-                    y = yy[..., t:t + tStep]
+                    y = yy[..., t:t + tStep]    # TODO : y is assigned but never used
                     im = model(xx)
                     step_loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
                     
@@ -318,7 +319,7 @@ def model_inference(args, *argv):
     
     inputs_cpu = torch.stack(inputs).cpu()
     outputs_cpu = torch.stack(outputs).cpu()
-    
+
     inference_func_stop = default_timer()
     print(f'Exiting model_inference()...')
     print(f'Total time in model_inference() function (s): {inference_func_stop - inference_func_start}')
@@ -357,7 +358,8 @@ run = args.run
 fno_path = Path(f'{args.folder}/rbc_{args.dim}_N{ntest}_m{modes}_w{width}_bs{batch_size}_dt{dt}_tin{T_in}_inference_{device}_run{run}')
 fno_path.mkdir(parents=True, exist_ok=True)
 
-myloss = LpLoss(size_average=False)
+    fno_path = Path(f'{args.folder}/rbc_{args.dim}_N{ntest}_m{modes}_w{width}_bs{batch_size}_inference_{device}')
+    fno_path.mkdir(parents=True, exist_ok=True)
 
 if args.plotFile is not None:
     infFile = args.plotFile

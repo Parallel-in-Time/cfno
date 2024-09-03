@@ -85,7 +85,7 @@ class CudaMemoryDebugger():
 
         CudaMemoryDebugger.LAST_MEM = cur_mem
 
-     
+
 class LpLoss(object):
     def __init__(self, d=2, p=2, size_average=True, reduction=True):
         super(LpLoss, self).__init__()
@@ -130,7 +130,7 @@ class LpLoss(object):
 
     def __call__(self, x, y):
         return self.rel(x, y)
-    
+
 # normalization, pointwise gaussian
 class UnitGaussianNormalizer(object):
     def __init__(self, x, eps=0.00001, time_last=True):
@@ -179,8 +179,8 @@ class UnitGaussianNormalizer(object):
     def cpu(self):
         self.mean = self.mean.cpu()
         self.std = self.std.cpu()
-        
-def rbc_data( filename, time, tasks=False, scales=False):
+
+def rbc_data(filename, time, tasks=False, scales=False):
     with h5py.File(filename, mode="r") as f:
         b_t = f["tasks/buoyancy"][time]
         vel_t = f["tasks/velocity"][time]
@@ -191,15 +191,14 @@ def rbc_data( filename, time, tasks=False, scales=False):
         wall_time = f["scales/wall_time"][time]
         write_no = f["scales/write_number"][time]
 
-    f.close()
-    if tasks and scales:
-         return vel_t,b_t, p_t, write_no, iteration, sim_time, time_step, wall_time
-    elif tasks:
-         return vel_t,b_t, p_t
-    elif scales:
-         return write_no, iteration, sim_time, time_step, wall_time
-    else:
-         raise ValueError("Nothing to return!")
+    out = tuple()
+    if tasks:
+        out += (vel_t, b_t, p_t)
+    if scales:
+        out += (write_no, iteration, sim_time, time_step, wall_time)
+    if len(out) == 0:
+        raise ValueError("Nothing to return!")
+    return out
 
 
 def get_world_size():
@@ -244,7 +243,7 @@ def all_gather_item(item, dtype, group=None, async_op=False, local_rank=None):
     torch.distributed.all_gather(output_tensors, tensor, group, async_op)
     output = [elem.item() for elem in output_tensors]
     return output
-    
+
 class DistributedSignalHandler:
     def __init__(self, sig=signal.SIGTERM):
         self.sig = sig
@@ -277,17 +276,17 @@ class DistributedSignalHandler:
         signal.signal(self.sig, self.original_handler)
         self.released = True
         return True
-    
-    
+
+
 def _ensure_var_is_initialized(var, name):
     """Make sure the input variable is not None."""
     assert var is not None, '{} is not initialized.'.format(name)
-    
+
 
 def _ensure_var_is_not_initialized(var, name):
     """Make sure the input variable is not None."""
     assert var is None, '{} is already initialized.'.format(name)
-    
+
 def get_signal_handler():
     _ensure_var_is_initialized(_GLOBAL_SIGNAL_HANDLER, 'signal handler')
     return _GLOBAL_SIGNAL_HANDLER
