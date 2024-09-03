@@ -124,7 +124,7 @@ def time_extract(time_index, t_in, t_out, dt, tStep):
         time_in.append(i*dt)
     print("Input Time", time_in)
     time_out = []
-    for j in range(time_index+t_in, time_index + (t_in+t_out)*tStep, tStep):
+    for j in range(time_index+(t_in*tStep), time_index + (t_in+t_out)*tStep, tStep):
         time_out.append(j*dt)
     print("Output Time", time_out)
     return time_in, time_out
