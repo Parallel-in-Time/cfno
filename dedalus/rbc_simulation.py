@@ -1,35 +1,54 @@
+import os
 import argparse
 import numpy as np
 from datetime import datetime
 
 import dedalus.public as d3
 from mpi4py import MPI
-from sdc import SpectralDeferredCorrectionIMEX
+from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX
 
 COMM_WORLD = MPI.COMM_WORLD
 MPI_SIZE = COMM_WORLD.Get_size()
 MPI_RANK = COMM_WORLD.Get_rank()
 
 def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
-            tEnd=150, useSDC=False,
-            dtWrite=0.1, writeVort=False, writeFull=False,
+            tEnd=150, dtWrite=0.1, useSDC=False,
+            writeVort=False, writeFull=False,
             initFields=None):
     """
     Run RBC simulation in a given folder.
 
     Parameters
     ----------
-    dirName : str
+    dirName: str
         Name of directory where to store snapshots and run infos
-    Rayleigh : float
+    Rayleigh: float
         Rayleigh number.
-    resFactor : int
+    resFactor: int
         Resolution factor, considering a base space grid size of (256,64).
-    baseDt : float, optional
+    baseDt: float
         Base time-step for the base space resolution. The default is 1e-2/2.
-    seed : int, optional
+    seed: int, optional
         Seed for the random noise in the initial solution. The default is 999.
+    tEnd: float
+        Simulation end time
+    dtWrite: float
+        Snapshot save interval
+    useSDC: boolean, optional
+        Use SDC timestepper
+    writeVort: boolean, optional
+        Write vorticity to snapshot
+    writeFull: boolean, optional
+        Write Tau variables to snapshot
+    initFields: dictionary, optional
+        Initial conditions
+    
     """
+    if os.path.isfile(f"{dirName}/01_finalized.txt"):
+        if MPI_RANK == 0:
+            print(" -- simulation already finalized, skipping !")
+        return
+
     def log(msg):
         if MPI_RANK == 0:
             with open(f"{dirName}/simu.log", "a") as f:
@@ -46,7 +65,8 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
     Prandtl = 1
     dealias = 3/2
     stop_sim_time = tEnd
-    timestepper = SpectralDeferredCorrectionIMEX if useSDC else d3.RK443
+    # timestepper = SpectralDeferredCorrectionIMEX if useSDC else d3.RK443
+    timestepper = d3.RK443
     dtype = np.float64
 
     with open(f"{dirName}/00_infoSimu.txt", "w") as f:
@@ -54,7 +74,8 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         f.write(f"Seed : {seed}\n")
         f.write(f"Nx, Nz : {int(Nx)}, {int(Nz)}\n")
         f.write(f"dt : {timestep:1.2e}\n")
-        f.write(f"tEnd : {tEnd}\n")
+        f.write(f"tEnd : {stop_sim_time}\n")
+        f.write(f"dtWrite : {dtWrite}\n")
 
     # Bases
     coords = d3.CartesianCoordinates('x', 'z')
@@ -105,18 +126,23 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         b['g'] *= z * (Lz - z) # Damp noise at walls
         b['g'] += Lz - z # Add linear background
     else:
-        b['g'] = initFields["buoyancy"][-1]
-        p['g'] = initFields["pressure"][-1]
-        u['g'] = initFields["velocity"][-1]
-        tau_p['g'] = initFields["tau_p"][-1]
-        tau_b1['g'] = initFields["tau_b1"][-1]
-        tau_b2['g'] = initFields["tau_b2"][-1]
-        tau_u1['g'] = initFields["tau_u1"][-1]
-        tau_u2['g'] = initFields["tau_u2"][-1]
+        fields = [
+            (b, "buoyancy"), (p, "pressure"), (u, "velocity"),
+            *[(f, f.name) for f in [tau_p, tau_b1, tau_b2, tau_u1, tau_u2]]
+            ]
+        for field, name in fields:
+            localSlices = (slice(None),) * len(field.tensorsig) \
+                + dist.grid_layout.slices(field.domain, field.scales)
+            field['g'] = initFields[name][-1][localSlices]
 
     # Analysis
+    iterWrite = dtWrite/timestep
+    if int(iterWrite) != round(iterWrite, ndigits=3):
+        raise ValueError(
+            f"dtWrite ({dtWrite}) is not divisible by timestep ({timestep}) : {iterWrite}")
+    iterWrite = int(iterWrite)
     snapshots = solver.evaluator.add_file_handler(
-        dirName, sim_dt=dtWrite, max_writes=1600)
+        dirName, sim_dt=dtWrite, max_writes=stop_sim_time/timestep)
     snapshots.add_task(u, name='velocity')
     snapshots.add_task(b, name='buoyancy')
     snapshots.add_task(p, name='pressure')
@@ -130,17 +156,24 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         snapshots.add_task(-d3.div(d3.skew(u)), name='vorticity')
 
     # Main loop
+    nSteps = tEnd/timestep
+    if int(nSteps) != round(nSteps, ndigits=3):
+        raise ValueError(
+            f"tEnd ({tEnd}) is not divisible by timestep ({timestep})")
+    nSteps = int(nSteps)
     try:
         log('Starting main loop')
-        while solver.proceed:
+        for _ in range(nSteps+1): # need to do one more step to write last solution ...
             solver.step(timestep)
-            # if (solver.iteration-1) % 100 == 0:
-            log(f'Iteration={solver.iteration}, Time={solver.sim_time}, dt={timestep}')
+            if (solver.iteration-1) % 10000 == 0:
+                log(f'Iteration={solver.iteration}, Time={solver.sim_time}, dt={timestep}')
     except:
         log('Exception raised, triggering end of main loop.')
         raise
     finally:
         solver.log_stats()
+        with open(f"{dirName}/01_finalized.txt", "w") as f:
+            f.write("Done !")
 
 
 if __name__ == '__main__':

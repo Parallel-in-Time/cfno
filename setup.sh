@@ -26,7 +26,7 @@ if [[ "$SYSTEMNAME" = "juwelsbooster" ]]; then
 elif [[ "$SYSTEMNAME" = "jurecadc" ]]; then 
     echo "*********Using $SYSTEMNAME*********"
     source /p/project1/cexalab/john2/NeuralOperators/no_jureca_env/bin/activate
-    export PYTHONPATH=/p/project1/cexalab/john2/NeuralOperators/no_jureca_env/lib/python*/site-packages:${PYTHONPATH}
+    export PYTHONPATH=/p/project1/cexalab/john2/NeuralOperators/no_jureca_env/lib/python3.11/site-packages:${PYTHONPATH}
 else
     echo "Currently only JURECA-DC and JUWELS Booster are supported"
 fi

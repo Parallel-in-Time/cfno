@@ -56,8 +56,12 @@ parser.add_argument('--run', type=int, default=1,
                         help='training tracking number')
 parser.add_argument('--model', type=str,
                     help=" Torch model state path")
-parser.add_argument('--data_path', type=str,
-                    help='path to data')
+parser.add_argument('--single_data_path', type=str,default=None,
+                        help='path to hdf5 file containing train, val and test data')
+parser.add_argument('--train_data_path', type=str,default=None,
+                    help='path to train data hdf5 file')
+parser.add_argument('--test_data_path', type=str,default=None,
+                    help='path to test data hdf5 file')
 parser.add_argument('--dim', type=str,default="FNO2D",
                     help="FNO2D+recurrent time or FNO3D")
 parser.add_argument('--modes', type=int, default=12,
@@ -322,6 +326,9 @@ def model_inference(args, *argv):
     return np.array(inputs_cpu), np.array(outputs_cpu), np.array(predictions_cpu)
 
 # Config
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using {device}")
+
 modes = args.modes
 width = args.width
 batch_size = args.batch_size

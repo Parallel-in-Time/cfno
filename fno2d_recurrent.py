@@ -313,7 +313,7 @@ def train(args):
     batch_size = 5
     learning_rate = 0.00039
     weight_decay = 1e-05
-    scheduler_step = 10.0
+    scheduler_step = 100.0
     scheduler_gamma = 0.98
     
     gridx = 4*256 # stacking [velx,velz,buoyancy,pressure]
@@ -399,8 +399,9 @@ def train(args):
             fno_path: {fno_path}")
     
     with open(f'{fno_path}/info.txt', 'a') as file:
+    with open(f'{fno_path}/info.txt', 'a') as file:
         file.write("-------------------------------------------------\n")
-        file.write(f"Model Card for FNO-2D with (x,z) and Recurrent in Time\n")
+        file.write(f"Model Card for FNO-2D with (x,y) and Recurrent in Time\n")
         file.write("-------------------------------------------------\n")
         file.write(f"{n_params}\n")
         file.write("-------------------------------------------------\n")
@@ -429,6 +430,7 @@ def train(args):
     if args.load_checkpoint:
         checkpoint = torch.load(args.checkpoint_path)
         model2d.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch']
         start_train_loss = checkpoint['train_loss']
         start_val_loss = checkpoint['val_loss']
@@ -464,9 +466,9 @@ def train(args):
                     else:
                         pred = torch.cat((pred, im), -1)
                         
-                    print(f"{t}: y={y.shape},x={xx.shape},pred={pred.shape}")
+                    # print(f"{t}: y={y.shape},x={xx.shape},pred={pred.shape}")
                     xx = torch.cat((xx[..., tStep:], im), dim=-1)
-                    print(f"{t}: new_xx={xx.shape}")
+                    # print(f"{t}: new_xx={xx.shape}")
 
                 train_l2_step += loss.item()
                 l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
@@ -514,7 +516,6 @@ def train(args):
 
                         xx = torch.cat((xx[..., tStep:], im), dim=-1)
                         
-
                     val_l2_step += loss.item()
                     val_l2_full += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
                     # memory.print("After val first batch")
@@ -528,15 +529,13 @@ def train(args):
             tepoch.set_postfix({ \
                 'Epoch': epoch, \
                 'Time per epoch (s)': (t2-t1), \
-                'Train l2loss step': train_step_error ,\
                 'Train l2loss': train_error,\
-                'Val l2loss step': val_step_error, \
                 'Val l2loss':  val_error 
                 })
             
         tepoch.close()
         
-        if epoch > 0 and epoch % 100 == 0 :
+        if epoch > 0 and (epoch % 100 == 0 or epoch == epochs-1):
             with open(f'{fno_path}/info.txt', 'a') as file:
                     file.write(f"Training loss at {epoch} epoch: {train_error}\n")
                     file.write(f"Validation loss at {epoch} epoch: {val_error}\n")
@@ -548,6 +547,7 @@ def train(args):
                 'train_loss': train_error,
                 'val_loss': val_error,
                 }, f"{checkpoint_path}/model_checkpoint_{epoch}.pt")
+            
         if args.exit_signal_handler:
             signal_handler = get_signal_handler()
             if any(signal_handler.signals_received()):
@@ -611,6 +611,8 @@ if __name__ == '__main__':
                         help='Number of validation samples')
     parser.add_argument('--load_checkpoint', action="store_true",
                         help='load checkpoint')
+    parser.add_argument('--multi_step', action="store_true",
+                        help='take multiple step data')
     parser.add_argument('--checkpoint_path', type=str,
                         help='folder containing checkpoint')
     parser.add_argument('--multi_step', action="store_true",

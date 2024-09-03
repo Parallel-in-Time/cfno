@@ -321,14 +321,14 @@ def train(args):
     tStep = 1
 
     modes = 12
-    width = 32
+    width = 20
 
     epochs = 200
     batch_size = 5
-    learning_rate = 0.001
-    weight_decay = 1e-4
-    scheduler_step = 100.0
-    scheduler_gamma = 0.5
+    learning_rate = 0.00039
+    weight_decay = 1e-05
+    scheduler_step = 10.0
+    scheduler_gamma = 0.98
 
     gridx = 4*256  # stacking [velx,velz,buoyancy,pressure]
     gridy = 64
