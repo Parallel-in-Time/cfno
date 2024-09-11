@@ -6,7 +6,7 @@ This repository contains implementation of [Fourier Neural Operators](https://ar
 ## Requirements
 The code is based on python3 (version 3.11) and the packages required can be installed with
 ```bash
-	python3 -m pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 ```
 
 ## Data
