@@ -1,0 +1,43 @@
+default: &DEFAULT
+run: 1
+dim: 'FNO2D'
+exit_signal_handler: false
+exit_duration_in_mins: None
+resume_from_checkpoint: None
+save_path: '/p/project1/cexalab/john2/NeuralOperators/neural_operators/results/strategy2'
+verbose: True
+
+data:
+  data_path: None
+  train_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/RBC2D_NX256_NZ64_TI81_TF82_Pr1_Ra1_5e7_dt0_001_train.h5'
+  val_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/RBC2D_NX256_NZ64_TI81_TF82_Pr1_Ra1_5e7_dt0_001_val.h5'
+  test_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/RBC2D_NX256_NZ64_TI80_TF83_Pr1_Ra1_5e7_dt0_001_test.h5'
+  train_samples: 100
+  val_sammples: 50
+  test_samples: 50
+  dt: 0.01
+  gridx: 256
+  gridy: 64
+  xStep: 1
+  yStep: 1
+  tStep: 1
+  start_index: 0
+  stop_index: 20
+  timestep: 1
+  batch_size: 5
+
+FNO:
+  modes: 12
+  width: 20
+  T_in: 1
+  T: 1
+  
+opt:
+  epochs: 3000
+  learning_rate: 0.00039
+  weight_decay: 1e-5
+  scheduler_step: 100.0
+  scheduler_gamma: 0.98
+  T_max: 3000 # For cosine only, typically take epochs
+  
+
