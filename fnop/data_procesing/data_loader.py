@@ -86,20 +86,20 @@ class FNODataLoader():
                                             (self.T_in + self.T)*self.tStep: self.tStep],\
                                             dtype=torch.float)
 
-        print(f"input data:{inputs.shape}")
-        print(f"output data: {outputs.shape}")
+        print(f"input data for {task}:{inputs.shape}")
+        print(f"output data for {task}: {outputs.shape}")
         assert (self.gridx_state == outputs.shape[-3])
         assert (self.gridy == outputs.shape[-2])
         assert (self.T ==outputs.shape[-1])
         
         if self.dim == 'FNO3D':
-            input_normalizer = UnitGaussianNormalizer(inputs)
-            inputs = input_normalizer.encode(inputs)
-            output_normalizer = UnitGaussianNormalizer(outputs)
-            outputs = output_normalizer.encode(outputs)
+            # input_normalizer = UnitGaussianNormalizer(inputs)
+            # inputs = input_normalizer.encode(inputs)
+            # output_normalizer = UnitGaussianNormalizer(outputs)
+            # outputs = output_normalizer.encode(outputs)
             
             inputs = inputs.reshape(nsamples, self.gridx_state, self.gridy, 1, self.T_in).repeat([1,1,1,self.T,1])
-            print(f"Input data after reshaping:{inputs.shape}")
+            print(f"Input data after reshaping for {task}:{inputs.shape}")
         
 
         data_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(inputs, outputs), batch_size=self.batch_size, shuffle=shuffle)

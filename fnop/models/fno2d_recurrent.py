@@ -69,7 +69,7 @@ class FNO2D(nn.Module):
         self.w2 = nn.Conv2d(self.width, self.width, 1)
         self.w3 = nn.Conv2d(self.width, self.width, 1)
         self.norm = nn.InstanceNorm2d(self.width)
-        self.q = MLP(self.width, 1, self.width * 4) 
+        self.q = MLP(self.width, 1, self.width * 4, self.n_dim) 
         
         self.memory = CudaMemoryDebugger(print_mem=True)
 

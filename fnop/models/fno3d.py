@@ -58,6 +58,7 @@ class FNO3D(nn.Module):
             self.padding = padding_est
         
         print(f"Padding: {self.padding}")
+        print(f"ndim: {self.n_dim}")
         
         # x = (batchsize, x=sizex, y=size_y, t=T, c=T_in+n_dim)
         # input channel is T_in+n_dim: the solution of the T_in timesteps + n_dim locations 
@@ -75,7 +76,7 @@ class FNO3D(nn.Module):
         self.w1 = nn.Conv3d(self.width, self.width, 1)
         self.w2 = nn.Conv3d(self.width, self.width, 1)
         self.w3 = nn.Conv3d(self.width, self.width, 1)
-        self.q = MLP(self.width, 1, self.width * 4) 
+        self.q = MLP(self.width, 1, self.width * 4, self.n_dim) 
 
         self.memory = CudaMemoryDebugger(print_mem=True)
         

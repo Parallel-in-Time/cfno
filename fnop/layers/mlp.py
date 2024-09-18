@@ -16,11 +16,11 @@ class MLP(nn.Module):
     dropout (float): Default is 0.0, If > 0, dropout probability
         
     """
-    def __init__(self, 
+    def __init__(self,
                  in_channels:int, 
                  out_channels=None, 
                  hidden_channels=None,
-                 n_dim=2,
+                 n_dim:int=2,
                  non_linearity=nn.functional.gelu,
                  dropout=0.0,
                  **kwargs
@@ -39,7 +39,7 @@ class MLP(nn.Module):
         )
         self.n_dim = n_dim
         
-        if n_dim == 2:
+        if self.n_dim == 2:
             # input: [batchsize, in_channel=width, size_x+padding, size_y+padding]
             # weight: [hidden_channels=width, in_channel=width, 1,1]
             # output: [batchsize, out_channel=hidden_channels, size_x+padding, size_y+padding]

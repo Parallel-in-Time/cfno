@@ -92,7 +92,7 @@ def _set_signal_handler():
     global _GLOBAL_SIGNAL_HANDLER
     _ensure_var_is_not_initialized(_GLOBAL_SIGNAL_HANDLER, 'signal handler')
     _GLOBAL_SIGNAL_HANDLER = DistributedSignalHandler().__enter__()
-
+                       
 class CudaMemoryDebugger():
     """
     Helper to track changes in CUDA memory.
