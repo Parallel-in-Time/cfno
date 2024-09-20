@@ -1,7 +1,6 @@
 # Neural Operators for learning of PDEs
 
-This repository contains implementation of [Fourier Neural Operators](https://arxiv.org/abs/2010.08895)
-
+This repository contains implementation of [Fourier Neural Operators](https://arxiv.org/abs/2010.08895).
 
 ## Requirements
 The code is based on python3 (version 3.11) and the packages required can be installed with
@@ -11,18 +10,18 @@ python3 -m pip install -r requirements.txt
 
 ## Data
 
-For 2D Rayleigh Benard Convection (RBC) problem the data is generated using [Dedalus](https://dedalus-project.readthedocs.io/en/latest/pages/examples/ivp_2d_rayleigh_benard.html)
+For 2D Rayleigh Benard Convection (RBC) problem the data is generated using [Dedalus](https://dedalus-project.readthedocs.io/en/latest/pages/examples/ivp_2d_rayleigh_benard.html).
 
-See also the [dedalus](../dedalus/) folder
+See also the [dedalus](./dedalus/) folder.
 
 
 ## Model Training & Inference
 
-[Fourier Neural Operator 2D Spatial + Recurrent in time](./fno2d_recurrent.py) and [Fourier Neural Operator 2D Spatial + 1D time](./fno3d.py) solver for RBC 2D
+[Fourier Neural Operator 2D Spatial + Recurrent in time](./fnop/models/fno2d_recurrent.py) and [Fourier Neural Operator 2D Spatial + 1D time](./fnop/models/fno3d.py) solver for RBC 2D.
 
-Example submission script to train on JUWELS Booster is shown in [submit_juwels.sbatch](./submit_juwels.sbatch.sh)
+Example submission script to train on JUWELS Booster is shown in [submit_juwels.sbatch](./launch_scripts/submit_juwels.sbatch.sh).
 
-Model inference can be done using [inference.py](./inference.py)
+Model inference can be done using [inference.py](./fnop/inference/inference.py), see example submission script [submit_inference.sbatch.sh](./launch_scripts/submit_inference.sbatch.sh).
 
 ## Note
 
