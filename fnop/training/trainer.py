@@ -414,6 +414,3 @@ class Trainer:
         train_time_stop = default_timer()
         print(f'Exiting train()...')
         print(f'Total training+validation time (s): {train_time_stop - train_time_start}')
-            
-            
-    
