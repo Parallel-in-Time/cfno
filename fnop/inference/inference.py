@@ -3,472 +3,355 @@ Perform inference and plot results for 2D Rayleigh Benard Convection
 
 Usage:
     python inference.py 
-        --run=<run_tracker> 
-        --model_checkpoint=<checkpoint> 
-        --train_data_path=<train_data_path> (only when using FNO3D) 
-        --test_data_path=<test_data_path>  
-        --dim=FNO2D or FNO3D 
-        --modes=12 
-        --width=20 
-        --batch_size=50 
-        --rayleigh=1.5e7 
-        --prandtl=1.0
-        --gridx=256 
-        --gridy=64 
-        --train_samples=<train_samples> (only when using FNO3D) 
-        --nTest=<test_samples> 
-        --T_in=<input timesteps 
-        --T=<output_timesteps> 
-        --start_index=<dedalus_start_index> 
-        --stop_index=<dedalus_stop_index> 
-        --timestep=<dedalus_time_slice> 
-        --dedalus_time_index=<absolute_dedalus_time_index>
-        --dt=<dedalus_data_dt>
-        --folder=<results>  
-        --calc_loss
-        
-    optional args:
-        --single_data_path<hdf5 file contains train, val and test data>
-        --plotFile (only to plot without model_inference)
-        --store_result 
+        --config=<config_file>
         
 """
 
 import os
+import sys
+sys.path.insert(1, os.getcwd())
 import h5py
 import argparse
+from configmypy import ConfigPipeline, YamlConfig, ArgparseConfig
 from pathlib import Path
-import numpy as np
-from tqdm import tqdm
 from timeit import default_timer
 import torch
-from fno3d import FNO3d
-from fno2d_recurrent import FNO2d
-from NeuralOperators.neural_operators.fnop.utils import LpLoss
-from inference_plot import cross_section_plots, cross_section_error_plot
-from preprocessing import data_loading, time_extract
-from postprocessing import state_extract, save_inference
+import torch.nn as nn
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+from fnop.utils import CudaMemoryDebugger
+from fnop.data_procesing.data_utils import time_extract, state_extract
+from fnop.models.fno2d_recurrent import FNO2D
+from fnop.models.fno3d import FNO3D
 
-def inference_with_loss(test_loader,loss,model,
-                        gridx:int, gridy:int,
-                        dim:str, batch_size:int=1,
-                        tStep:int=1,T:int=1,
-                        device:str='cpu',y_normalizer=None):
+
+class FNOInference:
     """
-    Perform inference with loss calulations
-
-    Args:
-        test_loader (torch.DataLoader): test dataloader 
-        loss (func): loss function
-        model (torch.nn.Module) : FNO model
-        gridx (int): x grid size
-        gridy (int): y grid size
-        dim (str): FNO2D or FNO3D strategy
-        batch_size (int): inference batch size
-        tStep (int, optional): timestep slicing. Defaults to 1.
-        T (int, optional): number of output timesteps. Defaults to 1.
-        device (str, optional): Defaults to 'cpu'.
-        y_normalizer (func, optional): test data normalizer. Defaults to None.
-
-    Returns:
-        inputs (list): Dedalus input stack [velx, velz, buoyancy, pressure]
-        outputs (list): Dedalus output stack [velx, velz, buoyancy, pressure]
-        predictions (list): FNO output stack [velx, velz, buoyancy, pressure]
+    Inference for fourier neural operator
     """
-   
-    if dim == 'FNO3D':
-        fno3d_loss = 0
-    else:
-        fno2d_full_loss = 0
-        fno2d_step_loss = 0
-        
-    pred = torch.zeros([batch_size, gridx, gridy, T])
-    inputs = []
-    outputs = []
-    predictions = []
-        
-    for step, (xx, yy) in enumerate(tqdm(test_loader)):
-        xx, yy = xx.to(device), yy.to(device)
-        xx_org = xx
-        if dim == 'FNO3D':
-            out = model(xx_org).view(batch_size, gridx, gridy, T)
-            out = y_normalizer.decode(out)
-            fno3d_loss += loss(out.view(1, -1), yy.view(1, -1)).item()
-            pred = out 
-        else:
-            step_loss = 0
-            for t in range(0, T, tStep):
-                y = yy[..., t:t + tStep]   
-                im = model(xx)
-                step_loss += loss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
-                
-                if t == 0:
-                    pred = im
-                else:
-                    pred = torch.cat((pred, im), -1)
-        
-                xx = torch.cat((xx[..., tStep:], im), dim=-1)
+    def __init__(self,
+                 model:nn.Module,
+                 dim: str,
+                 dt:float,
+                 gridx: int,
+                 gridy: int,
+                 T_in: int,
+                 T:int,
+                 xStep:int=1,
+                 yStep:int=1,
+                 tStep:int=1,
+                 batch_size:int=1,
+                 device:str='cpu',
+    ): 
+        """
+
+        Args:
+            model (nn.Module): FNO model
+            dim (str): 'FNO2D' or 'FNO3D'
+            dt (float): delta timestep
+            gridx (int): size of x-grid
+            gridy (int): size of y-grid
+            T_in (int): number of input timesteps
+            T (int): number of output timesteps
+            xStep (int, optional): slicing for x-grid. Defaults to 1.
+            yStep (int, optional): slicing for y-grid. Defaults to 1.
+            tStep (int, optional): time slicing. Defaults to 1.
+            batch_size (int, optional): inference batch size. Defaults to 1.
+            device (str, optional): cpu or cuda
+        """
+        super().__init__()
+        self.model = model
+        self.dim = dim
+        self.dt = dt
+        self.gridx = gridx
+        self.gridx_state = self.gridx*4
+        self.gridy = gridy
+        self.T_in = T_in
+        self.T = T
+        self.xStep = xStep
+        self.yStep = yStep
+        self.tStep = tStep
+        self.batch_size = batch_size
+        self.device = device
+        self.memory = CudaMemoryDebugger(print_mem=True)
+    
+    def inference(self, input_data):
+        """
+        Perform inference
+
+        Args:
+            input_data (torch.tensor): FNO input tensor stack [velx, velz, buoyancy, pressure]
             
-            fno2d_step_loss += step_loss.item()
-            fno2d_full_loss += loss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
-    
-        inputs.append(xx_org)
-        outputs.append(yy)
-        predictions.append(pred)
+        Returns:
+            pred (torch.tensor): FNO output stack [velx, velz, buoyancy, pressure]
+        """
         
-        if step == 0 or step %10 == 0:
-            print(f"Batch:{step} , xx:{xx_org.shape}, yy:{yy.shape}, pred:{pred.shape}")
-            if dim == 'FNO3D':
-                print(f"FNO3D loss: {fno3d_loss/((step+1)*batch_size)}")
+        pred = torch.zeros([self.batch_size, self.gridx_state, self.gridy, self.T])
+        xx = input_data.to(self.device)
+        xx_org = xx
+        self.model.eval()
+        with torch.no_grad():
+            if self.dim == 'FNO3D':
+                pred = self.model(xx_org).view(self.batch_size, self.gridx_state, self.gridy, self.T)
+                # pred = y_normalizer.decode(pred)
             else:
-                print(f"FNO2D step loss: {fno2d_step_loss/((step+1)*batch_size)/ (T/tStep)}")
-                print(f"FNO2D full loss: {fno2d_full_loss/((step+1)*batch_size)}")
-    
-    return inputs, outputs, predictions
-
-def inference_without_loss(model, input_data,
-                          gridx:int, gridy:int,
-                          dim:str,batch_size:int=1,
-                          tStep:int=1,T:int=1,
-                          device:str='cpu'):
-    """
-    Perform inference with loss calulations
-
-    Args:
-        model (torch.nn.Module) : FNO model
-        input_data (torch.tensor): FNO input tensor stack [velx, velz, buoyancy, pressure]
-        gridx (int): x grid size
-        gridy (int): y grid size
-        dim (str): FNO2D or FNO3D strategy
-        batch_size (int): inference batch size
-        tStep (int, optional): timestep slicing. Defaults to 1.
-        T (int, optional): number of output timesteps. Defaults to 1.
-        device (str, optional): Defaults to 'cpu'.
-
-    Returns:
-        xx_org (torch.tensor): Dedalus input stack [velx, velz, buoyancy, pressure]
-        pred (torch.tensor): FNO output stack [velx, velz, buoyancy, pressure]
-    """
-   
-    
-    pred = torch.zeros([batch_size, gridx, gridy, T])
-    xx = input_data.to(device)
-    xx_org = xx
-    if dim == 'FNO3D':
-        out = model(xx_org).view(batch_size, gridx, gridy, T)
-        # out = y_normalizer.decode(out)
-        pred = out 
-    else:
-        for t in range(0, T, tStep):
-            im = model(xx)
-            if t == 0:
-                pred = im
-            else:
-                pred = torch.cat((pred, im), -1)
-    
-            xx = torch.cat((xx[..., tStep:], im), dim=-1)
-    
-
-    return xx_org, pred
-    
-def model_inference(checkpoint:str, test_data_path:str, dim:str, modes:int, width:int,
-                    gridx:int, gridy:int, batch_size:int, nTest:int=1,
-                    xStep:int=1,yStep:int=1,tStep:int=1, index:int=0,
-                    T_in:int=1, T:int=1, calc_loss:bool=False, loss=None,
-                    device:str='cpu',single_data_path:bool=False, **kwargs):
-    """
-    Function to perform FNO model inference
-
-    Args:
-        checkpoint (str): path to FNO model checkpoint
-        test_data_path (str): path to hdf5 test data file.
-        dim (str): FNO2D or FNO3D strategy
-        modes (int): number of fourier modes in the model
-        width (int): number of neurons in the FNO model
-        loss (func): loss function. Defaults to None
-        calc_loss (bool): perform inference with loss
-        gridx (int): x grid size
-        gridy (int): y grid size
-        batch_size (int): inference batch size
-        xStep (int, optional): x-grid slicing. Defaults to 1.
-        yStep (int, optional): y-grid slicing. Defaults to 1.
-        tStep (int, optional): timestep slicing. Defaults to 1.
-        index (int, optional): start index for T_in
-        T_in (int, optional): number of input timesteps. Defaults to 1.
-        T (int, optional): number of output timesteps. Defaults to 1.
-        device (str, optional): Defaults to 'cpu'.
-        nTest (int, optional): number of testing samples. Defaults to 1.
-        single_data_path (bool): hdf5 file contains test and/or train data
+                for t in range(0, self.T, self.tStep):
+                    im = self.model(xx)
+                    if t == 0:
+                        pred = im
+                    else:
+                        pred = torch.cat((pred, im), -1)
+            
+                    xx = torch.cat((xx[..., self.tStep:], im), dim=-1)
+            
+        return pred
         
-        Optional:
-        train_data_path (str): path to hdf5 train data file
-        train_samples (int): number of training samples 
+    def save_inference(self,
+                       save_path:str,
+                       predictions:np.ndarray,
+                       time: list,
+    ):
+        """
+        Save inference result to hdf5 file
 
-    Returns:
-        inputs (np.ndarray): dedalus inputs
-        predictions (np.ndarray): FNO outputs
-        outputs: Dedalus outputs
-    """
+        Args:
+            save_path (str): root path to save inference hdf5 file
+            predictions (np.ndarray): FNO model output
+            time (list): simulation time
+        """
+        for batch in range(predictions.shape[0]):
+            vx, vy, b, p = state_extract(predictions[batch, :, :, :], 
+                                         self.gridx,
+                                         self.gridy,
+                                         self.T)
+        
+            vel = np.stack([vx, vy], axis=0)
+            # print(f'Result:\nVelocity: {vel_pred}\nBuoyancy: {b_pred}\nPressure: {p_pred}')
+            # print(f'vel: {vel_pred.shape}, b: {b_pred.shape}, p: {p_pred.shape}')
+            file = f'{save_path}/inference_s{batch}.h5'
+            v_shape = vel.shape  # [dim, gridx, gridy, time]
+            s_shape = p.shape    # [gridx, gridy, time]
+            with h5py.File(file, "a") as data:
+                data[f'scales/sim_time'] = time
+                data[f'tasks/velocity'] = vel.reshape(v_shape[3], v_shape[0], v_shape[1], v_shape[2])
+                data[f'tasks/buoyancy'] = b.reshape(s_shape[2],s_shape[0], s_shape[1])
+                data[f'tasks/pressure'] = p.reshape(s_shape[2],s_shape[0], s_shape[1])
+                
+    def plot_cross_section(self,
+                        fno_path:str,
+                        predictions: np.ndarray,
+                        output: np.ndarray,
+                        time:list, 
+                        rayleigh:float,
+                        prandtl:float,
+    ):
+        """
+        Plotting cross-sections of velocity, buoyancy and pressure data 
+        on grid with error bars 
+
+        Args:
+            fno_path (str): path to store plots
+            predictions (np.ndarray): FNO model output
+            output (np.ndarray): Dedalus output
+            time (list): list of output simulation times
+            rayleigh (float): Rayleigh Number
+            prandtl (float): Prandtl number 
+            
+
+        """
+        for batch in range(predictions.shape[0]):
+            vx, vy, b, p = state_extract(output[batch, :, :, :], 
+                                         self.gridx,
+                                         self.gridy,
+                                         self.T)
+            vx_pred, vy_pred, b_pred, p_pred = state_extract(predictions[batch, :, :, :], 
+                                                             self.gridx,
+                                                             self.gridy,
+                                                             self.T)
+            for t in range(len(time)):
+                row = 2
+                col = 4
+                xStep = 30
+                yStep = 30
+                x = np.arange(0,self.gridx,xStep)
+                fig, ax = plt.subplots(nrows=row, 
+                                    ncols=col,
+                                    figsize=(16, 12),
+                                    gridspec_kw={
+                                        'width_ratios': [1,1,1,1],
+                                        'height_ratios': [1,0.25],
+                                        'wspace': 0.4,
+                                        'hspace': 0.1})
+                ax1 = ax[0][0]
+                ax2 = ax[0][1]
+                ax3 = ax[0][2]
+                ax4 = ax[0][3]
+                ax5 = ax[1][0]
+                ax6 = ax[1][1]
+                ax7 = ax[1][2]
+                ax8 = ax[1][3]
+        
+                ax1.set_title(fr'Velocity: $u(x)$')
+                ax1.plot(x,vx[::xStep,::yStep,t],color='g',marker ='o',label="ded-vx")
+                ax1.plot(x,vx_pred[::xStep,::yStep,t],color='r',marker ='o',ls='--',label="fno-vx")
+                # ax1.set_ylabel("Y grid")
+                ax1.grid()
+
+                ax2.set_title(fr'Velocity: $u(z)$ ')
+                ax2.plot(x,vy[::xStep,::yStep,t],marker ='o',color='g',label="ded-vy")
+                ax2.plot(x,vy_pred[::xStep,::yStep,t],marker ='o',color='r',linestyle='--',label="fno-vy")
+                # ax2.set_ylabel("Y grid")
+                ax2.grid()
+
+                ax3.set_title(fr'Pressure: $p(x,z)$')
+                ax3.plot(x,p[::xStep,::yStep,t],marker ='o',color='g',label="ded-p")
+                ax3.plot(x,p_pred[::xStep,::yStep,t],marker ='o',color='r',linestyle='--',label="fno-p")
+                # ax3.set_ylabel("Y grid")
+                ax3.grid()
+
+                ax4.set_title(fr'Buoyancy: $b(x,z)$')
+                ax4.plot(x,b[::xStep,::yStep,t],marker ='o',color='g',label="ded-b")
+                ax4.plot(x,b_pred[::xStep,::yStep,t],marker ='o',linestyle='--',color='r',label="fno-b")
+                # ax4.set_ylabel("Y grid")
+                ax4.grid()
+                
+                ax5.errorbar(x, np.average(vx[::xStep,::yStep,t],axis=1), yerr=np.average(np.abs(vx_pred[::xStep,::yStep,t]-vx[::xStep,::yStep,t]), axis=1), marker='o',color='purple',capsize=3, markersize=6,linestyle='none')
+                ax5.set_ylabel(r"$\overline{|vx_{ded}-vx_{fno}|}_{z}$")
+                ax5.set_xlabel("X Grid")
+
+                ax6.errorbar(x, np.average(vy[::xStep,::yStep,t],axis=1), yerr=np.average(np.abs(vy_pred[::xStep,::yStep,t]-vy[::xStep,::yStep,t]), axis=1), marker='o',color='purple',capsize=3, markersize=6,linestyle='none')
+                ax6.set_ylabel(r"$\overline{|vz_{ded}-vz_{fno}|}_{z}$")
+                ax6.set_xlabel("X Grid")
+
+                ax7.errorbar(x, np.average(p[::xStep,::yStep,t],axis=1), yerr=np.average(np.abs(p_pred[::xStep,::yStep,t]-p[::xStep,::yStep,t]), axis=1), marker='o',color='purple',capsize=3, markersize=6,linestyle='none')
+                ax7.set_ylabel(r"$\overline{|p_{ded}-p_{fno}|}_{z}$")
+                ax7.set_xlabel("X Grid")
+
+                ax8.errorbar(x, np.average(b[::xStep,::yStep,t],axis=1), yerr=np.average(np.abs(b_pred[::xStep,::yStep,t]-b[::xStep,::yStep,t]), axis=1), marker='o',color='purple',capsize=3, markersize=6,linestyle='none')
+                ax8.set_ylabel(r"$\overline{|b_{ded}-b_{fno}|}_{z}$")
+                ax8.set_xlabel("X Grid")
+
+                fig.suptitle(f'RBC-2D with {self.gridx}'+r'$\times$'+f'{self.gridy} grid and Ra={rayleigh} and Pr={prandtl} using {self.dim}')  
+                ded_patch = Line2D([0], [0], label=f'Dedalus at t={np.round(time[t],4)}',marker='o', color='g')
+                fno_patch = Line2D([0], [0], label=f'FNO at t={np.round(time[t],4)}',marker='o', linestyle='--', color='r')
+            
+                fig.legend(handles=[ded_patch, fno_patch], loc="upper right")
+                # fig.tight_layout()
+                fig.show()
+                fig.savefig(f"{fno_path}/{self.dim}_NX{self.gridx}_NY{self.gridy}_{np.round(time[t],4)}_{batch}.png")
+        
+def main(config_file:str):
     
-    y_normalizer = None
-    inference_func_start = default_timer()
-    print(f'Entered model_inference() at {inference_func_start}')
+    # Read the configuration 
+    pipe = ConfigPipeline(
+        [
+            YamlConfig(config_file),
+            ArgparseConfig(infer_types=True, config_name=None, config_file=None),
+        ]
+    )
+    config = pipe.read_conf()
+    model_config = config.FNO
+    data_config = config.data
+    inference_config = config.inference
+    gridx_state = 4*data_config.gridx
+    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using {device}")
+    if device == 'cuda':
+        torch.cuda.empty_cache()
+        # memory = CudaMemoryDebugger(print_mem=True)
 
-    # Model
-    if dim == 'FNO3D':
-        model = FNO3d(modes, modes, modes, width, T_in, T).to(device)
+    fno_path = Path(f'{config.save_path}/rbc_{config.dim}_m{model_config.modes}_w{model_config.width}_bs{data_config.batch_size}_dt{data_config.dt}_tin{model_config.T_in}_inference_{device}_run{config.run}')
+    fno_path.mkdir(parents=True, exist_ok=True)
+    
+    if config.dim == 'FNO3D':
+        model = FNO3D(model_config.modes, model_config.modes, 
+                      model_config.modes,model_config.width, 
+                      model_config.T_in, inference_config.output_timesteps
+                      ).to(device)
     else:
-        model = FNO2d(modes, modes, width, T_in, T).to(device)
+        model = FNO2D(model_config.modes, model_config.modes,
+                      model_config.width, model_config.T_in,
+                      inference_config.output_timesteps).to(device)
 
-    model_checkpoint = torch.load(checkpoint, map_location=lambda storage, loc: storage)
+    model_checkpoint = torch.load(inference_config.model_checkpoint, map_location=lambda storage, loc: storage)
     if 'model_state_dict' in model_checkpoint.keys():
         model.load_state_dict(model_checkpoint['model_state_dict'])
     else:
         model.load_state_dict(model_checkpoint)
-    
-    if 'train_samples' in kwargs.keys():
-        train_samples = kwargs['train_samples']
-    if 'train_data_path' in kwargs.keys():
-        train_data_path = kwargs['train_data_path']
         
-    # Inference
+    model_inference = FNOInference(model=model,
+                             dim=config.dim,
+                             dt=data_config.dt,
+                             gridx=data_config.gridx,
+                             gridy=data_config.gridy,
+                             T_in=model_config.T_in,
+                             T=inference_config.output_timesteps,
+                             xStep=data_config.xStep,
+                             yStep=data_config.yStep,
+                             tStep=data_config.tStep,
+                             batch_size=inference_config.test_batch_size,
+                             device=device)
+
+    start_index = inference_config.test_start_index
+    dedalus_index =  inference_config.test_dedalus_index
+    start_index_org =  dedalus_index + start_index
+    time_in, time_out = time_extract(start_index_org, data_config.dt, model_config.T_in, 
+                                        inference_config.output_timesteps, data_config.tStep)
+    print('Starting data loading....')
+    dataloader_time_start = default_timer()
+    test_reader=  h5py.File(inference_config.test_data_path, mode="r")
+    input_data = torch.tensor(test_reader['test'][:inference_config.test_batch_size, ::data_config.xStep, ::data_config.yStep, 
+                                                    start_index: 
+                                                    start_index + (model_config.T_in*data_config.tStep): 
+                                                    data_config.tStep],
+                                dtype=torch.float)
+    print(input_data.shape)
+    if config.dim == 'FNO3D':
+         input_data = input_data.reshape(inference_config.test_batch_size, gridx_state, data_config.gridy, 1, model_config.T_in).repeat([1,1,1,inference_config.output_timesteps,1])
+         
+    outputs = torch.tensor(test_reader['test'][:inference_config.test_batch_size, ::data_config.xStep, ::data_config.yStep, 
+                                                start_index + (model_config.T_in*data_config.tStep): 
+                                                start_index + (model_config.T_in + inference_config.output_timesteps)*data_config.tStep:
+                                                data_config.tStep],
+                            dtype=torch.float)
+        
+    dataloader_time_stop = default_timer()
+    print(f'Total time taken for dataloading (s): {dataloader_time_stop - dataloader_time_start}')
+    
+    # print(f'input: {input_data.shape}, output: {outputs.shape}')
     print('Starting model inference...')
     inference_time_start = default_timer()
-
-    model.eval()
-    with torch.no_grad():
-        if calc_loss:
-            if single_data_path:
-                if dim == 'FNO3D':
-                    test_loader, y_normalizer = data_loading(dim, test_data_path, batch_size, gridx, gridy, xStep, yStep, tStep, T_in, T, nTest, index, single_data_path, train_samples=train_samples)
-                else:
-                    test_loader = data_loading(dim, test_data_path, batch_size, gridx, gridy, xStep, yStep, tStep, T_in, T, nTest, index, single_data_path)
-            else:
-                if dim == 'FNO3D':
-                    test_loader, y_normalizer = data_loading(dim, test_data_path, batch_size, gridx, gridy, xStep, yStep, tStep,T_in, T, nTest, index, single_data_path, train_data_path=train_data_path, train_samples=train_samples)
-                else:
-                    test_loader = data_loading(dim, test_data_path, batch_size, gridx, gridy, xStep, yStep, tStep,T_in, T, nTest, index, single_data_path)
-    
-            inputs, outputs, predictions = inference_with_loss(test_loader, loss, model, 
-                                                               gridx, gridy, dim,
-                                                               batch_size, tStep,  T, 
-                                                               device,y_normalizer)
-        else:
-            test_reader = h5py.File(test_data_path, mode="r")
-            dataloader_time_start = default_timer()
-            input_data = torch.tensor(test_reader['test'][0, ::xStep, ::yStep, index: index + (T_in*tStep): tStep], dtype=torch.float)
-            dataloader_time_stop = default_timer()
-            print(f'Total time taken for dataloading (s): {dataloader_time_stop - dataloader_time_start}')
-            inputs, predictions = inference_without_loss(model, input_data, 
-                                                         gridx, gridy, dim, 
-                                                         batch_size,
-                                                         tStep,T, 
-                                                         device)
-          
-    predictions_cpu = torch.stack(predictions).cpu()
+    predictions = model_inference.inference(input_data)
+    predictions_cpu = predictions.cpu()
     inference_time_stop = default_timer()
-    print(f'Total time taken for model inference for {T} steps of {nTest} samples with batchsize {batch_size} on {device} (s): {inference_time_stop - inference_time_start}')
+    # print(f'Inference shape: {predictions_cpu.shape}')
+    print(f'Total time taken for model inference for {inference_config.output_timesteps} output {time_out} steps \
+            with batchsize {inference_config.test_batch_size} and {model_config.T_in} input {time_in} steps \
+            on {device} (s): {inference_time_stop - inference_time_start}')
     
-    inputs_cpu = torch.stack(inputs).cpu()
-    inference_func_stop = default_timer()
-    print(f'Exiting model_inference()...')
-    print(f'Total time in model_inference() function (s): {inference_func_stop - inference_func_start}')
+    if inference_config.output_error:
+        if config.dim == 'FNO3D':
+            error = nn.functional.mse_loss(predictions_cpu, outputs, reduction='mean').item()
+        else:
+            error = nn.functional.mse_loss(predictions_cpu.reshape(inference_config.test_batch_size, -1), outputs.reshape(inference_config.test_batch_size, -1)).item()
+        print(f'Mean Squared Error of FNO prediction = {error}')
     
-    if calc_loss:
-        outputs_cpu = torch.stack(outputs).cpu()
-        return np.array(inputs_cpu), np.array(outputs_cpu), np.array(predictions_cpu)
-    else:
-        return np.array(inputs_cpu), np.array(predictions_cpu)
-
-def main( folder:str, dim:str, model_checkpoint:str, 
-          modes:int, width:int, batch_size:int, 
-          rayleigh:float, prandtl:float,
-          gridx:int, gridy:int, 
-          start_index:int, stop_index:int,
-          timestep:int, dedalus_time_index:int,dt:int,
-          test_data_path:str, train_data_path:str, single_data_path:str,
-          nTest:int=1, train_samples=None,
-          xStep:int=1, yStep:int=1,tStep:int=1,
-          T_in:int=1, T:int=1,run:int=1,
-          calc_loss:bool=False, plotFile:bool=False, store_result:bool=True,
-          *args,**kwargs):
-    """
-
-    Args:
-        folder (str): root path for storing inference results
-        dim (str): FNO2D or FNO3D strategy
-        model_checkpoint (str): path to model checkpoint
-        modes (int): number of fourier modes
-        width (int): number of neurons in layers
-        batch_size (int): inference batch size 
-        rayleigh (float):Rayleigh number 
-        prandtl (float): Prandtl number 
-        gridx (int): x grid size
-        gridy (int): y grid size
-        start_index (int): start index for input time
-        stop_index (int): stop index for input time
-        timestep (int): interval for input time
-        dedalus_time_index (int): absolutime time index 
-        dt (int): dedalus timestep
-        calc_loss (bool): to calculate inference loss
-        plotFile (bool): to plot crossectional plots from a Hdf5 file
-        store_result (bool): to store inference result to a Hdf5 file 
-        nTest (int, optional): number of inference samples. Defaults to 1.
-        train_samples (int, optional): number of training samples. Defaults to None.
-        xStep (int, optional): x-grid slicing. Defaults to 1.
-        yStep (int, optional): y-grid slicing. Defaults to 1.
-        tStep (int, optional): timestep slicing. Defaults to 1.
-        T_in (int, optional): number of input timesteps. Defaults to 1.
-        T (int, optional): number of output timesteps. Defaults to 1.
-        run (int, optional): run tracker. Defaults to 1.
-        single_data_path (str): path to hdf5 file containing test and/or train data
-        test_data_path (str): path to hdf5 test data file.
-        train_data_path (str): path to hdf5 train data file
-    """
-    
-    # Config
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using {device}")
-
-    # since velx,vely,pressure and buoyacy are stacked
-    gridx_state = 4*gridx
- 
-    fno_path = Path(f'{folder}/rbc_{dim}_N{nTest}_m{modes}_w{width}_bs{batch_size}_dt{dt}_tin{T_in}_inference_{device}_run{run}')
-    fno_path.mkdir(parents=True, exist_ok=True)
-
-    if plotFile:
-        cross_section_plots(plotFile, gridx, gridy, dim, fno_path, rayleigh, prandtl, T_in, T)  
-    else:
-        for iteration, index in enumerate(range(start_index, stop_index, timestep)):
-            start_index_org =  dedalus_time_index + index
-            time_in, time_out = time_extract(start_index_org, dt, T_in, T, tStep)
+    if inference_config.save_inference:
+        model_inference.save_inference(fno_path, np.array(predictions_cpu), time_out)
+         
+    if inference_config.plot_cross_section:
+        model_inference.plot_cross_section(fno_path, np.array(predictions_cpu),
+                                         np.array(outputs), time_out,
+                                         data_config.rayleigh_number,
+                                         data_config.prandtl_number)
             
-            if calc_loss:
-                if single_data_path:
-                    inputs, outputs, predictions = model_inference(model_checkpoint, test_data_path, dim, modes, width,
-                                                                    gridx_state, gridy, batch_size, nTest,
-                                                                    xStep, yStep, tStep, index,
-                                                                    T_in, T, calc_loss, LpLoss(size_average=False),
-                                                                    device, single_data_path, train_samples=train_samples)
-                else:
-                    if dim =='FNO3D':
-                        inputs, outputs, predictions = model_inference(model_checkpoint, test_data_path, dim, modes, width,
-                                                                        gridx_state, gridy, batch_size, nTest,
-                                                                        xStep, yStep, tStep, index,
-                                                                        T_in, T, calc_loss, LpLoss(size_average=False),
-                                                                        device, single_data_path, train_data_path=train_data_path, train_samples=train_samples)
-                    else: 
-                        inputs, outputs, predictions = model_inference(model_checkpoint, test_data_path, dim, modes, width,
-                                                                        gridx_state, gridy, batch_size, nTest,
-                                                                        xStep, yStep, tStep, index,
-                                                                        T_in, T, calc_loss, LpLoss(size_average=False),
-                                                                        device, single_data_path)
-                    
-                print(f"Model Inference: Input{inputs.shape}, Output{outputs.shape}, Prediction{predictions.shape}")
-            else:
-                inputs, predictions = model_inference(model_checkpoint, test_data_path, dim, modes, width,
-                                                      gridx_state, gridy, batch_size, nTest,
-                                                      xStep, yStep, tStep, index,
-                                                      T_in, T, calc_loss, LpLoss(size_average=False),
-                                                      device, single_data_path)
-                print(f"Model Inference: Input{inputs.shape}, Prediction{predictions.shape}")
-            
-            # taking results for a random sample when batchsize > 1
-            batches = predictions.shape[0]
-            batchsize = predictions.shape[1]
-            batch_num = np.random.randint(0,batches)
-            sample = np.random.randint(0,batchsize)
-            
-            if dim == "FNO3D":
-                # since test_a = test_a.reshape(nTest, gridx, gridy, 1, T_in).repeat([1,1,1,T,1])
-                ux, uy, b_in, p_in = state_extract(inputs[batch_num, sample, :, :, 0, :], gridx, gridy, T_in)
-            else:
-                ux, uy, b_in, p_in = state_extract(inputs[batch_num, sample, :, :, :], gridx, gridy, T_in)
-                
-            vx_pred, vy_pred, b_pred, p_pred = state_extract(predictions[batch_num, sample, :, :, :], gridx, gridy,T)
-           
-            print(f"Inference for Batch Number: {batch_num}, Sample: {sample}") 
-            if store_result:
-                if calc_loss:
-                    vx, vy, b_out, p_out = state_extract(outputs[batch_num, sample, :, :, :], gridx, gridy, T)
-                    save_inference(iteration, ux, vx_pred, 
-                                    uy, vy_pred,
-                                    b_in, b_pred, p_in, p_pred, 
-                                    time_in, time_out,f'{fno_path}/inference.h5', calc_loss,
-                                    xStep, yStep, tStep,
-                                    vx, vy, b_out, p_out)
-                    
-                    cross_section_error_plot(vx, vx_pred,
-                                            vy, vy_pred,
-                                            b_out, b_pred,
-                                            p_out, p_pred,
-                                            time_in, time_out, 
-                                            dim, fno_path, 
-                                            gridx, gridy, 
-                                            rayleigh, prandtl)
-                else:
-                    save_inference(iteration, ux, vx_pred, uy, vy_pred,
-                                    b_in, b_pred, p_in, p_pred, 
-                                    time_in, time_out,f'{fno_path}/inference.h5', calc_loss,
-                                    xStep, yStep, tStep)
-            else:
-                print(f'x-vel: {vx_pred} \n y-vel: {vy_pred} \n buoyancy: {b_pred} \n pressure: {p_pred}')
-                    
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='FNO Inference')
-    parser.add_argument('--run', type=int, default=1,
-                            help='training tracking number')
-    parser.add_argument('--model_checkpoint', type=str,
-                        help=" Torch model state path")
-    parser.add_argument('--single_data_path', action='store_true',
-                        help='if hdf5 file contain train, val and test data')
-    parser.add_argument('--train_data_path', type=str,default=None,
-                        help='path to train data hdf5 file')
-    parser.add_argument('--test_data_path', type=str,default=None,
-                        help='path to test data hdf5 file')
-    parser.add_argument('--dim', type=str,default="FNO2D",
-                        help="FNO2D+recurrent time or FNO3D")
-    parser.add_argument('--modes', type=int, default=12,
-                        help="Fourier modes")
-    parser.add_argument('--width', type=int, default=20,
-                        help="Width of layer")
-    parser.add_argument('--batch_size', type=int, default=5,
-                        help="Batch size")
-    parser.add_argument('--rayleigh', type=float, default=1.5e7,
-                        help="Rayleigh Number")
-    parser.add_argument('--prandtl', type=float, default=1.0,
-                        help="Prandtl Number")
-    parser.add_argument('--gridx', type=int, default=256,
-                        help="size of x-grid")
-    parser.add_argument('--gridy', type=int, default=64,
-                        help="size of y-grid")
-    parser.add_argument('--T_in', type=int, default=1,
-                        help='number of input timesteps to FNO')
-    parser.add_argument('--T', type=int, default=1,
-                        help='number of output timesteps to FNO')
-    parser.add_argument('--dedalus_time_index', type=int, 
-                        help='absolute time index for dedalus data')
-    parser.add_argument('--start_index', type=int, 
-                        help='relative time index for dedalus data')
-    parser.add_argument('--stop_index', type=int, 
-                        help='relative time index for dedalus data')
-    parser.add_argument('--timestep', type=int, 
-                        help='slicer for dedalus data')
-    parser.add_argument('--dt', type=float, 
-                        help='dedalus data dt')
-    parser.add_argument('--train_samples', type=int, default=100,
-                        help='Number of training samples')
-    parser.add_argument('--nTest', type=int, default=1,
-                            help='Number of test samples')
-    parser.add_argument('--folder', type=str, default=os.getcwd(),
-                            help='Path to which FNO model inference is saved')
-    parser.add_argument('--plotFile', type=str, default=None,
-                        help='path to inference data file')
-    parser.add_argument('--store_result',action='store_true',
-                        help='store inference result to hdf5 file')
-    parser.add_argument('--calc_loss',action='store_true',
-                        help='calculate inference loss')
+    parser.add_argument('--config_file', type=str,
+                        help='config yaml file')
     args = parser.parse_args()
     
-    main(**args.__dict__)
+    main(args.config_file)

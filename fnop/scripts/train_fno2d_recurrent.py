@@ -43,8 +43,9 @@ def main(config_file:str):
         
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using {device}")
-    torch.cuda.empty_cache()
-    memory = CudaMemoryDebugger(print_mem=True)
+    if device == 'cuda':
+        torch.cuda.empty_cache()
+        memory = CudaMemoryDebugger(print_mem=True)
     
     print('Starting data loading....')
     dataloader_time_start = default_timer()
@@ -52,22 +53,17 @@ def main(config_file:str):
                             gridx= data_config.gridx, gridy=data_config.gridy,
                             dt=data_config.dt, dim=config.dim, xStep=data_config.xStep, yStep=data_config.yStep, 
                             tStep=data_config.tStep, start_index=data_config.start_index, 
-                            stop_index=data_config.stop_index, timestep=data_config.timestep,
                             T_in=model_config.T_in, T=model_config.T
                         )
-    
-    if data_config.data_path is not None:
-        train_reader = val_reader =  h5py.File(data_config.data_path, mode="r")
-    else:  
-        train_reader = h5py.File(data_config.train_data_path, mode="r")
-        val_reader = h5py.File(data_config.val_data_path, mode="r") 
-    
+  
+    train_reader = h5py.File(data_config.train_data_path, mode="r")
+    val_reader = h5py.File(data_config.val_data_path, mode="r") 
     train_loader = loader.data_loader('train', data_config.train_samples, train_reader)
     val_loader = loader.data_loader('val', data_config.val_samples, val_reader)
     dataloader_time_stop = default_timer()
     print(f'Total time taken for dataloading (s): {dataloader_time_stop - dataloader_time_start}')
 
-    fno_path = Path(f'{config.save_path}/rbc_fno2d_time_N{data_config.train_samples}_epoch{opt_config.epochs}_m{model_config.modes}_w{model_config.width}_bs{data_config.batch_size}_dt{data_config.dt}_tin{model_config.T_in}_{device}_run{config.run}')
+    fno_path = Path(f'{config.save_path}/rbc_{config.dim}_N{data_config.train_samples}_epoch{opt_config.epochs}_m{model_config.modes}_w{model_config.width}_bs{data_config.batch_size}_dt{data_config.dt}_tin{model_config.T_in}_{device}_run{config.run}')
     fno_path.mkdir(parents=True, exist_ok=True)
 
     checkpoint_path = Path(f'{fno_path}/checkpoint')
@@ -80,7 +76,9 @@ def main(config_file:str):
     ################################################################
 
     model = FNO2D(model_config.modes, model_config.modes, model_config.width, model_config.T_in, model_config.T).to(device)
-    memory.print("after intialization")
+    
+    if device == 'cuda':
+        memory.print("after intialization")
 
     optimizer = torch.optim.Adam(model.parameters(), lr=opt_config.learning_rate, weight_decay=opt_config.weight_decay)
     # optimizer = torch.optim.AdamW(model.parameters(), lr=opt_config.learning_rate, weight_decay=opt_config.weight_decay)

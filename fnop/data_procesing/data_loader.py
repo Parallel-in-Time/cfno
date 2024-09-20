@@ -18,8 +18,6 @@ class FNODataLoader():
                  yStep:int=1,
                  tStep:int=1,
                  start_index:int=0,
-                 stop_index:int=100,
-                 timestep:int=1,
                  T_in:int=1,
                  T:int=1,
                  **kwargs
@@ -36,16 +34,12 @@ class FNODataLoader():
             yStep (int): slicing for y-grid. Defaults to 1.
             tStep (int): time slice. Defaults to 1.
             start_index (int): time start index. Defaults to 0.
-            stop_index (int): time stop index. Defaults to 100.
-            timestep (int: time interval. Defaults to 1.
             T_in (int):number of input timesteps. Defaults to 1.
             T (int): number of output timesteps. Defaults to 1.
         """
         super().__init__()
         self.batch_size = batch_size
         self.start_index = start_index
-        self.stop_index = stop_index
-        self.timestep = timestep
         self.dim = dim
         self.gridx = gridx
         self.gridy = gridy

@@ -1,1 +1,0 @@
-from neural_operators.fno2d_recurrent import FNO2d
