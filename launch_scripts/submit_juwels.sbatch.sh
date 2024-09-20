@@ -28,4 +28,3 @@ echo "START TIME: $(date)"
 srun python `pwd`/fnop/scripts/train_fno3d.py --config_file /p/project1/cexalab/john2/NeuralOperators/neural_operators/fnop/configs/fno3d.yaml
 
 echo "END TIME: $(date)"
-

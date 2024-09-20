@@ -29,4 +29,3 @@ srun python `pwd`/fnop/scripts/train_fno2d_recurrent.py --config_file `pwd`/fnop
 
 echo "END TIME: $(date)"
 
-
