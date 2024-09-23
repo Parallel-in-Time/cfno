@@ -133,16 +133,16 @@ class FNOInference:
             v_shape = vel.shape  # [dim, gridx, gridy, time]
             s_shape = p.shape    # [gridx, gridy, time]
             with h5py.File(file, "a") as data:
-                data[f'scales/sim_time'] = time
-                data[f'tasks/velocity'] = vel.reshape(v_shape[3], v_shape[0], v_shape[1], v_shape[2])
-                data[f'tasks/buoyancy'] = b.reshape(s_shape[2],s_shape[0], s_shape[1])
-                data[f'tasks/pressure'] = p.reshape(s_shape[2],s_shape[0], s_shape[1])
+                data['scales/sim_time'] = time
+                data['tasks/velocity'] = vel.reshape(v_shape[3], v_shape[0], v_shape[1], v_shape[2])
+                data['tasks/buoyancy'] = b.reshape(s_shape[2],s_shape[0], s_shape[1])
+                data['tasks/pressure'] = p.reshape(s_shape[2],s_shape[0], s_shape[1])
                 
     def plot_cross_section(self,
                         fno_path:str,
                         predictions: np.ndarray,
                         output: np.ndarray,
-                        time:list, 
+                        time:list,
                         rayleigh:float,
                         prandtl:float,
     ):
@@ -243,7 +243,7 @@ class FNOInference:
         
 def main(config_file:str):
     
-    # Read the configuration 
+    # Read the configuration
     pipe = ConfigPipeline(
         [
             YamlConfig(config_file),
@@ -309,7 +309,9 @@ def main(config_file:str):
                                 dtype=torch.float)
     print(input_data.shape)
     if config.dim == 'FNO3D':
-         input_data = input_data.reshape(inference_config.test_batch_size, gridx_state, data_config.gridy, 1, model_config.T_in).repeat([1,1,1,inference_config.output_timesteps,1])
+        input_data = input_data.reshape(inference_config.test_batch_size,
+                                         gridx_state, data_config.gridy, 1,
+                                         model_config.T_in).repeat([1,1,1,inference_config.output_timesteps,1])
          
     outputs = torch.tensor(test_reader['test'][:inference_config.test_batch_size, ::data_config.xStep, ::data_config.yStep, 
                                                 start_index + (model_config.T_in*data_config.tStep): 

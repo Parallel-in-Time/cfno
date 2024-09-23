@@ -4,7 +4,7 @@ import torch
 
 def rbc_data(filename:str,
              time:int,
-             tasks=True, 
+             tasks=True,
              scales=False
 ):
     """
@@ -38,9 +38,9 @@ def rbc_data(filename:str,
         raise ValueError("Nothing to return!")
     return out
 
-def state_extract(result:np.ndarray, 
-                  gridx:int, 
-                  gridy:int, 
+def state_extract(result:np.ndarray,
+                  gridx:int,
+                  gridy:int,
                   t:int
 ):
     """
@@ -62,7 +62,6 @@ def state_extract(result:np.ndarray,
     uy = result[gridx:2*gridx, :gridy, :t]
     b = result[2*gridx:3*gridx, :gridy,:t]
     p = result[3*gridx:, :gridy,:t]
-    
     # print(ux.shape, uy.shape, b.shape, p.shape)
     return ux, uy, b, p
 
@@ -95,17 +94,17 @@ def time_extract(time_index:int,
         time_out.append(j*dt)
     print("Output Time", time_out)
     return time_in, time_out
-    
-def multi_data(reader, 
+
+def multi_data(reader,
                task:str,
                start_time:int,
-               end_time:int, 
+               end_time:int,
                timestep:int,
                samples:int,
                T_in:int=1,
                T:int=1,
-               xStep:int=1, 
-               yStep:int=1, 
+               xStep:int=1,
+               yStep:int=1,
                tStep:int=1
 ):
     """
@@ -132,8 +131,12 @@ def multi_data(reader,
     a = []
     u = []
     for index in range(start_time, end_time, timestep):
-        a.append(torch.tensor(reader[task][:samples, ::xStep, ::yStep, index: index + (T_in*tStep): tStep], dtype=torch.float))
-        u.append(torch.tensor(reader[task][:samples, ::xStep, ::yStep, index + (T_in*tStep): index + (T_in + T)*tStep: tStep], dtype=torch.float))
+        a.append(torch.tensor(reader[task][:samples, ::xStep, ::yStep,
+                                           index: index + (T_in*tStep): tStep],
+                              dtype=torch.float))
+        u.append(torch.tensor(reader[task][:samples, ::xStep, ::yStep,
+                                           index + (T_in*tStep): index + (T_in + T)*tStep: tStep],
+                              dtype=torch.float))
     a = torch.stack(a)
     u = torch.stack(u)
     
@@ -141,3 +144,34 @@ def multi_data(reader,
     u_multi = u.reshape(u.shape[0]*u.shape[1], u.shape[2], u.shape[3], u.shape[4])
     
     return a_multi, u_multi
+
+def data_process(self,data_path=None,
+                 xStep:int=1, zStep:int=1, tStep:int=1,
+                 start_iteration:int=0, end_iteration:int=100):
+    index = 0
+    inputs = []
+    if data_path is not None:
+        filename = f'{data_path}/input_data.h5'
+        with h5py.File(filename, "w") as data:
+            for i,file in enumerate(self.files):
+                total_iterations = self.times(i).shape[0]
+                print(f"index: {i}, file: {file}, total_iterations: {total_iterations}")
+                print(f"Extracting iterations {start_iteration} to {end_iteration}....")
+                for t in range(start_iteration, end_iteration+1, tStep):
+                    vel_t, b_t, p_t = self.rbc_data(file, t, True, False)
+                    inputs.append(np.concatenate((vel_t[0,::xStep,::zStep],
+                                                  vel_t[1,::xStep,::zStep], b_t, p_t), axis = 0))
+                    index = index + 1
+            data['input'] = inputs
+    else:
+        for i,file in enumerate(self.files):
+            total_iterations = self.times(i).shape[0]
+            print(f"index: {i}, file: {file}, total_iterations: {total_iterations}")
+            print(f"Extracting iterations {start_iteration} to {end_iteration}....")
+            for t in range(start_iteration, end_iteration+1, tStep):
+                vel_t, b_t, p_t = self.rbc_data(file, t, True, False)
+                inputs.append(np.concatenate((vel_t[0,::xStep,::zStep],
+                                              vel_t[1,::xStep,::zStep], b_t, p_t), axis = 0))
+                index = index + 1
+
+    return np.array(inputs)
