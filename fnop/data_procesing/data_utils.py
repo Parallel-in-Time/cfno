@@ -175,3 +175,21 @@ def data_process(self,data_path=None,
                 index = index + 1
 
     return np.array(inputs)
+
+def check_subdomain(grid:int, ndomain:int):
+    """
+    Function to check if sub-domain division 
+    is compatible 
+
+    Args:
+        grid (int): 1-D size of grid 
+        ndomain (int): number of subdomains
+
+    Returns:
+        sub_domain: size of sub-domain
+    """
+    if grid % ndomain == 0:
+        sub_domain = grid//ndomain
+        return sub_domain
+    else:
+        raise ValueError(f'{grid} is not divisible by {ndomain}')

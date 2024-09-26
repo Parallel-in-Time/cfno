@@ -18,7 +18,7 @@ from timeit import default_timer
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from fnop.utils import _set_signal_handler, CudaMemoryDebugger
-from fnop.data_procesing.data_loader import FNODataLoader
+from fnop.data_procesing.data_loader import FNODataLoader, FNOSubDomain
 from fnop.models.fno2d_recurrent import FNO2D
 from fnop.losses.data_loss import LpLoss
 from fnop.training.trainer import Trainer
@@ -49,17 +49,31 @@ def main(config_file:str):
     
     print('Starting data loading....')
     dataloader_time_start = default_timer()
-    loader = FNODataLoader( batch_size=data_config.batch_size,
-                            gridx= data_config.gridx, gridy=data_config.gridy,
-                            dt=data_config.dt, dim=config.dim, xStep=data_config.xStep, yStep=data_config.yStep, 
-                            tStep=data_config.tStep, start_index=data_config.start_index, 
-                            T_in=model_config.T_in, T=model_config.T
-                        )
-  
     train_reader = h5py.File(data_config.train_data_path, mode="r")
     val_reader = h5py.File(data_config.val_data_path, mode="r") 
-    train_loader = loader.data_loader('train', data_config.train_samples, train_reader)
-    val_loader = loader.data_loader('val', data_config.val_samples, val_reader)
+    if data_config.subdomain:
+        domain_config = data_config.subdomain_args
+        loader = FNOSubDomain(start_time=domain_config.start_time,
+                              stop_time=domain_config.stop_time,
+                              gridx=data_config.gridx,
+                              gridy=data_config.gridy,
+                              ndomain_x=domain_config.ndomain_x,
+                              ndomain_y=domain_config.ndomain_y,
+                              dt=data_config.dt,dim=config.dim,
+                              tStep=data_config.tStep,T_in=model_config.T_in,
+                              T=model_config.T)
+        train_loader = loader.subdomain_data_loader('train', data_config.train_samples, data_config.batch_size, train_reader)
+        val_loader = loader.subdomain_data_loader('val', data_config.val_samples, data_config.batch_size, val_reader)
+    else:
+        loader = FNODataLoader( batch_size=data_config.batch_size,
+                                gridx= data_config.gridx, gridy=data_config.gridy,
+                                dt=data_config.dt, dim=config.dim, xStep=data_config.xStep, yStep=data_config.yStep, 
+                                tStep=data_config.tStep, start_index=data_config.start_index, 
+                                T_in=model_config.T_in, T=model_config.T
+                            )
+        train_loader = loader.data_loader('train', data_config.train_samples, train_reader)
+        val_loader = loader.data_loader('val', data_config.val_samples, val_reader)
+        
     dataloader_time_stop = default_timer()
     print(f'Total time taken for dataloading (s): {dataloader_time_stop - dataloader_time_start}')
 
@@ -99,7 +113,7 @@ def main(config_file:str):
             file.write("-------------------------------------------------\n")
             file.write(f"Fourier modes:{model_config.modes}\n")
             file.write(f"Layer width:{model_config.width}\n")
-            file.write(f"(nTrain, nVal, nTest): {data_config.train_samples, data_config.val_samples, data_config.test_samples}\n")
+            file.write(f"(nTrain, nVal): {data_config.train_samples, data_config.val_samples}\n")
             file.write(f"Batchsize: {data_config.batch_size}\n")
             file.write(f"Optimizer: {optimizer}\n")
             file.write(f"LR scheduler: {scheduler}\n")
