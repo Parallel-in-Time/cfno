@@ -16,10 +16,11 @@ from configmypy import ConfigPipeline, YamlConfig, ArgparseConfig
 from pathlib import Path
 from timeit import default_timer
 import torch
+import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
-from fnop.utils import _set_signal_handler, CudaMemoryDebugger
+from fnop.utils import _set_signal_handler, CudaMemoryDebugger, activation_selection
 from fnop.data_procesing.data_loader import FNODataLoader, FNOSubDomain
-from fnop.models.fno2d_recurrent import FNO2D
+from fnop.models.fno2d import FNO2D
 from fnop.losses.data_loss import LpLoss
 from fnop.training.trainer import Trainer
 
@@ -53,6 +54,7 @@ def main(config_file:str):
     val_reader = h5py.File(data_config.val_data_path, mode="r") 
     if data_config.subdomain:
         domain_config = data_config.subdomain_args
+        print(f'Splitting data into x {domain_config.ndomain_x} and y {domain_config.ndomain_y} sub-domains')
         loader = FNOSubDomain(start_time=domain_config.start_time,
                               stop_time=domain_config.stop_time,
                               gridx=data_config.gridx,
@@ -69,6 +71,7 @@ def main(config_file:str):
                                 gridx= data_config.gridx, gridy=data_config.gridy,
                                 dt=data_config.dt, dim=config.dim, xStep=data_config.xStep, yStep=data_config.yStep, 
                                 tStep=data_config.tStep, start_index=data_config.start_index, 
+                                stop_index=data_config.stop_index, timestep=data_config.timestep,
                                 T_in=model_config.T_in, T=model_config.T
                             )
         train_loader = loader.data_loader('train', data_config.train_samples, train_reader)
@@ -88,14 +91,27 @@ def main(config_file:str):
     ################################################################
     # training and evaluation
     ################################################################
-
-    model = FNO2D(model_config.modes, model_config.modes, model_config.width, model_config.T_in, model_config.T).to(device)
+    
+    non_linearity = nn.functional.gelu
+    if model_config.non_linearity is not None:
+        non_linearity = activation_selection(model_config.non_linearity)
+        
+    model = FNO2D(model_config.modes, 
+                  model_config.modes, 
+                  model_config.lifting_width,
+                  model_config.width, 
+                  model_config.projection_width,
+                  model_config.n_layers,
+                  model_config.T_in,
+                  model_config.T,
+                  non_linearity,
+            ).to(device)
     
     if device == 'cuda':
         memory.print("after intialization")
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=opt_config.learning_rate, weight_decay=opt_config.weight_decay)
-    # optimizer = torch.optim.AdamW(model.parameters(), lr=opt_config.learning_rate, weight_decay=opt_config.weight_decay)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=opt_config.learning_rate, weight_decay=opt_config.weight_decay)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=opt_config.learning_rate, weight_decay=opt_config.weight_decay)
 
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=opt_config.T_max)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=opt_config.scheduler_step, gamma=opt_config.scheduler_gamma)
@@ -112,9 +128,13 @@ def main(config_file:str):
             file.write(f"FNO config\n")
             file.write("-------------------------------------------------\n")
             file.write(f"Fourier modes:{model_config.modes}\n")
-            file.write(f"Layer width:{model_config.width}\n")
+            file.write(f"FNO Layers:{model_config.n_layers}\n")
+            file.write(f"Lifting width:{model_config.lifting_width}\n")
+            file.write(f"FNO Layer width:{model_config.width}\n")
+            file.write(f"Projection width:{model_config.projection_width}\n")
             file.write(f"(nTrain, nVal): {data_config.train_samples, data_config.val_samples}\n")
             file.write(f"Batchsize: {data_config.batch_size}\n")
+            file.write(f"Non-linearity: {non_linearity}\n")
             file.write(f"Optimizer: {optimizer}\n")
             file.write(f"LR scheduler: {scheduler}\n")
             file.write(f"LR scheduler step: {opt_config.scheduler_step}\n")

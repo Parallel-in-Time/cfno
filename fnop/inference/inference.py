@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from fnop.utils import CudaMemoryDebugger
 from fnop.data_procesing.data_utils import time_extract, state_extract
-from fnop.models.fno2d_recurrent import FNO2D
+from fnop.models.fno2d import FNO2D
 from fnop.models.fno3d import FNO3D
 
 

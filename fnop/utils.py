@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 import signal
 import math
 
@@ -221,3 +222,18 @@ class DistributedSignalHandler:
         self.released = True
         return True
 
+def activation_selection(choice):
+    if choice in ['tanh', 'Tanh']:
+        return F.tanh
+    elif choice in ['relu', 'ReLU']:
+        return F.relu
+    elif choice in ['sigmoid', 'Sigmoid']:
+        return F.sigmoid
+    elif choice in ['celu', 'CeLU']:
+        return F.celu
+    elif choice in ['gelu', 'GeLU']:
+        return F.gelu
+    elif choice in ['mish']:
+        return F.mish
+    else:
+        raise ValueError('Unknown activation function')

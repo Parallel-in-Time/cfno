@@ -7,7 +7,7 @@
 #SBATCH --gres=gpu:1                   
 #SBATCH --ntasks-per-node=1             
 #SBATCH --cpus-per-task=48             
-#SBATCH --time=00:10:00               
+#SBATCH --time=02:00:00               
 #SBATCH --threads-per-core=1            
 #SBATCH --output=%x-%j.out              
 
@@ -24,7 +24,7 @@ cd "$BASE_REPO"/neural_operators
 source setup.sh
 echo "START TIME: $(date)"
 
-srun python `pwd`/fnop/scripts/train_fno2d_recurrent.py --config_file `pwd`/fnop/configs/fno2d_recur.yaml
+srun python `pwd`/fnop/scripts/train_fno2d_recurrent.py --config_file `pwd`/fnop/configs/fno2d.yaml
 # srun python `pwd`/fnop/scripts/train_fno3d.py --config_file `pwd`/fnop/configs/fno3d.yaml
 
 echo "END TIME: $(date)"

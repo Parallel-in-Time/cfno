@@ -2,9 +2,8 @@ import h5py
 import torch
 import glob
 import numpy as np
-from timeit import default_timer
 from fnop.utils import UnitGaussianNormalizer
-from fnop.data_procesing.data_utils import check_subdomain
+from fnop.data_procesing.data_utils import check_subdomain, multi_data
 
 
 class FNODataLoader():
@@ -21,6 +20,8 @@ class FNODataLoader():
                  yStep:int=1,
                  tStep:int=1,
                  start_index:int=0,
+                 stop_index:int=10,
+                 timestep:int=1,
                  T_in:int=1,
                  T:int=1,
                  **kwargs
@@ -37,12 +38,16 @@ class FNODataLoader():
             yStep (int): slicing for y-grid. Defaults to 1.
             tStep (int): time slice. Defaults to 1.
             start_index (int): time start index. Defaults to 0.
+            stop_index (int): time stop index. Defaults to 10.
+            timestep (int): time interval. Defaults to 1.
             T_in (int):number of input timesteps. Defaults to 1.
             T (int): number of output timesteps. Defaults to 1.
         """
         super().__init__()
         self.batch_size = batch_size
         self.start_index = start_index
+        self.stop_index = stop_index
+        self.timestep = timestep
         self.dim = dim
         self.gridx = gridx
         self.gridy = gridy
@@ -74,15 +79,27 @@ class FNODataLoader():
         else:
             shuffle = False
             
-        inputs = torch.tensor(reader[task][:nsamples, ::self.xStep, ::self.yStep, \
-                                           self.start_index: self.start_index + (self.T_in*self.tStep): self.tStep], \
-                                           dtype=torch.float)
+        # inputs = torch.tensor(reader[task][:nsamples, ::self.xStep, ::self.yStep, \
+        #                                    self.start_index: self.start_index + (self.T_in*self.tStep): self.tStep], \
+        #                                    dtype=torch.float)
         
-        outputs = torch.tensor(reader[task][:nsamples, ::self.xStep, ::self.yStep, \
-                                            self.start_index + (self.T_in*self.tStep): self.start_index + \
-                                            (self.T_in + self.T)*self.tStep: self.tStep],\
-                                            dtype=torch.float)
+        # outputs = torch.tensor(reader[task][:nsamples, ::self.xStep, ::self.yStep, \
+        #                                     self.start_index + (self.T_in*self.tStep): self.start_index + \
+        #                                     (self.T_in + self.T)*self.tStep: self.tStep],\
+        #                                     dtype=torch.float)
 
+        inputs, outputs = multi_data(reader=reader,
+                                     task=task,
+                                     start_index=self.start_index,
+                                     stop_index=self.stop_index,
+                                     timestep=self.timestep,
+                                     samples=nsamples,
+                                     T_in=self.T_in,
+                                     T=self.T,
+                                     xStep=self.xStep,
+                                     yStep=self.yStep,
+                                     tStep=self.tStep
+                                     )
         print(f"input data for {task}:{inputs.shape}")
         print(f"output data for {task}: {outputs.shape}")
         assert (self.gridx_state == outputs.shape[-3])
@@ -98,7 +115,7 @@ class FNODataLoader():
             inputs = inputs.reshape(nsamples, self.gridx_state, self.gridy, 1, self.T_in).repeat([1,1,1,self.T,1])
             print(f"Input data after reshaping for {task}:{inputs.shape}")
         
-
+        print(f'Total {task} data: {inputs.shape[0]}')
         data_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(inputs, outputs), batch_size=self.batch_size, shuffle=shuffle)
         
         return data_loader
@@ -257,7 +274,7 @@ class FNOSubDomain():
         u = []
         timestep = self.tStep
         ntimes = reader[task].shape[0]
-        for index in range(0, ntimes-self.T, timestep):
+        for index in range(0, ntimes-(self.T_in + self.T)*self.tStep, timestep):
             a.append(torch.tensor(reader[task][index: index + (self.T_in*self.tStep): self.tStep,
                                          :nsamples, :,:], \
                                          dtype=torch.float))
@@ -287,7 +304,7 @@ class FNOSubDomain():
             inputs = inputs.reshape(inputs.shape[0], 4*self.subdomain_x, self.subdomain_y, 1, self.T_in).repeat([1,1,1,self.T,1])
             print(f"Input data after reshaping for {task}:{inputs.shape}")
         
-
+        print(f'Total {task} data: {inputs.shape[0]}')
         data_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(inputs, outputs), batch_size=batch_size, shuffle=shuffle)
         
         return data_loader

@@ -97,8 +97,8 @@ def time_extract(time_index:int,
 
 def multi_data(reader,
                task:str,
-               start_time:int,
-               end_time:int,
+               start_index:int,
+               stop_index:int,
                timestep:int,
                samples:int,
                T_in:int=1,
@@ -113,8 +113,8 @@ def multi_data(reader,
     Args:
         reader : hdf5 reader
         task (str): 'train', 'val' or 'test'
-        start_time (int): start time index
-        end_time (int): end time index
+        start_index (int): start time index
+        stop_index (int): stop time index
         timestep (int): time interval 
         samples (int): number of simulations
         T_in (int, optional): number of input timesteps. Defaults to 1.
@@ -130,7 +130,7 @@ def multi_data(reader,
     """
     a = []
     u = []
-    for index in range(start_time, end_time, timestep):
+    for index in range(start_index, stop_index-(T_in + T)*tStep, timestep):
         a.append(torch.tensor(reader[task][:samples, ::xStep, ::yStep,
                                            index: index + (T_in*tStep): tStep],
                               dtype=torch.float))
