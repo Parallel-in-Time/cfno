@@ -4,26 +4,32 @@ dim: 'FNO3D'
 exit_signal_handler: True
 exit_duration_in_mins: None
 resume_from_checkpoint: None
-save_path: '/p/project1/cexalab/john2/NeuralOperators/neural_operators/results/strategy3'
+save_path: '/p/project1/cexalab/john2/NeuralOperators/neural_operators/results/strategy4'
 verbose: True
 
 data:
-  train_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1.h5'
-  val_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1.h5'
-  train_samples: 10
-  val_samples: 5
+  train_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/RBC2D_NX4_64_NZ1_64_TI50_TF100_Pr1_Ra1e7_dt0_1.h5'
+  val_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/RBC2D_NX4_64_NZ1_64_TI50_TF100_Pr1_Ra1e7_dt0_1.h5'
+  train_samples: 40
+  val_samples: 20
   dt: 0.1
   gridx: 256
   gridy: 64
   xStep: 1
   yStep: 1
   tStep: 1
-  start_index: 0
-  stop_index: 2
+  start_index: 500
+  stop_index: 1000
   timestep: 1
-  batch_size: 1
-  rayleigh_number: 1.5e7
+  batch_size: 40
+  rayleigh_number: 1e7
   prandtl_number: 1
+  subdomain: True
+  subdomain_args: 
+    start_time: 50.0
+    stop_time: 100.0
+    ndomain_x: 4
+    ndomain_y: 1
 
 FNO:
   modes: 12
