@@ -6,12 +6,11 @@ from fnop.utils import UnitGaussianNormalizer
 from fnop.data_procesing.data_utils import check_subdomain, multi_data
 
 
-class FNODataLoader():
+class FNOData():
     """
-    Train and validation data loader 
+    Processing Dedalus data
     """
     def __init__(self,
-                 batch_size:int,
                  gridx:int,
                  gridy:int,
                  dt:float,
@@ -29,7 +28,6 @@ class FNODataLoader():
         """
 
         Args:
-            batch_size (int): batch size 
             gridx (int): size of gridx
             gridy (int): size of gridy
             dt (float): delta timestep 
@@ -44,7 +42,6 @@ class FNODataLoader():
             T (int): number of output timesteps. Defaults to 1.
         """
         super().__init__()
-        self.batch_size = batch_size
         self.start_index = start_index
         self.stop_index = stop_index
         self.timestep = timestep
@@ -60,46 +57,46 @@ class FNODataLoader():
         
         self.gridx_state = 4*self.gridx  # stacking [velx,velz,buoyancy,pressure]
   
-           
-    def data_loader(self, task:str, nsamples:int, reader):
+    def data_loader(self, task:str, nsamples:int, reader, multistep:bool=True):
         """
-        Data loader for FNO model
+        Data for FNO model
 
         Args:
             task (str): 'train', or 'val' or 'test
             nsamples (int): number of simulation samples
             reader: hdf5 file reader
+            multistep (bool): load multiple time index data. Defaults to True.
 
         Returns:
-            data_loader (torch.utils.data.DataLoader()): data loader 
+            inputs (torch.tensor): input for FNO
+            outputs (torch.tensor): output for FNO
             
         """
-        if task == 'train':
-            shuffle = True
+      
+      
+        print(f'{task} data: {reader[task].shape}')
+        if multistep:
+            inputs, outputs = multi_data(reader=reader,
+                                        task=task,
+                                        start_index=self.start_index,
+                                        stop_index=self.stop_index,
+                                        timestep=self.timestep,
+                                        samples=nsamples,
+                                        T_in=self.T_in,
+                                        T=self.T,
+                                        xStep=self.xStep,
+                                        yStep=self.yStep,
+                                        tStep=self.tStep
+                                        )
         else:
-            shuffle = False
+            inputs = torch.tensor(reader[task][:nsamples, ::self.xStep, ::self.yStep, \
+                                            self.start_index: self.start_index + (self.T_in*self.tStep): self.tStep], \
+                                            dtype=torch.float)
             
-        # inputs = torch.tensor(reader[task][:nsamples, ::self.xStep, ::self.yStep, \
-        #                                    self.start_index: self.start_index + (self.T_in*self.tStep): self.tStep], \
-        #                                    dtype=torch.float)
-        
-        # outputs = torch.tensor(reader[task][:nsamples, ::self.xStep, ::self.yStep, \
-        #                                     self.start_index + (self.T_in*self.tStep): self.start_index + \
-        #                                     (self.T_in + self.T)*self.tStep: self.tStep],\
-        #                                     dtype=torch.float)
-
-        inputs, outputs = multi_data(reader=reader,
-                                     task=task,
-                                     start_index=self.start_index,
-                                     stop_index=self.stop_index,
-                                     timestep=self.timestep,
-                                     samples=nsamples,
-                                     T_in=self.T_in,
-                                     T=self.T,
-                                     xStep=self.xStep,
-                                     yStep=self.yStep,
-                                     tStep=self.tStep
-                                     )
+            outputs = torch.tensor(reader[task][:nsamples, ::self.xStep, ::self.yStep, \
+                                                self.start_index + (self.T_in*self.tStep): self.start_index + \
+                                                (self.T_in + self.T)*self.tStep: self.tStep],\
+                                                dtype=torch.float)
         print(f"input data for {task}:{inputs.shape}")
         print(f"output data for {task}: {outputs.shape}")
         assert (self.gridx_state == outputs.shape[-3])
@@ -116,12 +113,9 @@ class FNODataLoader():
             print(f"Input data after reshaping for {task}:{inputs.shape}")
         
         print(f'Total {task} data: {inputs.shape[0]}')
-        data_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(inputs, outputs), batch_size=self.batch_size, shuffle=shuffle)
+        return inputs, outputs
         
-        return data_loader
-
-
-class FNOSubDomain():
+class FNOSubDomainData():
     """
     Processing Dedalus data into sub-domain
     """
@@ -171,10 +165,7 @@ class FNOSubDomain():
         self.start_time_index = int(self.start_time/self.dt)
         self.stop_time_index = int(self.stop_time/self.dt)
     
-    def input_loader(self,
-                     root_path:str,
-                     samples:int,
-    ):
+    def input_loader(self,root_path:str,samples:int):
         """
         Load data from dedalus file into FNO input format
 
@@ -201,6 +192,7 @@ class FNOSubDomain():
                 buoyancy = data['tasks/buoyancy']
                 pressure = data['tasks/pressure']
                 state.append(np.stack([vel_x, vel_y, buoyancy, pressure], axis=0))
+                data.close()
             time.append(sim_time)
         input_state = np.array(state)
         state_dim = input_state.shape
@@ -248,41 +240,51 @@ class FNOSubDomain():
 
         dim_y = np.array(task_y).shape  
         # [time, ndomain_y, samples, ndomain_x, 4, subdomain_x, subdomain_y]
+        print(f'Sudomain with states: {dim_y[-3]} samples: {dim_y[2]} timesteps: {dim_y[0]} ndomainx: {dim_y[3]} ndomainy: {dim_y[1]} subdomain_x: {dim_y[-2]} subdomain_y: {dim_y[-1]}')
         state = np.array(task_y).reshape(dim_y[0], dim_y[2]*dim_y[1]*dim_y[3], dim_y[4]*dim_y[5], dim_y[6]) 
         # [time, ndomain_y*ndomain_x*samples, 4*subdomain_x, subdomain_y]
         return state
     
-    def subdomain_data_loader(self, task:str, nsamples:int, batch_size:int, reader):
+    def subdomain_data_loader(self, task:str, nsamples:int, reader, multistep:bool=True):
         """
-        Sub-domain data loader for FNO model
+        Sub-domain data for FNO model
 
         Args:
             task (str): 'train', or 'val' or 'test
             nsamples (int): number of simulation samples
-            batch_size (int): batch size 
             reader: hdf5 file reader
+            multistep (bool): load multiple time index data. Defaults to True.
 
         Returns:
-            data_loader (torch.utils.data.DataLoader()): data loader 
+            inputs (torch.tensor): input for FNO
+            outputs (torch.tensor): output for FNO 
             
         """
-        if task == 'train':
-            shuffle = True
-        else:
-            shuffle = False
+        print(f'{task} data: {reader[task].shape}')
         a = []
         u = []
         timestep = self.tStep
-        ntimes = reader[task].shape[0]
-        for index in range(0, ntimes-(self.T_in + self.T)*self.tStep, timestep):
-            a.append(torch.tensor(reader[task][index: index + (self.T_in*self.tStep): self.tStep,
-                                         :nsamples, :,:], \
-                                         dtype=torch.float))
-            
-            u.append(torch.tensor(reader[task][index + (self.T_in*self.tStep): index + \
-                                         (self.T_in + self.T)*self.tStep: self.tStep,\
-                                         :nsamples, :,:], \
-                                         dtype=torch.float))
+        if multistep:
+            ntimes = reader[task].shape[0]
+            for index in range(0, ntimes-(self.T_in + self.T)*self.tStep, timestep):
+                a.append(torch.tensor(reader[task][index: index + (self.T_in*self.tStep): self.tStep,
+                                            :nsamples, :,:], \
+                                            dtype=torch.float))
+                
+                u.append(torch.tensor(reader[task][index + (self.T_in*self.tStep): index + \
+                                            (self.T_in + self.T)*self.tStep: self.tStep,\
+                                            :nsamples, :,:], \
+                                            dtype=torch.float))
+        else:
+            start_index = 0
+            a.append(torch.tensor(reader[task][start_index : start_index + (self.T_in*self.tStep): self.tStep,
+                                            :nsamples, :,:], \
+                                            dtype=torch.float))
+                
+            u.append(torch.tensor(reader[task][start_index + (self.T_in*self.tStep): start_index + \
+                                            (self.T_in + self.T)*self.tStep: self.tStep,\
+                                            :nsamples, :,:], \
+                                            dtype=torch.float))
         a = torch.as_tensor(np.array(a))
         u = torch.as_tensor(np.array(u))
         print(f"input data for {task} (before reshape):{a.shape}")
@@ -305,6 +307,4 @@ class FNOSubDomain():
             print(f"Input data after reshaping for {task}:{inputs.shape}")
         
         print(f'Total {task} data: {inputs.shape[0]}')
-        data_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(inputs, outputs), batch_size=batch_size, shuffle=shuffle)
-        
-        return data_loader
+        return inputs, outputs

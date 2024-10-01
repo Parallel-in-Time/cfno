@@ -1,48 +1,53 @@
 default: &DEFAULT
-run: 3
+run: 1
 dim: 'FNO2D'
 exit_signal_handler: True
 exit_duration_in_mins: None
 resume_from_checkpoint: None
-save_path: '/p/project1/cexalab/john2/NeuralOperators/neural_operators/results/strategy2'
+save_path: '/p/project1/cexalab/john2/NeuralOperators/neural_operators/results/strategy4'
 verbose: True
 
 data:
-  train_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1.h5'
-  val_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1.h5'
-  train_samples: 10  # ndomain_x * ndomain_y * simulation_runs 
-  val_samples: 5   # ndomain_x * ndomain_y * simulation_runs
+  subdomain_process: True
+  subdomain_args: 
+    start_time: 55.0
+    stop_time: 57.2
+    ndomain_x: 4
+    ndomain_y: 1
+    train_root_path: '/p/scratch/cexalab/john2/RBC2D_data_dt1e_1/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1_train'
+    val_root_path: '/p/scratch/cexalab/john2/RBC2D_data_dt1e_1/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1_val'
+    subdomain_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/dt1e_1/RBC2D_NX4_256_NZ1_64_TI55_TF157_2_Pr1_Ra1e7_dt0_1.h5'
+  train_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/dt1e_1/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1.h5'
+  val_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/dt1e_1/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1.h5'
+  train_samples: 50                 
+  val_samples: 25                   
+  multistep : True
+  processed_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/dt1e_1/RBC2D_NX4_256_NZ1_64_TI55_TF157_2_Pr1_Ra1e7_dt0_1_multi.h5'
   dt: 0.1
   gridx: 256
   gridy: 64
   xStep: 1
   yStep: 1
   tStep: 1
-  start_index: 500
-  stop_index: 510
+  start_index: 550
+  stop_index: 572
   timestep: 1
   batch_size: 32
   rayleigh_number: 1e7
   prandtl_number: 1
-  subdomain: False
-  subdomain_args: 
-    start_time: 50.0
-    stop_time: 100.0
-    ndomain_x: 4
-    ndomain_y: 1
-
+  
 FNO:
   modes: 12
-  lifting_width: 32
-  width: 64
-  projection_width: 32
+  lifting_width: 128
+  width: 256
+  projection_width: 128
   n_layers: 4
   T_in: 1
   T: 1
   non_linearity: 'ReLU'
   
 opt:
-  epochs: 5
+  epochs: 50
   learning_rate: 0.00039
   weight_decay: 1e-5
   scheduler_step: 100.0

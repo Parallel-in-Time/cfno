@@ -146,9 +146,9 @@ class FNO2D(nn.Module):
             # [batchsize, size_x, size_y, c=T_in] ---> [batchsize, size_x, size_y, c=T_in+n_dim ]
             
         # x = x.permute(0, 3, 1, 2)  
-        print(f'x before p(x): {x.shape}')
+        # print(f'x before p(x): {x.shape}')
         x = self.p(x)
-        print(f'x after p(x): {x.shape}')
+        # print(f'x after p(x): {x.shape}')
         x = x.permute(0, 3, 1, 2)  
         # [batchsize, size_x, size_y, c=width] ---> [batchsize, width, size_x, size_y]
         
@@ -207,8 +207,11 @@ class FNO2D(nn.Module):
             properties.append([list(param.size()+(2,) if param.is_complex() else param.size()), param.numel(), (param.data.element_size() * param.numel())/1000])
             
         elementFrame = pd.DataFrame(properties, columns = ['ParamSize', 'NParams', 'Memory(KB)'])
- 
-        print(f'Total number of model parameters: {elementFrame["NParams"].sum()} with (~{format_tensor_size(elementFrame["Memory(KB)"].sum()*1000)})')
+        total_param = elementFrame["NParams"].sum()
+        total_mem = elementFrame["Memory(KB)"].sum()
+        totals = pd.DataFrame(data=[[0, total_param, total_mem]], columns=['ParamSize', 'NParams', 'Memory(KB)'])
+        elementFrame = pd.concat([elementFrame,totals], ignore_index=True, sort=False)
+        print(f'Total number of model parameters: {total_param} with (~{format_tensor_size(total_mem*1000)})')
         return elementFrame
 
 
