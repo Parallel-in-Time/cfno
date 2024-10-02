@@ -24,7 +24,7 @@ from fnop.utils import CudaMemoryDebugger
 from fnop.data_procesing.data_utils import time_extract, state_extract
 from fnop.models.fno2d import FNO2D
 from fnop.models.fno3d import FNO3D
-
+from fnop.utils import activation_selection
 
 class FNOInference:
     """
@@ -262,8 +262,11 @@ def main(config_file:str):
         torch.cuda.empty_cache()
         # memory = CudaMemoryDebugger(print_mem=True)
 
-    fno_path = Path(f'{config.save_path}/rbc_{config.dim}_m{model_config.modes}_w{model_config.width}_bs{data_config.batch_size}_dt{data_config.dt}_tin{model_config.T_in}_inference_{device}_run{config.run}')
+    fno_path = Path(f'{inference_config.inference_save_path}/rbc_{config.dim}_m{model_config.modes}_w{model_config.width}_bs{data_config.batch_size}_dt{data_config.dt}_tin{model_config.T_in}_tout{inference_config.output_timesteps}_inference_{device}_run{config.run}')
     fno_path.mkdir(parents=True, exist_ok=True)
+    non_linearity = nn.functional.gelu
+    if model_config.non_linearity is not None:
+        non_linearity = activation_selection(model_config.non_linearity)
     
     if config.dim == 'FNO3D':
         model = FNO3D(model_config.modes, model_config.modes, 
@@ -271,9 +274,16 @@ def main(config_file:str):
                       model_config.T_in, inference_config.output_timesteps
                       ).to(device)
     else:
-        model = FNO2D(model_config.modes, model_config.modes,
-                      model_config.width, model_config.T_in,
-                      inference_config.output_timesteps).to(device)
+        model = FNO2D(model_config.modes, 
+                  model_config.modes, 
+                  model_config.lifting_width,
+                  model_config.width, 
+                  model_config.projection_width,
+                  model_config.n_layers,
+                  model_config.T_in,
+                  inference_config.output_timesteps,
+                  non_linearity,
+                ).to(device)
 
     model_checkpoint = torch.load(inference_config.model_checkpoint, map_location=lambda storage, loc: storage)
     if 'model_state_dict' in model_checkpoint.keys():
@@ -329,9 +339,7 @@ def main(config_file:str):
     predictions_cpu = predictions.cpu()
     inference_time_stop = default_timer()
     # print(f'Inference shape: {predictions_cpu.shape}')
-    print(f'Total time taken for model inference for {inference_config.output_timesteps} output {time_out} steps \
-            with batchsize {inference_config.test_batch_size} and {model_config.T_in} input {time_in} steps \
-            on {device} (s): {inference_time_stop - inference_time_start}')
+    print(f'Total time taken for model inference for {inference_config.output_timesteps} output {time_out} steps\nwith batchsize {inference_config.test_batch_size} and {model_config.T_in} input {time_in} steps\non {device} (s): {inference_time_stop - inference_time_start}')
     
     if inference_config.output_error:
         if config.dim == 'FNO3D':

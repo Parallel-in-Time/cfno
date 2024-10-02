@@ -15,11 +15,11 @@ class FNOData():
                  gridy:int,
                  dt:float,
                  dim:str,
+                 start_time:float,
+                 stop_time:float,
                  xStep:int=1,
                  yStep:int=1,
                  tStep:int=1,
-                 start_index:int=0,
-                 stop_index:int=10,
                  timestep:int=1,
                  T_in:int=1,
                  T:int=1,
@@ -32,19 +32,16 @@ class FNOData():
             gridy (int): size of gridy
             dt (float): delta timestep 
             dim (str): FNO2D or FNO3D strategy
+            start_time (float): start time
+            stop_time (float): stop time
             xStep (int): slicing for x-grid. Defaults to 1.
             yStep (int): slicing for y-grid. Defaults to 1.
             tStep (int): time slice. Defaults to 1.
-            start_index (int): time start index. Defaults to 0.
-            stop_index (int): time stop index. Defaults to 10.
             timestep (int): time interval. Defaults to 1.
             T_in (int):number of input timesteps. Defaults to 1.
             T (int): number of output timesteps. Defaults to 1.
         """
         super().__init__()
-        self.start_index = start_index
-        self.stop_index = stop_index
-        self.timestep = timestep
         self.dim = dim
         self.gridx = gridx
         self.gridy = gridy
@@ -54,6 +51,11 @@ class FNOData():
         self.tStep = tStep
         self.T_in = T_in
         self.T = T
+        self.start_time = start_time
+        self.stop_time = stop_time
+        self.timestep = timestep
+        self.start_time_index = int(self.start_time/self.dt)
+        self.stop_time_index = int(self.stop_time/self.dt)
         
         self.gridx_state = 4*self.gridx  # stacking [velx,velz,buoyancy,pressure]
   
@@ -78,8 +80,8 @@ class FNOData():
         if multistep:
             inputs, outputs = multi_data(reader=reader,
                                         task=task,
-                                        start_index=self.start_index,
-                                        stop_index=self.stop_index,
+                                        start_index=self.start_time_index,
+                                        stop_index=self.stop_time_index,
                                         timestep=self.timestep,
                                         samples=nsamples,
                                         T_in=self.T_in,
@@ -90,11 +92,11 @@ class FNOData():
                                         )
         else:
             inputs = torch.tensor(reader[task][:nsamples, ::self.xStep, ::self.yStep, \
-                                            self.start_index: self.start_index + (self.T_in*self.tStep): self.tStep], \
+                                            self.start_time_index: self.start_time_index + (self.T_in*self.tStep): self.tStep], \
                                             dtype=torch.float)
             
             outputs = torch.tensor(reader[task][:nsamples, ::self.xStep, ::self.yStep, \
-                                                self.start_index + (self.T_in*self.tStep): self.start_index + \
+                                                self.start_time_index + (self.T_in*self.tStep): self.start_time_index + \
                                                 (self.T_in + self.T)*self.tStep: self.tStep],\
                                                 dtype=torch.float)
         print(f"input data for {task}:{inputs.shape}")
@@ -183,8 +185,9 @@ class FNOSubDomainData():
             file_dir = f'{root_path}_{i+1}'
             files = glob.glob(f'{file_dir}/*.h5')
             sim_time = []
-            for f in files:
+            for index,f in enumerate(files):
                 data =  h5py.File(f, mode='r')
+                print(f'Processing {index}: {f}')
                 sim_time.append(data['scales/sim_time'][self.start_time_index:self.stop_time_index ])
                 vel_x = data['tasks/velocity'][:,0,:,:]
                 vel_y = data['tasks/velocity'][:,1,:,:]

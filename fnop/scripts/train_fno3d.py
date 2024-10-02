@@ -3,7 +3,7 @@ Train a FNO3D model to map solution at T_in timesteps to next T timesteps
     
 Usage:
     python fno3d.py 
-     --config=<config_file>
+     --config_file=<config_file>
     
 """
 
@@ -63,7 +63,7 @@ def main(config_file:str):
     dataloader_time_stop = default_timer()
     print(f'Total time taken for dataloading (s): {dataloader_time_stop - dataloader_time_start}')
 
-    fno_path = Path(f'{config.save_path}/rbc_{config.dim}_N{data_config.train_samples}_epoch{opt_config.epochs}_m{model_config.modes}_w{model_config.width}_bs{data_config.batch_size}_dt{data_config.dt}_tin{model_config.T_in}_{device}_run{config.run}')
+    fno_path = Path(f'{config.save_path}/rbc_{config.dim}_N{data_config.train_samples}_m{model_config.modes}_w{model_config.width}_bs{data_config.batch_size}_dt{data_config.dt}_tin{model_config.T_in}_{device}_run{config.run}')
     fno_path.mkdir(parents=True, exist_ok=True)
     
     checkpoint_path = Path(f'{fno_path}/checkpoint')

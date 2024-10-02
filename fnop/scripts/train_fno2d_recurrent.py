@@ -4,7 +4,7 @@ Train a FNO2D model to map solution at previous T_in timesteps
     
 Usage:
     python fno2d_recurrent.py 
-        --config=<config_file>
+        --config_file=<config_file>
                  
 """
 import os
@@ -49,7 +49,7 @@ def main(config_file:str):
     
     print('Starting data loading....')
     dataloader_time_start = default_timer()
-    reader = h5py.File(data_config.processed_data_path, mode="r")
+    reader = h5py.File(data_config.multistep_data_path, mode="r")
     train_input = torch.as_tensor(reader['train_inputs'][()])
     train_output = torch.as_tensor(reader['train_outputs'][()])
     val_input = torch.as_tensor(reader['val_inputs'][()])
@@ -60,11 +60,11 @@ def main(config_file:str):
     print(f'Val input (shape, type): {val_input.shape}, {type(val_input)}')
     print(f'Val output (shape, type): {val_output.shape}, {type(val_output)}')
     train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_input,train_output), batch_size=data_config.batch_size, shuffle=True)
-    val_loader =  torch.utils.data.DataLoader(torch.utils.data.TensorDataset(val_input,val_output), batch_size=data_config.batch_size, shuffle=False)
+    val_loader =  torch.utils.data.DataLoader(torch.utils.data.TensorDataset(val_input,val_output), batch_size=data_config.batch_size, shuffle=True)
     dataloader_time_stop = default_timer()
     print(f'Total time taken for dataloading (s): {dataloader_time_stop - dataloader_time_start}')
 
-    fno_path = Path(f'{config.save_path}/rbc_{config.dim}_N{data_config.train_samples}_epoch{opt_config.epochs}_m{model_config.modes}_w{model_config.width}_bs{data_config.batch_size}_dt{data_config.dt}_tin{model_config.T_in}_{device}_run{config.run}')
+    fno_path = Path(f'{config.save_path}/rbc_{config.dim}_N{data_config.train_samples}_m{model_config.modes}_w{model_config.width}_bs{data_config.batch_size}_dt{data_config.dt}_tin{model_config.T_in}_{device}_run{config.run}')
     fno_path.mkdir(parents=True, exist_ok=True)
 
     checkpoint_path = Path(f'{fno_path}/checkpoint')
@@ -126,8 +126,8 @@ def main(config_file:str):
             file.write(f"Input timesteps given to FNO: {model_config.T_in}\n")
             file.write(f"Output timesteps given by FNO: {model_config.T}\n")
             file.write(f"Dedalus data dt: {data_config.dt}\n")
-            file.write(f"Dedalus data start index: {data_config.start_index}\n")
-            file.write(f"Dedalus data stop index: {data_config.stop_index}\n")
+            file.write(f"Dedalus data start time: {data_config.start_time}\n")
+            file.write(f"Dedalus data stop time: {data_config.stop_time}\n")
             file.write(f"Dedalus data slicing: {data_config.timestep}\n")
             file.write(f"(xStep, yStep, tStep): {data_config.xStep, data_config.yStep, data_config.tStep}\n")
             file.write(f"Grid(x,y): {data_config.gridx, data_config.gridy}\n")

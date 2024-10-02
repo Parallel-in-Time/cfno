@@ -261,8 +261,6 @@ def main(dir_name:str,
     plot_path = Path(f'{dir_name}/plots')
     plot_path.mkdir(parents=True, exist_ok=True)
 
-    processed_data = Path(f'{dir_name}/processed_data')
-    processed_data.mkdir(parents=True, exist_ok=True)
     info_file = Path(f"{dir_name}/00_infoSimu.txt")
     infos = {}
     if info_file.is_file():
@@ -272,7 +270,7 @@ def main(dir_name:str,
         infos["Rayleigh"] = float(infos["Rayleigh"])
         infos["Nx"], infos["Nz"] = [int(n) for n in infos["Nx, Nz"].split(", ")]
     else:
-        infos["Rayleigh"] = 1.5e7
+        infos["Rayleigh"] = 1.0e7
         infos["Nx"] = 256
         infos["Nz"] = 64
     print(f'Setting RayleighNumber={infos["Rayleigh"]}, Nx={infos["Nx"]} and Nz={infos["Nz"]}')
@@ -285,8 +283,7 @@ def main(dir_name:str,
     # Spectrum
     if spectrum_plot:
         plt.figure("spectrum")
-        plt.title(fr"Mean Energy Spectrum vs Wave Number on \
-            {infos['Nx']} $\times$ {infos['Nz']} grid")
+        plt.title(fr"Mean Energy Spectrum vs Wave Number on {infos['Nx']} $\times$ {infos['Nz']} grid")
         plt.xlabel("Wavenumber")
         plt.ylabel("Mean Energy Spectrum")
         plt.grid()
@@ -358,7 +355,7 @@ def main(dir_name:str,
 if __name__ == '__main__':
     parser_data = argparse.ArgumentParser(description='Data Analysis')
     parser_data.add_argument('--dir_name', type=str,
-                        help="Folder name to store data")
+                        help="Folder containing data")
     parser_data.add_argument('--spectrum_plot', action='store_true',
                         help='plot spectrum vs k')
     parser_data.add_argument('--inference', action='store_true',
