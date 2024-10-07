@@ -3,9 +3,26 @@
 This repository contains implementation of [Fourier Neural Operators](https://arxiv.org/abs/2010.08895).
 
 ## Requirements
+
 The code is based on python3 (version 3.11) and the packages required can be installed with
+
 ```bash
 python3 -m pip install -r requirements.txt
+```
+
+The code is developed into a python package allowing to do the model training, validation and inference :
+`fnop`. You can install it on your system, without root rights, by doing this in this repository :
+
+```bash
+pip install -e --user .
+```
+
+> The `-e` option installs in _editable_ mode, which means any modification in the `fnop` code won't need a re-installation to take the change into account.
+
+To de-install the package, simply run :
+
+```bash
+pip uninstall fnop
 ```
 
 ## Data
