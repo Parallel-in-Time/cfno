@@ -44,10 +44,10 @@ Example submission script to train on JUWELS Booster is shown in [submit_juwels.
 
 > 🛠️ In construction : needs to be implemented
 
-Once a model is trained, it is saved into _checkpoint_ file, that are stored in the [`model_archive` companion repo](https://codebase.helmholtz.cloud/neuralpint/model_archive) as `*.pt` files 
+Once a model is trained, it is saved into a _checkpoint_ file, that are stored in the [`model_archive` companion repo](https://codebase.helmholtz.cloud/neuralpint/model_archive) as `*.pt` files 
 (weights of the model).
 Which each of those models is associated a YAML configuration file, that stores all the model setting
-parameter
+parameters.
 
 One given trained model should be used like this :
 
