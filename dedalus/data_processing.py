@@ -241,11 +241,9 @@ def generateChunkPairs(folder:str, N:int, M:int,
 
     return pairs
 
-def main(dir_name:str,
-         inference:bool,
-        spectrum_plot:bool,
-        profile_plot:bool,
-        checkDNS_plot:bool,
+def main(
+    dir_name:str, inference:bool, spectrum_plot:bool,
+    profile_plot:bool, checkDNS_plot:bool,
 ):
     """
     Function to analyse Dedalus data
@@ -255,7 +253,7 @@ def main(dir_name:str,
         inference (bool): FNO inference data
         spectrum_plot (bool): plot mean energy spectrum vs wave number 
         profile_plot (bool): plot mean profiles of velocity, buoyancy and pressure
-        checkDNS_plot (bool): ploynomial fitting of energy spectrum 
+        checkDNS_plot (bool): polynomial fitting of energy spectrum 
     """
 
     plot_path = Path(f'{dir_name}/plots')

@@ -61,7 +61,6 @@ class FNO2D(nn.Module):
         output: the solution of the next timestep 
         output shape: (batchsize, x=4*size_x//xStep, y=size_y//yStep, c=1)
         """
-
         self.modes1 = modes1
         self.modes2 = modes2
         self.lifting_width = lifting_width

@@ -20,6 +20,7 @@ import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+
 from fnop.utils import CudaMemoryDebugger
 from fnop.data_procesing.data_utils import time_extract, state_extract
 from fnop.models.fno2d import FNO2D
@@ -75,6 +76,10 @@ class FNOInference:
         self.batch_size = batch_size
         self.device = device
         self.memory = CudaMemoryDebugger(print_mem=True)
+
+    @staticmethod
+    def fromFiles(checkpoint_file:str, config_file:str):
+        pass # return a FNOInference object.
     
     def inference(self, input_data):
         """
@@ -106,6 +111,9 @@ class FNOInference:
                     xx = torch.cat((xx[..., self.tStep:], im), dim=-1)
             
         return pred
+    
+    def predict(self, u0:np.ndarray)->np.ndarray:
+        pass # interface to inference with conversion numpy - tensor in between ...
         
     def save_inference(self,
                        save_path:str,

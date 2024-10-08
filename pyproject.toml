@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fnop"
+version = "0.0.1"
+description = ""
+dependencies = [
+    "numpy",
+    "scipy",
+    "torch",
+]
+requires-python = ">=3.8"
+maintainers = [
+    {name = "Chelsea John", email = "c.john@fz-juelich.de"},
+    {name = "Thibaut Lunet", email = "thibaut.lunet@tuhh.de"},
+]
+readme = "README.md"
