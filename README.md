@@ -55,7 +55,7 @@ One given trained model should be used like this :
 from fnop.inference import FNOInference
 
 # Load the fully trained model
-model = FNOInference(
+model = FNOInference.fromFiles(
 	checkpointFile="path/to/checkpointFile.pt", configFile="path/to/configFile.yaml")
 
 u0 = ... # some solution of RBC at a given time
