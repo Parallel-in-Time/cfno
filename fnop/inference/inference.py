@@ -111,6 +111,9 @@ class FNOInference:
                     xx = torch.cat((xx[..., self.tStep:], im), dim=-1)
             
         return pred
+    
+    def predict(self, u0:np.ndarray)->np.ndarray:
+        pass # interface to inference with conversion numpy - tensor in between ...
         
     def save_inference(self,
                        save_path:str,
