@@ -259,8 +259,6 @@ def main(
     plot_path = Path(f'{dir_name}/plots')
     plot_path.mkdir(parents=True, exist_ok=True)
 
-    processed_data = Path(f'{dir_name}/processed_data')
-    processed_data.mkdir(parents=True, exist_ok=True)
     info_file = Path(f"{dir_name}/00_infoSimu.txt")
     infos = {}
     if info_file.is_file():
@@ -270,7 +268,7 @@ def main(
         infos["Rayleigh"] = float(infos["Rayleigh"])
         infos["Nx"], infos["Nz"] = [int(n) for n in infos["Nx, Nz"].split(", ")]
     else:
-        infos["Rayleigh"] = 1.5e7
+        infos["Rayleigh"] = 1.0e7
         infos["Nx"] = 256
         infos["Nz"] = 64
     print(f'Setting RayleighNumber={infos["Rayleigh"]}, Nx={infos["Nx"]} and Nz={infos["Nz"]}')
@@ -283,13 +281,12 @@ def main(
     # Spectrum
     if spectrum_plot:
         plt.figure("spectrum")
-        plt.title(fr"Mean Energy Spectrum vs Wave Number on \
-            {infos['Nx']} $\times$ {infos['Nz']} grid")
+        plt.title(fr"Mean Energy Spectrum vs Wave Number on {infos['Nx']} $\times$ {infos['Nz']} grid")
         plt.xlabel("Wavenumber")
         plt.ylabel("Mean Energy Spectrum")
         plt.grid()
         plt.loglog(k[:-1], spectrum_mean[:-1], label=f"Ra={infos['Rayleigh']:1.1e}")
-        plt.savefig(f"{dir_name}/plots/spectrum.pdf")
+        plt.savefig(f"{dir_name}/plots/spectrum.png")
 
     ## checkDNS
     if checkDNS_plot:
@@ -307,7 +304,7 @@ def main(
         plt.grid(True)
         plt.xlabel("Wavenumber")
         plt.ylabel("Spectrum")
-        plt.savefig(f"{dir_name}/plots/polyfit.pdf")
+        plt.savefig(f"{dir_name}/plots/polyfit.png")
 
     # Profiles
     if profile_plot:
@@ -339,7 +336,7 @@ def main(
         plt.grid(True)
         plt.xlabel("Time")
         plt.ylabel("Mid-profile value")
-        plt.savefig(f"{dir_name}/plots/mid_profile.pdf")
+        plt.savefig(f"{dir_name}/plots/mid_profile.png")
 
         plt.figure("profiles")
         plt.title(" Profile in Z-coordinate")
@@ -351,12 +348,12 @@ def main(
         plt.grid(True)
         plt.xlabel("Profile")
         plt.ylabel("z-coordinate")
-        plt.savefig(f"{dir_name}/plots/profile.pdf")
+        plt.savefig(f"{dir_name}/plots/profile.png")
 
 if __name__ == '__main__':
     parser_data = argparse.ArgumentParser(description='Data Analysis')
     parser_data.add_argument('--dir_name', type=str,
-                        help="Folder name to store data")
+                        help="Folder containing data")
     parser_data.add_argument('--spectrum_plot', action='store_true',
                         help='plot spectrum vs k')
     parser_data.add_argument('--inference', action='store_true',

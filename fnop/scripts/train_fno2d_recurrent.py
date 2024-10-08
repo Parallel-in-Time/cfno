@@ -4,7 +4,7 @@ Train a FNO2D model to map solution at previous T_in timesteps
     
 Usage:
     python fno2d_recurrent.py 
-        --config=<config_file>
+        --config_file=<config_file>
                  
 """
 import os
@@ -19,7 +19,6 @@ import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from fnop.utils import _set_signal_handler, CudaMemoryDebugger, activation_selection
-from fnop.data_procesing.data_loader import FNODataLoader, FNOSubDomain
 from fnop.models.fno2d import FNO2D
 from fnop.losses.data_loss import LpLoss
 from fnop.training.trainer import Trainer
@@ -46,41 +45,26 @@ def main(config_file:str):
     print(f"Using {device}")
     if device == 'cuda':
         torch.cuda.empty_cache()
-        memory = CudaMemoryDebugger(print_mem=True)
+    memory = CudaMemoryDebugger(print_mem=True)
     
     print('Starting data loading....')
     dataloader_time_start = default_timer()
-    train_reader = h5py.File(data_config.train_data_path, mode="r")
-    val_reader = h5py.File(data_config.val_data_path, mode="r") 
-    if data_config.subdomain:
-        domain_config = data_config.subdomain_args
-        print(f'Splitting data into x {domain_config.ndomain_x} and y {domain_config.ndomain_y} sub-domains')
-        loader = FNOSubDomain(start_time=domain_config.start_time,
-                              stop_time=domain_config.stop_time,
-                              gridx=data_config.gridx,
-                              gridy=data_config.gridy,
-                              ndomain_x=domain_config.ndomain_x,
-                              ndomain_y=domain_config.ndomain_y,
-                              dt=data_config.dt,dim=config.dim,
-                              tStep=data_config.tStep,T_in=model_config.T_in,
-                              T=model_config.T)
-        train_loader = loader.subdomain_data_loader('train', data_config.train_samples, data_config.batch_size, train_reader)
-        val_loader = loader.subdomain_data_loader('val', data_config.val_samples, data_config.batch_size, val_reader)
-    else:
-        loader = FNODataLoader( batch_size=data_config.batch_size,
-                                gridx= data_config.gridx, gridy=data_config.gridy,
-                                dt=data_config.dt, dim=config.dim, xStep=data_config.xStep, yStep=data_config.yStep, 
-                                tStep=data_config.tStep, start_index=data_config.start_index, 
-                                stop_index=data_config.stop_index, timestep=data_config.timestep,
-                                T_in=model_config.T_in, T=model_config.T
-                            )
-        train_loader = loader.data_loader('train', data_config.train_samples, train_reader)
-        val_loader = loader.data_loader('val', data_config.val_samples, val_reader)
-        
+    reader = h5py.File(data_config.multistep_data_path, mode="r")
+    train_input = torch.as_tensor(reader['train_inputs'][()])
+    train_output = torch.as_tensor(reader['train_outputs'][()])
+    val_input = torch.as_tensor(reader['val_inputs'][()])
+    val_output = torch.as_tensor(reader['val_outputs'][()])
+    reader.close()
+    print(f'Train input (shape, type): {train_input.shape}, {type(train_input)}')
+    print(f'Train output (shape, type): {train_output.shape}, {type(train_output)}')
+    print(f'Val input (shape, type): {val_input.shape}, {type(val_input)}')
+    print(f'Val output (shape, type): {val_output.shape}, {type(val_output)}')
+    train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_input,train_output), batch_size=data_config.batch_size, shuffle=True)
+    val_loader =  torch.utils.data.DataLoader(torch.utils.data.TensorDataset(val_input,val_output), batch_size=data_config.batch_size, shuffle=True)
     dataloader_time_stop = default_timer()
     print(f'Total time taken for dataloading (s): {dataloader_time_stop - dataloader_time_start}')
 
-    fno_path = Path(f'{config.save_path}/rbc_{config.dim}_N{data_config.train_samples}_epoch{opt_config.epochs}_m{model_config.modes}_w{model_config.width}_bs{data_config.batch_size}_dt{data_config.dt}_tin{model_config.T_in}_{device}_run{config.run}')
+    fno_path = Path(f'{config.save_path}/rbc_{config.dim}_N{data_config.train_samples}_m{model_config.modes}_w{model_config.width}_bs{data_config.batch_size}_dt{data_config.dt}_tin{model_config.T_in}_{device}_run{config.run}')
     fno_path.mkdir(parents=True, exist_ok=True)
 
     checkpoint_path = Path(f'{fno_path}/checkpoint')
@@ -107,8 +91,8 @@ def main(config_file:str):
                   non_linearity,
             ).to(device)
     
-    if device == 'cuda':
-        memory.print("after intialization")
+
+    memory.print("after intialization")
 
     # optimizer = torch.optim.Adam(model.parameters(), lr=opt_config.learning_rate, weight_decay=opt_config.weight_decay)
     optimizer = torch.optim.AdamW(model.parameters(), lr=opt_config.learning_rate, weight_decay=opt_config.weight_decay)
@@ -132,7 +116,7 @@ def main(config_file:str):
             file.write(f"Lifting width:{model_config.lifting_width}\n")
             file.write(f"FNO Layer width:{model_config.width}\n")
             file.write(f"Projection width:{model_config.projection_width}\n")
-            file.write(f"(nTrain, nVal): {data_config.train_samples, data_config.val_samples}\n")
+            file.write(f"(nTrain, nVal): {train_input.shape[0], val_input.shape[0]}\n")
             file.write(f"Batchsize: {data_config.batch_size}\n")
             file.write(f"Non-linearity: {non_linearity}\n")
             file.write(f"Optimizer: {optimizer}\n")
@@ -142,11 +126,14 @@ def main(config_file:str):
             file.write(f"Input timesteps given to FNO: {model_config.T_in}\n")
             file.write(f"Output timesteps given by FNO: {model_config.T}\n")
             file.write(f"Dedalus data dt: {data_config.dt}\n")
-            file.write(f"Dedalus data start index: {data_config.start_index}\n")
-            file.write(f"Dedalus data stop index: {data_config.stop_index}\n")
+            file.write(f"Dedalus data start time: {data_config.start_time}\n")
+            file.write(f"Dedalus data stop time: {data_config.stop_time}\n")
             file.write(f"Dedalus data slicing: {data_config.timestep}\n")
             file.write(f"(xStep, yStep, tStep): {data_config.xStep, data_config.yStep, data_config.tStep}\n")
-            file.write(f"Grid(x,y): ({data_config.gridx, data_config.gridy})\n")
+            file.write(f"Grid(x,y): {data_config.gridx, data_config.gridy}\n")
+            if data_config.subdomain_process:
+                file.write(f"Subdomain (x,y):{data_config.subdomain_args.ndomain_x,data_config.subdomain_args.ndomain_y}\n")
+                file.write(f"Subdomain Grid(x,y):{int(train_input.shape[1]/4),int(val_input.shape[1]/4)}\n")
             file.write(f"FNO model path: {fno_path}\n")
             file.write("-------------------------------------------------\n")
 
