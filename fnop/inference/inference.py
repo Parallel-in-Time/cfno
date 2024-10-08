@@ -359,21 +359,21 @@ def main(model_checkpoint:str, config_file:str):
     # print(f'Inference shape: {predictions_cpu.shape}')
     print(f'Total time taken for model inference for {config.inference.output_timesteps} output {time_out} time steps with batchsize {config.inference.test_batch_size} and {config.FNO.T_in} input {time_in} time steps on {device} (s): {inference_time_stop - inference_time_start}')
     
-    # if config.inference.output_error:
-    #     if config.dim == 'FNO3D':
-    #         error = nn.functional.mse_loss(predictions_cpu, outputs, reduction='mean').item()
-    #     else:
-    #         error = nn.functional.mse_loss(predictions_cpu.reshape(config.inference.test_batch_size, -1), outputs.reshape(config.inference.test_batch_size, -1)).item()
-    #     print(f'Mean Squared Error of FNO prediction = {error}')
+    if config.inference.output_error:
+        if config.dim == 'FNO3D':
+            error = nn.functional.mse_loss(predictions_cpu, outputs, reduction='mean').item()
+        else:
+            error = nn.functional.mse_loss(predictions_cpu.reshape(config.inference.test_batch_size, -1), outputs.reshape(config.inference.test_batch_size, -1)).item()
+        print(f'Mean Squared Error of FNO prediction = {error}')
     
-    # if config.inference.save_inference:
-    #     model_inference.save_inference(fno_path, predictions_cpu.detach().numpy(), time_out)
+    if config.inference.save_inference:
+        model_inference.save_inference(fno_path, predictions_cpu.detach().numpy(), time_out)
          
-    # if config.inference.plot_cross_section:
-    #     model_inference.plot_cross_section(fno_path, np.array(predictions_cpu),
-    #                                      np.array(outputs), time_out,
-    #                                      config.data.rayleigh_number,
-    #                                      config.data.prandtl_number)
+    if config.inference.plot_cross_section:
+        model_inference.plot_cross_section(fno_path, np.array(predictions_cpu),
+                                         np.array(outputs), time_out,
+                                         config.data.rayleigh_number,
+                                         config.data.prandtl_number)
             
 
 if __name__ == '__main__':
