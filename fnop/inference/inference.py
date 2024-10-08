@@ -76,6 +76,10 @@ class FNOInference:
         self.batch_size = batch_size
         self.device = device
         self.memory = CudaMemoryDebugger(print_mem=True)
+
+    @staticmethod
+    def fromFiles(checkpoint_file:str, config_file:str):
+        pass # return a FNOInference object.
     
     def inference(self, input_data):
         """
