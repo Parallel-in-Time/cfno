@@ -4,7 +4,7 @@ dim: 'FNO2D'
 exit_signal_handler: True
 exit_duration_in_mins: None
 resume_from_checkpoint: None
-save_path: '/p/project1/cexalab/john2/NeuralOperators/neural_operators/results/strategy2'
+save_path: 'results/strategy2'
 verbose: True
 
 data:
@@ -25,9 +25,9 @@ data:
     ndomain_x: 4
     ndomain_y: 1
     subdomain_data_path: None
-  processed_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/dt1e_1/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1.h5'                
+  processed_data_path: 'RayleighBernardConvection/processed_data/dt1e_1/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1.h5'                
   multistep : True
-  multistep_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/dt1e_1/RBC2D_NX256_NZ64_TI55_TF57_2_Pr1_Ra1e7_dt0_1_multi.h5'
+  multistep_data_path: 'RayleighBernardConvection/processed_data/dt1e_1/RBC2D_NX256_NZ64_TI55_TF57_2_Pr1_Ra1e7_dt0_1_multi.h5'
   dt: 0.1
   gridx: 256
   gridy: 64
@@ -43,7 +43,7 @@ FNO:
   n_layers: 4
   T_in: 1
   T: 1
-  non_linearity: 'ReLU'
+  non_linearity: None
   
 opt:
   epochs: 500
@@ -55,13 +55,12 @@ opt:
   
 inference:
   do_inference: True
-  inference_save_path: '/p/project1/cexalab/john2/NeuralOperators/neural_operators/results/strategy2/rbc_FNO2D_N50_m12_w64_bs32_dt0.1_tin1_cuda_run1/'
-  model_checkpoint: '/p/project1/cexalab/john2/NeuralOperators/neural_operators/results/strategy2/rbc_FNO2D_N50_m12_w64_bs32_dt0.1_tin1_cuda_run1/checkpoint/model_checkpoint_199.pt'
+  inference_save_path: 'results/strategy2/rbc_FNO2D_N50_m12_w64_bs32_dt0.1_tin1_cuda_run3'
   output_timesteps: 10
   output_error: True
   save_inference: True
   plot_cross_section: True
-  test_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/dt1e_1/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1.h5'
+  test_data_path: 'RayleighBernardConvection/processed_data/dt1e_1/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1.h5'
   test_start_index: 555
   test_dedalus_index: 0
   test_batch_size: 1

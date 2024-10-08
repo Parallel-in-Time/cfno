@@ -62,6 +62,7 @@ def state_extract(result:np.ndarray,
     uy = result[gridx:2*gridx, :gridy, :t]
     b = result[2*gridx:3*gridx, :gridy,:t]
     p = result[3*gridx:, :gridy,:t]
+    # [gridx, gridy, time]
     # print(ux.shape, uy.shape, b.shape, p.shape)
     return ux, uy, b, p
 

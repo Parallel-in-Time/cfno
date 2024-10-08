@@ -54,9 +54,6 @@ class FNOData():
         self.start_time = start_time
         self.stop_time = stop_time
         self.timestep = timestep
-        self.start_time_index = int(self.start_time/self.dt)
-        self.stop_time_index = int(self.stop_time/self.dt)
-        
         self.gridx_state = 4*self.gridx  # stacking [velx,velz,buoyancy,pressure]
   
     def data_loader(self, task:str, nsamples:int, reader, multistep:bool=True):
@@ -77,6 +74,9 @@ class FNOData():
       
       
         print(f'{task} data: {reader[task].shape}')
+        # [samples, gridx_state, gridy, time]
+        self.start_time_index = 0
+        self.stop_time_index = reader[task].shape[-1]
         if multistep:
             inputs, outputs = multi_data(reader=reader,
                                         task=task,
@@ -187,19 +187,20 @@ class FNOSubDomainData():
             sim_time = []
             for index,f in enumerate(files):
                 data =  h5py.File(f, mode='r')
-                print(f'Processing {index}: {f}')
-                sim_time.append(data['scales/sim_time'][self.start_time_index:self.stop_time_index ])
-                vel_x = data['tasks/velocity'][:,0,:,:]
-                vel_y = data['tasks/velocity'][:,1,:,:]
-                # print(vel_x.shape, vel_y.shape)
-                buoyancy = data['tasks/buoyancy']
-                pressure = data['tasks/pressure']
+                print(f'Processing {i+1} sample {index}: {f}')
+                sim_time.append(data['scales/sim_time'][self.start_time_index:self.stop_time_index:self.tStep])
+                vel_x = data['tasks/velocity'][self.start_time_index:self.stop_time_index:self.tStep,0,:,:]
+                vel_y = data['tasks/velocity'][self.start_time_index:self.stop_time_index:self.tStep,1,:,:]
+                buoyancy = data['tasks/buoyancy'][self.start_time_index:self.stop_time_index:self.tStep,:,:]
+                pressure = data['tasks/pressure'][self.start_time_index:self.stop_time_index:self.tStep,:,:]
+                # print("Measureable",vel_x.shape, vel_y.shape, buoyancy.shape, pressure.shape)
                 state.append(np.stack([vel_x, vel_y, buoyancy, pressure], axis=0))
                 data.close()
             time.append(sim_time)
         input_state = np.array(state)
         state_dim = input_state.shape
         input_time = np.vstack(time).transpose()
+        # print(self.start_time_index, self.stop_time_index)
         input_state = input_state.reshape(state_dim[2], state_dim[0], state_dim[1], state_dim[3], state_dim[4])
         # [time, samples, 4, gridx, gridy]
         # [time, samples]

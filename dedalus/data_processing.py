@@ -286,7 +286,7 @@ def main(
         plt.ylabel("Mean Energy Spectrum")
         plt.grid()
         plt.loglog(k[:-1], spectrum_mean[:-1], label=f"Ra={infos['Rayleigh']:1.1e}")
-        plt.savefig(f"{dir_name}/plots/spectrum.pdf")
+        plt.savefig(f"{dir_name}/plots/spectrum.png")
 
     ## checkDNS
     if checkDNS_plot:
@@ -304,7 +304,7 @@ def main(
         plt.grid(True)
         plt.xlabel("Wavenumber")
         plt.ylabel("Spectrum")
-        plt.savefig(f"{dir_name}/plots/polyfit.pdf")
+        plt.savefig(f"{dir_name}/plots/polyfit.png")
 
     # Profiles
     if profile_plot:
@@ -336,7 +336,7 @@ def main(
         plt.grid(True)
         plt.xlabel("Time")
         plt.ylabel("Mid-profile value")
-        plt.savefig(f"{dir_name}/plots/mid_profile.pdf")
+        plt.savefig(f"{dir_name}/plots/mid_profile.png")
 
         plt.figure("profiles")
         plt.title(" Profile in Z-coordinate")
@@ -348,7 +348,7 @@ def main(
         plt.grid(True)
         plt.xlabel("Profile")
         plt.ylabel("z-coordinate")
-        plt.savefig(f"{dir_name}/plots/profile.pdf")
+        plt.savefig(f"{dir_name}/plots/profile.png")
 
 if __name__ == '__main__':
     parser_data = argparse.ArgumentParser(description='Data Analysis')
