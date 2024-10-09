@@ -222,13 +222,27 @@ def generateChunkPairs(folder:str, N:int, M:int,
     return pairs
 
 
-def contourPlot(field, x, y, saveFig=False):
-    plt.figure()
-    plt.pcolormesh(x, y, field)
-    ax = plt.gca()
-    ax.set_aspect('equal', adjustable='box')
-    plt.xlabel("x")
-    plt.ylabel("z")
+def contourPlot(field, x, y,
+                title=None, refField=None, refTitle=None, saveFig=False):
+
+    fig, axs = plt.subplots(1 if refField is None else 2)
+    ax = axs if refField is None else axs[0]
+
+    def setup(ax):
+        ax.set_aspect('equal', adjustable='box')
+        ax.set_xlabel("x")
+        ax.set_ylabel("z")
+
+    ax.pcolormesh(x, y, field)
+    ax.set_title(title)
+    setup(ax)
+
+    if refField is not None:
+        axs[1].pcolormesh(x, y, refField)
+        axs[1].set_title(refTitle)
+        setup(axs[1])
+
     plt.tight_layout()
     if saveFig:
         plt.savefig(saveFig)
+    plt.close(fig)
