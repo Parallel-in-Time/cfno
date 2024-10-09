@@ -29,8 +29,8 @@ data:
   multistep : True
   multistep_data_path: 'RayleighBernardConvection/processed_data/dt1e_1/RBC2D_NX256_NZ64_TI55_TF57_2_Pr1_Ra1e7_dt0_1_multi.h5'
   dt: 0.1
-  gridx: 256
-  gridy: 64
+  nx: 256
+  ny: 64
   rayleigh_number: 1e7
   prandtl_number: 1
   batch_size: 32

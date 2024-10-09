@@ -19,8 +19,8 @@ class Trainer:
                  dim: str,
                  epochs:int,
                  dt:float,
-                 gridx: int,
-                 gridy: int,
+                 nx: int,
+                 ny: int,
                  T_in: int,
                  T:int,
                  xStep:int=1,
@@ -37,12 +37,12 @@ class Trainer:
             dim (str): 'FNO2D' or 'FNO3D'
             epochs (int): training epochs
             dt (float): delta timestep
-            gridx (int): size of x-grid
-            gridy (int): size of y-grid
+            nx (int): size of x
+            ny (int): size of y
             T_in (int): number of input timesteps
             T (int): number of output timesteps
-            xStep (int, optional): slicing for x-grid. Defaults to 1.
-            yStep (int, optional): slicing for y-grid. Defaults to 1.
+            xStep (int, optional): slicing for x. Defaults to 1.
+            yStep (int, optional): slicing for y. Defaults to 1.
             tStep (int, optional): time slicing. Defaults to 1.
             exit_signal_handler (bool, optional): dynamically save the checkpoint and shutdown the
                                                   training if SIGTERM is received
@@ -54,8 +54,8 @@ class Trainer:
         self.dim = dim
         self.epochs = epochs
         self.dt = dt
-        self.gridx = gridx
-        self.gridy = gridy
+        self.nx = nx
+        self.ny = ny
         self.T_in = T_in
         self.T = T
         self.xStep = xStep
@@ -65,7 +65,7 @@ class Trainer:
         self.exit_duration_in_mins = exit_duration_in_mins
         self.device = device
         self.memory = CudaMemoryDebugger(print_mem=True)
-        self.gridx_state = 4*self.gridx
+        self.nx_state = 4*self.nx
     
     def fno2d_train_single_epoch (self, tepoch, train_loader,
                                   nTrain, training_loss,
@@ -166,7 +166,7 @@ class Trainer:
             yy = yy.to(self.device)
             # self.memory.print("After loading first batch")
 
-            pred = self.model(xx).view(self.batch_size, self.gridx_state, self.gridy, self.T)
+            pred = self.model(xx).view(self.batch_size, self.nx_state, self.ny, self.T)
 
             # yy = UnitGaussianNormalizer(yy).decode(yy)
             # pred = UnitGaussianNormalizer(pred).decode(pred)
@@ -264,7 +264,7 @@ class Trainer:
                 xx = xx.to(self.device)
                 yy = yy.to(self.device)
                 # yy = UnitGaussianNormalizer(yy).decode(yy)
-                pred = self.model(xx).view(self.batch_size, self.gridx_state, self.gridy, self.T)
+                pred = self.model(xx).view(self.batch_size, self.nx_state, self.ny, self.T)
                 # pred = UnitGaussianNormalizer(pred).decode(pred)
 
                 val_l2 += val_loss(pred.view(self.batch_size, -1), yy.view(self.batch_size, -1)).item()

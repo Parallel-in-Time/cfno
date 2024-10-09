@@ -182,13 +182,13 @@ class FNO3D(nn.Module):
 
     def get_grid(self, shape, device):
         batchsize, size_x, size_y, size_z = shape[0], shape[1], shape[2], shape[3]
-        gridx = torch.tensor(np.linspace(0, 1, size_x), dtype=torch.float)
-        gridx = gridx.reshape(1, size_x, 1, 1, 1).repeat([batchsize, 1, size_y, size_z, 1])
-        gridy = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
-        gridy = gridy.reshape(1, 1, size_y, 1, 1).repeat([batchsize, size_x, 1, size_z, 1])
-        gridz = torch.tensor(np.linspace(0, 1, size_z), dtype=torch.float)
-        gridz = gridz.reshape(1, 1, 1, size_z, 1).repeat([batchsize, size_x, size_y, 1, 1])
-        return torch.cat((gridx, gridy, gridz), dim=-1).to(device)  # [batchsize, size_x, size_y, T, 3]
+        nx = torch.tensor(np.linspace(0, 1, size_x), dtype=torch.float)
+        nx = nx.reshape(1, size_x, 1, 1, 1).repeat([batchsize, 1, size_y, size_z, 1])
+        ny = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
+        ny = ny.reshape(1, 1, size_y, 1, 1).repeat([batchsize, size_x, 1, size_z, 1])
+        nz = torch.tensor(np.linspace(0, 1, size_z), dtype=torch.float)
+        nz = nz.reshape(1, 1, 1, size_z, 1).repeat([batchsize, size_x, size_y, 1, 1])
+        return torch.cat((nx, ny, nz), dim=-1).to(device)  # [batchsize, size_x, size_y, T, 3]
     
     def print_size(self):
         properties = []
