@@ -12,7 +12,6 @@ import sys
 sys.path.insert(1, os.getcwd())
 import h5py
 import argparse
-from configmypy import ConfigPipeline, YamlConfig, ArgparseConfig
 from pathlib import Path
 from timeit import default_timer
 import torch
@@ -21,7 +20,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-from fnop.utils import CudaMemoryDebugger
+from fnop.utils import CudaMemoryDebugger, DEFAULT_DEVICE, read_config
 from fnop.data_procesing.data_utils import time_extract, state_extract
 from fnop.models.fno2d import FNO2D
 from fnop.models.fno3d import FNO3D
@@ -34,17 +33,16 @@ class FNOInference:
     def __init__(self,
                  config,
                  checkpoint:str,
-                 device:str,
+                 device:str=DEFAULT_DEVICE,
     ): 
         """
 
         Args:
-            config: YAML config file
+            config: YAML config file (either already loaded, or a path to it)
             checkpoint (str): torch model checkpoint path
-            device (str, optional): cpu or cuda
+            device (str, optional): cpu or cuda (default to cuda if available)
         """
-        super().__init__()
-        self.config = config
+        self.config = read_config(config)
         self.model_config = config.FNO
         self.data_config = config.data
         self.inference_config = config.inference
@@ -60,7 +58,8 @@ class FNOInference:
         self.gridx_state = 4*self.gridx
         self.T = self.inference_config.output_timesteps
 
-    @staticmethod
+        self.model = self.model_init()
+
     def model_init(self):
         non_linearity = nn.functional.gelu
         if self.model_config.non_linearity is not None:
@@ -101,8 +100,6 @@ class FNOInference:
         Returns:
             pred (torch.tensor): FNO output stack [velx, velz, buoyancy, pressure]
         """
-        
-        model = self.model_init(self)
         input_data = torch.tensor(input_data, dtype=torch.float) if not torch.is_tensor(input_data) else input_data
         xx = input_data.to(self.device)
         xx_org = xx
@@ -110,14 +107,14 @@ class FNOInference:
         batch_size = self.inference_config.test_batch_size
         pred = torch.zeros([batch_size, self.gridx_state, self.gridy, self.T])
        
-        model.eval()
+        self.model.eval()
         with torch.no_grad():
             if self.config.dim == 'FNO3D':
-                pred = model(xx_org).view(batch_size, self.gridx_state, self.gridy, self.T)
+                pred = self.model(xx_org).view(batch_size, self.gridx_state, self.gridy, self.T)
                 # pred = y_normalizer.decode(pred)
             else:
                 for t in range(0, self.T, self.data_config.tStep):
-                    im = model(xx)
+                    im = self.model(xx)
                     if t == 0:
                         pred = im
                     else:
@@ -285,10 +282,10 @@ class FNOInference:
         
 def main(model_checkpoint:str, config_file:str):
     #  Read the configuration
-    pipe = ConfigPipeline([YamlConfig(config_file)])
-    config = pipe.read_conf()
+    config = read_config(config_file)
+
     gridx_state = 4*config.data.gridx
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device(DEFAULT_DEVICE)
     print(f"Using {device}")
     if device == 'cuda':
         torch.cuda.empty_cache()

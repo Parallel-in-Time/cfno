@@ -39,8 +39,8 @@ def rbc_data(filename:str,
     return out
 
 def state_extract(result:np.ndarray,
-                  gridx:int,
-                  gridy:int,
+                  nX:int,
+                  nY:int,
                   t:int
 ):
     """
@@ -48,8 +48,8 @@ def state_extract(result:np.ndarray,
 
     Args:
         result (np.ndarray): stack [velx, velz, buoyancy, pressure]
-        gridx (int): x grid size
-        gridy (int): y grid size
+        nX (int): x grid size
+        nY (int): y grid size
         t (int): timesteps to extract data for 
 
     Returns:
@@ -58,11 +58,11 @@ def state_extract(result:np.ndarray,
         b (np.ndarray): buoyancy
         p (np.ndarray): pressure 
     """
-    ux = result[:gridx, :gridy, :t]
-    uy = result[gridx:2*gridx, :gridy, :t]
-    b = result[2*gridx:3*gridx, :gridy,:t]
-    p = result[3*gridx:, :gridy,:t]
-    # [gridx, gridy, time]
+    ux = result[:nX, :nY, :t]
+    uy = result[nX:2*nX, :nY, :t]
+    b = result[2*nX:3*nX, :nY,:t]
+    p = result[3*nX:, :nY,:t]
+    # [nX, nY, time]
     # print(ux.shape, uy.shape, b.shape, p.shape)
     return ux, uy, b, p
 

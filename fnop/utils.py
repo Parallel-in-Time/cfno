@@ -1,9 +1,32 @@
 import torch
 import torch.nn.functional as F
+
 import signal
 import math
+from configmypy import ConfigPipeline, YamlConfig, Bunch
 
 _GLOBAL_SIGNAL_HANDLER = None
+DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+def read_config(config):
+    """
+    Read a configuration file for a FNO model
+
+    Parameters
+    ----------
+    config : str or configmypy.bunch.Bunch
+        The path of the configuration file, or the already loaded config file.
+
+    Returns
+    -------
+    configmypy.bunch.Bunch
+        Configuration parameters.
+    """
+    if isinstance(config, Bunch):
+        return config
+    assert isinstance(config, str), "config parameter must be a string"
+    pipe = ConfigPipeline([YamlConfig(config)])
+    return pipe.read_conf()
 
 units = {
     0: 'B',
@@ -93,7 +116,7 @@ def _set_signal_handler():
     global _GLOBAL_SIGNAL_HANDLER
     _ensure_var_is_not_initialized(_GLOBAL_SIGNAL_HANDLER, 'signal handler')
     _GLOBAL_SIGNAL_HANDLER = DistributedSignalHandler().__enter__()
-                       
+
 class CudaMemoryDebugger():
     """
     Helper to track changes in CUDA memory.
@@ -139,7 +162,7 @@ class CudaMemoryDebugger():
                       f' ({diff_fmt:+}{diff_unit})')
 
         CudaMemoryDebugger.LAST_MEM = cur_mem
-        
+
 # normalization, pointwise gaussian
 class UnitGaussianNormalizer(object):
     def __init__(self, x, eps=0.00001, time_last=True):

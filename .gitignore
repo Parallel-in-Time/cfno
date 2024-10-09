@@ -17,3 +17,6 @@ results/
 dedalus/plots/
 dedalus/scripts
 *.ipynb
+*.jpg
+*.png
+scratch.py

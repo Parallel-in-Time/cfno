@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "fnop"
 version = "0.0.1"
-description = ""
+description = "Fourier Neural Operator for modeling PDEs"
 dependencies = [
     "numpy",
     "scipy",
