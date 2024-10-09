@@ -52,15 +52,15 @@ class FNOInference:
         self.device = device
         self.memory = CudaMemoryDebugger(print_mem=True)
         
-        self.gridx = self.data_config.gridx
-        self.gridy = self.data_config.gridy
+        self.nx = self.data_config.nx
+        self.ny = self.data_config.ny
         if self.data_config.subdomain_process:
-            self.gridx= int(self.data_config.gridx /self.data_config.subdomain_args.ndomain_x)
-            self.gridy = int(self.data_config.gridy /self.data_config.subdomain_args.ndomain_y)
-        self.gridx_state = 4*self.gridx
+            self.nx= int(self.data_config.nx /self.data_config.subdomain_args.ndomain_x)
+            self.ny = int(self.data_config.ny /self.data_config.subdomain_args.ndomain_y)
+        self.nx_state = 4*self.nx
         self.T = self.inference_config.output_timesteps
+        self.model = self.model_init()
 
-    @staticmethod
     def model_init(self):
         non_linearity = nn.functional.gelu
         if self.model_config.non_linearity is not None:
@@ -102,22 +102,22 @@ class FNOInference:
             pred (torch.tensor): FNO output stack [velx, velz, buoyancy, pressure]
         """
         
-        model = self.model_init(self)
+        
         input_data = torch.tensor(input_data, dtype=torch.float) if not torch.is_tensor(input_data) else input_data
         xx = input_data.to(self.device)
         xx_org = xx
     
         batch_size = self.inference_config.test_batch_size
-        pred = torch.zeros([batch_size, self.gridx_state, self.gridy, self.T])
+        pred = torch.zeros([batch_size, self.nx_state, self.ny, self.T])
        
-        model.eval()
+        self.model.eval()
         with torch.no_grad():
             if self.config.dim == 'FNO3D':
-                pred = model(xx_org).view(batch_size, self.gridx_state, self.gridy, self.T)
+                pred = self.model(xx_org).view(batch_size, self.nx_state, self.ny, self.T)
                 # pred = y_normalizer.decode(pred)
             else:
                 for t in range(0, self.T, self.data_config.tStep):
-                    im = model(xx)
+                    im = self.model(xx)
                     if t == 0:
                         pred = im
                     else:
@@ -132,19 +132,19 @@ class FNOInference:
         Convert tensor to numpy array and extract states
 
         Args:
-            outputs (torch.tensor): FNO model output of shape [batch, gridx_state, gridy, T]
+            outputs (torch.tensor): FNO model output of shape [batch, nx_state, ny, T]
 
         Returns:
-            vx (np.ndarray): velocity x-componnent [gridx, gridy, T]
-            vy (np.ndarray): velocity y-componnent [gridx, gridy, T]
-            b (np.ndarray): buoyancy [gridx, gridy, T]
-            p (np.ndarray):pressure [gridx, gridy, T]
+            vx (np.ndarray): velocity x-componnent [nx, ny, T]
+            vy (np.ndarray): velocity y-componnent [nx, ny, T]
+            b (np.ndarray): buoyancy [nx, ny, T]
+            p (np.ndarray):pressure [nx, ny, T]
         """
         outputs = outputs.cpu().detach().numpy()
         batch = 0
         vx, vy, b, p = state_extract(outputs[batch, :, :, :], 
-                                    self.gridx,
-                                    self.gridy,
+                                    self.nx,
+                                    self.ny,
                                     self.T)
         
         return vx, vy, b, p
@@ -164,16 +164,16 @@ class FNOInference:
         """
         for batch in range(predictions.shape[0]):
             vx, vy, b, p = state_extract(predictions[batch, :, :, :], 
-                                         self.gridx,
-                                         self.gridy,
+                                         self.nx,
+                                         self.ny,
                                          self.T)
         
             vel = np.stack([vx, vy], axis=0)
             # print(f'Result:\nVelocity: {vel_pred}\nBuoyancy: {b_pred}\nPressure: {p_pred}')
             # print(f'vel: {vel_pred.shape}, b: {b_pred.shape}, p: {p_pred.shape}')
             file = f'{save_path}/inference_s{batch}.h5'
-            v_shape = vel.shape  # [2, gridx, gridy, time]
-            s_shape = p.shape    # [gridx, gridy, time]
+            v_shape = vel.shape  # [2, nx, ny, time]
+            s_shape = p.shape    # [nx, ny, time]
             with h5py.File(file, "a") as data:
                 data['scales/sim_time'] = time
                 data['tasks/velocity'] = vel.reshape(v_shape[3], v_shape[0], v_shape[1], v_shape[2])
@@ -204,19 +204,19 @@ class FNOInference:
         """
         for batch in range(predictions.shape[0]):
             vx, vy, b, p = state_extract(output[batch, :, :, :], 
-                                         self.gridx,
-                                         self.gridy,
+                                         self.nx,
+                                         self.ny,
                                          self.T)
             vx_pred, vy_pred, b_pred, p_pred = state_extract(predictions[batch, :, :, :], 
-                                                             self.gridx,
-                                                             self.gridy,
+                                                             self.nx,
+                                                             self.ny,
                                                              self.T)
             for t in range(len(time)):
                 row = 2
                 col = 4
                 xStep = 30
                 yStep = 30
-                x = np.arange(0,self.gridx,xStep)
+                x = np.arange(0,self.nx,xStep)
                 fig, ax = plt.subplots(nrows=row, 
                                     ncols=col,
                                     figsize=(16, 12),
@@ -274,20 +274,20 @@ class FNOInference:
                 ax8.set_ylabel(r"$\overline{|b_{ded}-b_{fno}|}_{z}$")
                 ax8.set_xlabel("X Grid")
 
-                fig.suptitle(f'RBC-2D with {self.gridx}'+r'$\times$'+f'{self.gridy} grid and Ra={rayleigh} and Pr={prandtl} using {self.config.dim}')  
+                fig.suptitle(f'RBC-2D with {self.nx}'+r'$\times$'+f'{self.ny} grid and Ra={rayleigh} and Pr={prandtl} using {self.config.dim}')  
                 ded_patch = Line2D([0], [0], label=f'Dedalus at t={np.round(time[t],4)}',marker='o', color='g')
                 fno_patch = Line2D([0], [0], label=f'FNO at t={np.round(time[t],4)}',marker='o', linestyle='--', color='r')
             
                 fig.legend(handles=[ded_patch, fno_patch], loc="upper right")
                 # fig.tight_layout()
                 fig.show()
-                fig.savefig(f"{fno_path}/{self.config.dim}_NX{self.gridx}_NY{self.gridy}_{np.round(time[t],4)}_{batch}.png")
+                fig.savefig(f"{fno_path}/{self.config.dim}_NX{self.nx}_NY{self.ny}_{np.round(time[t],4)}_{batch}.png")
         
 def main(model_checkpoint:str, config_file:str):
     #  Read the configuration
     pipe = ConfigPipeline([YamlConfig(config_file)])
     config = pipe.read_conf()
-    gridx_state = 4*config.data.gridx
+    nx_state = 4*config.data.nx
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using {device}")
     if device == 'cuda':
@@ -326,7 +326,7 @@ def main(model_checkpoint:str, config_file:str):
 
     if config.dim == 'FNO3D':
         input_data = input_data.reshape(config.inference.test_batch_size,
-                                         gridx_state, config.data.gridy, 1,
+                                         nx_state, config.data.ny, 1,
                                          config.FNO.T_in).repeat([1,1,1,config.inference.output_timesteps,1])
     
     print(f'Input data: {input_data.shape}')  
