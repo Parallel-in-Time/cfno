@@ -39,8 +39,8 @@ def rbc_data(filename:str,
     return out
 
 def state_extract(result:np.ndarray,
-                  nX:int,
-                  nY:int,
+                  nx:int,
+                  ny:int,
                   t:int
 ):
     """
@@ -48,8 +48,8 @@ def state_extract(result:np.ndarray,
 
     Args:
         result (np.ndarray): stack [velx, velz, buoyancy, pressure]
-        nX (int): x grid size
-        nY (int): y grid size
+        nx (int): x size
+        ny (int): y size
         t (int): timesteps to extract data for 
 
     Returns:
@@ -58,11 +58,11 @@ def state_extract(result:np.ndarray,
         b (np.ndarray): buoyancy
         p (np.ndarray): pressure 
     """
-    ux = result[:nX, :nY, :t]
-    uy = result[nX:2*nX, :nY, :t]
-    b = result[2*nX:3*nX, :nY,:t]
-    p = result[3*nX:, :nY,:t]
-    # [nX, nY, time]
+    ux = result[:nx, :ny, :t]
+    uy = result[nx:2*nx, :ny, :t]
+    b = result[2*nx:3*nx, :ny,:t]
+    p = result[3*nx:, :ny,:t]
+    # [nx, ny, time]
     # print(ux.shape, uy.shape, b.shape, p.shape)
     return ux, uy, b, p
 
@@ -120,8 +120,8 @@ def multi_data(reader,
         samples (int): number of simulations
         T_in (int, optional): number of input timesteps. Defaults to 1.
         T (int, optional): number of output timesteps. Defaults to 1.
-        xStep (int, optional): slicing in x-grid. Defaults to 1.
-        yStep (int, optional): slicing in y-grid. Defaults to 1.
+        xStep (int, optional): slicing in x. Defaults to 1.
+        yStep (int, optional): slicing in y. Defaults to 1.
         tStep (int, optional): time slicing. Defaults to 1.
 
     Returns:

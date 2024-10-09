@@ -112,7 +112,7 @@ def main(config_file:str):
             file.write(f"Dedalus data stop index: {data_config.stop_index}\n")
             file.write(f"Dedalus data slicing: {data_config.timestep}\n")
             file.write(f"(xStep, yStep, tStep): {data_config.xStep, data_config.yStep, data_config.tStep}\n")
-            file.write(f"Grid(x,y): {data_config.gridx, data_config.gridy}\n")
+            file.write(f"Grid(x,y): {data_config.nx, data_config.ny}\n")
             if data_config.subdomain_process:
                 file.write(f"Subdomain (x,y):{data_config.subdomain_args.ndomain_x,data_config.subdomain_args.ndomain_y}\n")
                 file.write(f"Subdomain Grid(x,y):{int(train_input.shape[1]/4),int(val_input.shape[1]/4)}\n")
@@ -124,8 +124,8 @@ def main(config_file:str):
         dim=config.dim,
         epochs= opt_config.epochs,
         dt=data_config.dt,
-        gridx=data_config.gridx,
-        gridy=data_config.gridy,
+        nx=data_config.nx,
+        ny=data_config.ny,
         T_in=model_config.T_in,
         T=model_config.T,
         xStep=data_config.xStep,

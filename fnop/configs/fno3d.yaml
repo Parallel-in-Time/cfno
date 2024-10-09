@@ -13,8 +13,8 @@ data:
   train_samples: 40
   val_samples: 20
   dt: 0.1
-  gridx: 256
-  gridy: 64
+  nx: 256
+  ny: 64
   xStep: 1
   yStep: 1
   tStep: 1
