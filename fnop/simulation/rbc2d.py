@@ -11,9 +11,8 @@ MPI_SIZE = COMM_WORLD.Get_size()
 MPI_RANK = COMM_WORLD.Get_rank()
 
 def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
-            tEnd=150, dtWrite=0.1, useSDC=False,
-            writeVort=False, writeFull=False,
-            initFields=None):
+    tBeg=0, tEnd=150, dtWrite=0.1, useSDC=False, 
+    writeVort=False, writeFull=False, initFields=None):
     """
     Run RBC simulation in a given folder.
 
@@ -29,6 +28,8 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         Base time-step for the base space resolution. The default is 1e-2/2.
     seed: int, optional
         Seed for the random noise in the initial solution. The default is 999.
+    tBeg: float
+        Simulation starting time (default is 0)
     tEnd: float
         Simulation end time
     dtWrite: float
@@ -116,6 +117,7 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
 
     # Solver
     solver = problem.build_solver(timestepper)
+    solver.sim_time = tBeg
     solver.stop_sim_time = stop_sim_time
 
     # Initial conditions
