@@ -75,12 +75,13 @@ class Trainer:
 
         Args:
             train_loader (torch.utils.data.DataLoader): training dataloaders
-            nTrain (int): number of training sampels
+            nTrain (int): number of training samples
             training_loss  : training loss
             
         Returns:
             train_error (float): training error for one epoch
             train_step_error (float): training recurrence step error for one epoch
+            avg_loss (float): average train error per individual sample
             grads_norm_epoch (float): torch gradient norm for one epoch
         """
         
@@ -90,6 +91,7 @@ class Trainer:
         train_l2_step = 0.0
         train_l2_full = 0.0
         grads_norm_epoch = 0.0
+        avg_loss = 0.0
         
         for step, (xx, yy) in enumerate(train_loader):
             loss = 0
@@ -131,11 +133,12 @@ class Trainer:
                     'Train l2 step loss (in progress)': train_l2_step})
         
 
-        train_error = train_l2_full / nTrain
-        train_step_error = train_l2_step / nTrain / (self.T / self.tStep)
+        train_error = train_l2_full / len(train_loader)
+        train_step_error = train_l2_step /len(train_loader) / (self.T / self.tStep)
         grads_norm_epoch = grads_norm_epoch / nTrain
+        avg_loss = train_l2_full/ nTrain
         
-        return train_error, train_step_error, grads_norm_epoch
+        return train_error, train_step_error, avg_loss, grads_norm_epoch
     
     def fno3d_train_single_epoch (self, tepoch, train_loader,
                                   nTrain, training_loss,
@@ -145,12 +148,13 @@ class Trainer:
 
         Args:
             train_loader (torch.utils.data.DataLoader): training dataloaders
-            nTrain (int): number of training sampels
+            nTrain (int): number of training samples
             training_loss  : training loss
             
         Returns:
             train_error (float): training error for one epoch
             train_mse (float): training mean squared error for one epoch
+            avg_loss (float): average train error per individual sample
             grads_norm_epoch (float): torch gradient norm for one epoch
         """
         
@@ -160,6 +164,7 @@ class Trainer:
         train_mse_local = 0
         train_l2 = 0
         grads_norm_epoch = 0.0
+        avg_loss = 0.0
         
         for step, (xx, yy) in enumerate(train_loader):
             xx = xx.to(self.device)
@@ -190,11 +195,12 @@ class Trainer:
             tepoch.set_postfix({'Batch': step + 1, 'Train l2-loss (in progress)': train_l2,\
                     'Train mse loss (in progress)': train_mse_local})
         
-        train_error = train_l2 / nTrain
-        train_mse = train_mse_local / nTrain
+        train_error = train_l2 / len(train_loader)
+        train_mse = train_mse_local / len(train_loader)
+        avg_loss = train_l2/ nTrain
         grads_norm_epoch = grads_norm_epoch / nTrain
         
-        return train_error, train_mse, grads_norm_epoch
+        return train_error, train_mse, avg_loss, grads_norm_epoch
                      
     def fno2d_eval(self, val_loader, nVal, val_loss):
         """
@@ -202,16 +208,18 @@ class Trainer:
 
         Args:
             val_loader (torch.utils.data.DataLoader): validation dataloaders
-            nVal: number of validation sampels
+            nVal: number of validation samples
             val_loss : validation loss
 
         Returns:
            val_error (float): validation error for one epoch
            val_step_error (float): validation recurrence step error for one epoch
+           avg_val_loss (float): average validation error per individual sample
         """
         
-        val_l2_step = 0
-        val_l2_full = 0
+        val_l2_step = 0.0
+        val_l2_full = 0.0
+        avg_val_loss = 0.0
         
         self.model.eval()
         with torch.no_grad():
@@ -236,10 +244,11 @@ class Trainer:
                 val_l2_full += val_loss(pred.reshape(self.batch_size, -1), yy.reshape(self.batch_size, -1)).item()
                 # self.memory.print("After val first batch")
 
-        val_error = val_l2_full / nVal
-        val_step_error = val_l2_step / nVal / (self.T / self.tStep)
+        val_error = val_l2_full / len(val_loader)
+        val_step_error = val_l2_step / len(val_loader) / (self.T / self.tStep)
+        avg_val_loss = val_l2_full/ nVal
        
-        return val_error, val_step_error   
+        return val_error, val_step_error, avg_val_loss
     
     def fno3d_eval(self, val_loader, nVal, val_loss):
         """
@@ -247,16 +256,18 @@ class Trainer:
 
         Args:
             val_loader (torch.utils.data.DataLoader): validation dataloaders
-            nVal: number of validation sampels
+            nVal: number of validation samples
             val_loss : validation loss
 
         Returns:
            val_error (float): validation error for one epoch
            val_mse (float): validation mean squared error for one epoch
+           avg_val_loss (float): average validation error per individual sample
         """
         
-        val_l2 = 0
-        val_mse_local = 0
+        val_l2 = 0.0
+        val_mse_local = 0.0
+        avg_val_loss = 0.0 
         
         self.model.eval()
         with torch.no_grad():
@@ -270,10 +281,11 @@ class Trainer:
                 val_l2 += val_loss(pred.view(self.batch_size, -1), yy.view(self.batch_size, -1)).item()
                 val_mse_local += nn.functional.mse_loss(pred, yy, reduction='mean').item()
                
-        val_error = val_l2 / nVal
-        val_mse = val_mse_local/ nVal
+        val_error = val_l2 / len(val_loader)
+        val_mse = val_mse_local/ len(val_loader)
+        avg_val_loss = val_l2/ nVal
         
-        return val_error, val_mse  
+        return val_error, val_mse, avg_val_loss
       
     def save_checkpoint(self, epoch:int, train_error:float, 
                     val_error:float, verbose:bool=True
@@ -328,8 +340,8 @@ class Trainer:
             batch_size (int) : training batch size 
             training_loss : training loss
             val_loss : validation loss
-            nTrain (int): number of training sampels
-            nVal (int): number of validation sampels
+            nTrain (int): number of training samples
+            nVal (int): number of validation samples
             tensorboard_writer (torch.utils.tensorboard.SummaryWriter): tensorboard logger
             resume_from_checkpoint (str): path to model checkpoint to continue training
         """
@@ -361,34 +373,37 @@ class Trainer:
                 t1 = default_timer()
                 
                 if self.dim == 'FNO2D':
-                    train_error, train_step_error, grad_norm = self.fno2d_train_single_epoch(tepoch, train_loader, nTrain, training_loss)
-                    val_error, val_step_error = self.fno2d_eval(val_loader, nVal, val_loss)
+                    train_error, train_step_error, avg_train_loss, grad_norm = self.fno2d_train_single_epoch(tepoch, train_loader, nTrain, training_loss)
+                    val_error, val_step_error, avg_val_loss = self.fno2d_eval(val_loader, nVal, val_loss)
                 
                     self.tensorboard_writer.add_scalar("train_loss/train_step_l2loss", train_step_error, epoch)
                     self.tensorboard_writer.add_scalar("val_loss/val_step_l2loss", val_step_error, epoch)
                    
                 else:
-                    train_error, train_mse, grad_norm = self.fno3d_train_single_epoch(tepoch, train_loader, nTrain, training_loss)
-                    val_error, val_mse = self.fno3d_eval(val_loader, nVal, val_loss)
+                    train_error, train_mse, avg_train_loss, grad_norm = self.fno3d_train_single_epoch(tepoch, train_loader, nTrain, training_loss)
+                    val_error, val_mse, avg_val_loss = self.fno3d_eval(val_loader, nVal, val_loss)
             
                     self.tensorboard_writer.add_scalar("train_loss/train_mseloss", train_mse, epoch)
                     self.tensorboard_writer.add_scalar("val_loss/val_mseloss", val_mse, epoch)
+                    
                 
                 self.tensorboard_writer.add_scalar("train_loss/train_l2loss", train_error, epoch)
+                self.tensorboard_writer.add_scalar("train_loss/avg_trainloss", avg_train_loss, epoch)
                 self.tensorboard_writer.add_scalar("train/GradNormEpoch", grad_norm, epoch)
                 self.tensorboard_writer.add_scalar("val_loss/val_l2loss", val_error, epoch)
+                self.tensorboard_writer.add_scalar("val_loss/avg_valloss", avg_val_loss, epoch)
                          
                 t2 = default_timer()
                 tepoch.set_postfix({ \
                     'Epoch': epoch, \
                     'Time per epoch (s)': (t2-t1), \
                     'Train l2loss': train_error,\
-                    'Val l2loss':  val_error 
+                    'Val l2loss':  val_error
                     })
                 
             tepoch.close()
             
-            if epoch > 0 and (epoch % 100 == 0 or epoch == self.epochs-1):
+            if epoch > 0 and (epoch % 10 == 0 or epoch == self.epochs-1):
                 self.save_checkpoint(epoch, train_error, val_error, verbose=True)
                 
             if self.exit_signal_handler:

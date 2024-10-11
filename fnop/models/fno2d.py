@@ -93,6 +93,7 @@ class FNO2D(nn.Module):
         self.p = nn.Sequential(nn.Linear(self.input_channels, self.lifting_width),  # scaling: p layer
                                nn.ReLU(inplace=True),
                                nn.Linear(self.lifting_width, self.width))   
+        # nn.GELU()  
 
         
         self.conv_list = nn.ModuleList([nn.Conv2d(self.width, self.width, 1) for _ in range(self.n_layers)]) # W
@@ -118,6 +119,7 @@ class FNO2D(nn.Module):
         self.q = nn.Sequential(nn.Linear(self.width, self.projection_width),  # scaling: p layer
                                nn.ReLU(inplace=True),
                                nn.Linear(self.projection_width, self.out_channels))   
+        #  nn.GELU()
         
         self.norm = InstanceNorm()
         # self.conv0 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)

@@ -163,8 +163,8 @@ def main(config_file:str):
         batch_size=data_config.batch_size,
         training_loss=loss,
         val_loss=loss,
-        nTrain=data_config.train_samples,
-        nVal=data_config.val_samples,
+        nTrain=train_input.shape[0],
+        nVal=val_input.shape[0],
         tensorboard_writer=tensorboard_writer,
         resume_from_checkpoint=config.resume_from_checkpoint
     )
