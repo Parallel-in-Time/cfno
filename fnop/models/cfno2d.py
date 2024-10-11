@@ -7,6 +7,8 @@ from torch_dct import dct, idct
 class CF2DConv(nn.Module):
     """2D Neural Convolution, FFT in X, DCT in Y (can switch to FFT in Y for comparison)"""
 
+    USE_T_CACHE = False
+
     def __init__(self, kX, kY, dv, forceFFT=False):
         super().__init__()
 
@@ -21,11 +23,25 @@ class CF2DConv(nn.Module):
             self._toFourierSpace = self._toFourierSpace_FORCE_FFT
             self._toRealSpace = self._toRealSpace_FORCE_FFT
 
+        if self.USE_T_CACHE:
+            self._T_CACHE = {}
+            self.T = self.T_WITH_CACHE
+
 
     def T(self, kMax, n, device):
         return th.cat([
             th.eye(kMax, dtype=th.cfloat, device=device),
             th.zeros(kMax, n-kMax, device=device)], dim=1)
+    
+    def T_WITH_CACHE(self, kMax, n, device):
+        try:
+            T = self._T_CACHE[(kMax, n)]
+        except KeyError:
+            T = th.cat([
+                    th.eye(kMax, dtype=th.cfloat, device=device),
+                    th.zeros(kMax, n-kMax, device=device)], dim=1)
+            self._T_CACHE[(kMax, n)] = T
+        return T
 
     def _toFourierSpace(self, x):
         """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY] """

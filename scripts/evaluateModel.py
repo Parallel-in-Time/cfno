@@ -15,11 +15,11 @@ from fnop.inference.inference import FNOInference
 baseDir = "evaluateModel"
 Rayleigh = 1e7
 
-MODEL_PATH = "../../model_archive/FNO2D_RBC2D_strategy2/model_nx256_nx64_dt1e_1_tin1"
+MODEL_PATH = "../../model_archive/FNO2D_RBC2D_strategy2/model_nx256_nz64_dt1e_3_tin1/run2"
 
 FNO_PARAMS = {
-    "config": f"{MODEL_PATH}/fno2d_strat2_dt1e-1.yaml",
-    "checkpoint": f"{MODEL_PATH}/model_checkpoint_1499.pt"
+    "config": f"{MODEL_PATH}/fno2d_strat2_dt1e-3.yaml",
+    "checkpoint": f"{MODEL_PATH}/model_checkpoint_80.pt"
     }
 
 def log(msg):
@@ -67,7 +67,7 @@ u0 = np.array([vx0, vz0, b0, p0])
 u1 = model.predict(u0)
 
 # Comparison
-lookingAt = "velocity-z"
+lookingAt = "buoyancy"
 if lookingAt.startswith("velocity"):
     try:
         idx = {
