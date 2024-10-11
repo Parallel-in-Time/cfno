@@ -92,6 +92,6 @@ contourPlot(
 if False:
     for i in range(refSol.shape[0]):
         contourPlot(
-            refSol[i].T, gridX, gridZ, refField=refSol[i].T,
+            refSol[i].T, gridX, gridZ, refField=refSol[i].T, time=time[1],
             title=f"FNO model ({lookingAt})", refTitle="Dedalus simulation",
             saveFig=f"{baseDir}/buoyancy_{i:02d}.jpg")
