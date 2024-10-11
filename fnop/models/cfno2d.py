@@ -17,25 +17,45 @@ class CF2DConv(nn.Module):
         # Layer's parameters : kX * kY * dv * dv
         self.R = nn.Parameter(th.rand(kX, kY, dv, dv, dtype=th.cfloat))
 
+        if forceFFT:
+            self._toFourierSpace = self._toFourierSpace_FORCE_FFT
+            self._toRealSpace = self._toRealSpace_FORCE_FFT
+
 
     def T(self, kMax, n):
         return th.cat([th.eye(kMax, dtype=th.cfloat), th.zeros(kMax, n-kMax)], dim=1)
 
+    def _toFourierSpace(self, x):
+        """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY] """
+        x = dct(x, norm="ortho")                    # DCT on last dimension
+        x = th.fft.rfft(x, dim=-2, norm="ortho")    # RFFT on before-last dimension
+        return x
+    
+    def _toRealSpace(self, x):
+        """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY] """
+        x = th.fft.irfft(x, dim=-2, norm="ortho")   # IRFFT on before-last dimension
+        x = idct(x, norm="ortho")                   # IDCT on last dimension
+        return x
 
+    def _toFourierSpace_FORCE_FFT(self, x):
+        """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY] """
+        x = th.fft.rfft2(x, norm="ortho")   # RFFT on last 2 dimensions
+        return x
+    
+    def _toRealSpace_FORCE_FFT(self, x):
+        """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY]"""
+        x = th.fft.irfft2(x, norm="ortho")  # IRFFT on last 2 dimensions
+        return x 
+
+    
     def forward(self, x:th.tensor):
         """ x[nBatch, nX, nY, dv] -> x[nBatch, nX, nY, dv] """
 
         # Permute dimensions -> [nBatch, dv, nX, nY]
         x = x.movedim(-1, -3)
 
-        # DCT on last dimension -> [nBatch, dv, nX, nY] (or not ...)
-        if self.forceFFT:
-            x = th.fft.rfft(x, dim=-1, norm="ortho")
-        else:
-            x = dct(x, norm="ortho")
-
-        # RFFT on before-last dimension -> [nBatch, dv, nX, nY]
-        x = th.fft.rfft(x, dim=-2, norm="ortho")
+        # Transform to Fourier space -> [nBatch, dv, nX, nY]
+        x = self._toFourierSpace(x)
 
         # Truncate and keep only first modes -> [nBatch, dv, kX, kY]
         nX, nY = x.shape[-2:]
@@ -48,14 +68,8 @@ class CF2DConv(nn.Module):
         # Padding on high frequency modes -> [nBatch, dv, nX, nY]
         x = th.einsum("xa,yb,eiab->eixy", Tx.T, Ty.T, x)
 
-        # IRFFT on before-last dimension -> [nBatch, dv, nX, nY]
-        x = th.fft.irfft(x, dim=-2, norm="ortho")
-
-        # IDCT on last dimension -> [nBatch, dv, nX, nY]
-        if self.forceFFT:
-            x = th.fft.irfft(x, dim=-1, norm="ortho")
-        else:
-            x = idct(x, norm="ortho")
+        # Transform back to Real space -> [nBatch, dv, nX, nY]
+        x = self._toRealSpace(x)
 
         # Permute dimensions -> [nBatch, nX, nY, dv]
         x = x.movedim(-3, -1)
