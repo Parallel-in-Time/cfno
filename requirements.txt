@@ -216,6 +216,7 @@ tomli_w==1.0.0
 tomlkit==0.11.8
 torch==2.1.2
 torchsummary==1.5.1
+torch-dct
 tornado==6.4
 tqdm==4.66.1
 traitlets==5.9.0
