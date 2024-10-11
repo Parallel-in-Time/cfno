@@ -67,7 +67,7 @@ u0 = np.array([vx0, vz0, b0, p0])
 u1 = model.predict(u0)
 
 # Comparison
-lookingAt = "buoyancy"
+lookingAt = "velocity-z"
 if lookingAt.startswith("velocity"):
     try:
         idx = {
@@ -87,7 +87,7 @@ else:
 contourPlot(
     modSol.T, gridX, gridZ, refField=refSol[1].T,
     title=f"FNO model ({lookingAt})", refTitle="Dedalus simulation",
-    saveFig=f"{baseDir}/buoyancy_inference.jpg")
+    saveFig=f"{baseDir}/buoyancy_inference.jpg", closeFig=False)
 
 if False:
     for i in range(refSol.shape[0]):
