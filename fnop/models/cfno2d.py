@@ -22,15 +22,17 @@ class CF2DConv(nn.Module):
             self._toRealSpace = self._toRealSpace_FORCE_FFT
 
 
-    def T(self, kMax, n):
-        return th.cat([th.eye(kMax, dtype=th.cfloat), th.zeros(kMax, n-kMax)], dim=1)
+    def T(self, kMax, n, device):
+        return th.cat([
+            th.eye(kMax, dtype=th.cfloat, device=device),
+            th.zeros(kMax, n-kMax, device=device)], dim=1)
 
     def _toFourierSpace(self, x):
         """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY] """
         x = dct(x, norm="ortho")                    # DCT on last dimension
         x = th.fft.rfft(x, dim=-2, norm="ortho")    # RFFT on before-last dimension
         return x
-    
+
     def _toRealSpace(self, x):
         """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY] """
         x = th.fft.irfft(x, dim=-2, norm="ortho")   # IRFFT on before-last dimension
@@ -41,13 +43,13 @@ class CF2DConv(nn.Module):
         """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY] """
         x = th.fft.rfft2(x, norm="ortho")   # RFFT on last 2 dimensions
         return x
-    
+
     def _toRealSpace_FORCE_FFT(self, x):
         """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY]"""
         x = th.fft.irfft2(x, norm="ortho")  # IRFFT on last 2 dimensions
-        return x 
+        return x
 
-    
+
     def forward(self, x:th.tensor):
         """ x[nBatch, nX, nY, dv] -> x[nBatch, nX, nY, dv] """
 
@@ -59,7 +61,7 @@ class CF2DConv(nn.Module):
 
         # Truncate and keep only first modes -> [nBatch, dv, kX, kY]
         nX, nY = x.shape[-2:]
-        Tx, Ty = self.T(self.kX, nX), self.T(self.kY, nY)
+        Tx, Ty = self.T(self.kX, nX, x.device), self.T(self.kY, nY, x.device)
         x = th.einsum("ax,by,eixy->eiab", Tx, Ty, x)
 
         # Apply R -> [nBatch, dv, kX, kY]
@@ -106,7 +108,8 @@ class CFNO2D(nn.Module):
 
         self.P = nn.Linear(da, dv)
         self.Q = nn.Linear(dv, du)
-        self.layers = [CF2DLayer(kX, kY, dv, forceFFT) for _ in range(nLayers)]
+        self.layers = nn.ModuleList(
+            [CF2DLayer(kX, kY, dv, forceFFT) for _ in range(nLayers)])
 
 
     def forward(self, x):
