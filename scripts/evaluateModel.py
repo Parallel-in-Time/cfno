@@ -56,7 +56,7 @@ sKeys = list(refFile["scales"].keys())
 gridX = refFile["scales"][sKeys[-2]][:]
 gridZ = refFile["scales"][sKeys[-1]][:]
 refSol = refFile['tasks']
-
+time = refFile['scales']['sim_time'][:]
 # FNO evaluation
 model = FNOInference(**FNO_PARAMS)
 vx0 = refFile['tasks']["velocity"][0, 0]
@@ -85,7 +85,7 @@ else:
     raise ValueError(f"wrong format for lookingAt ({lookingAt})")
 
 contourPlot(
-    modSol.T, gridX, gridZ, refField=refSol[1].T,
+    modSol.T, gridX, gridZ, refField=refSol[1].T, time=time[1],
     title=f"FNO model ({lookingAt})", refTitle="Dedalus simulation",
     saveFig=f"{baseDir}/buoyancy_inference.jpg", closeFig=False)
 
