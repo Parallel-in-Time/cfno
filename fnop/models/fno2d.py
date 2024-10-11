@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+
 from fnop.utils import CudaMemoryDebugger, format_tensor_size
 from fnop.layers.mlp import ChannelMLP
 from fnop.layers.spectral_layers import SpectralConv2d
