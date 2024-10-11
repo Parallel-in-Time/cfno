@@ -55,8 +55,7 @@ refFile = OutputFiles(refRunDir).file(0)
 sKeys = list(refFile["scales"].keys())
 gridX = refFile["scales"][sKeys[-2]][:]
 gridZ = refFile["scales"][sKeys[-1]][:]
-
-refSol = refFile['tasks']["buoyancy"][:]
+refSol = refFile['tasks']
 
 # FNO evaluation
 model = FNOInference(**FNO_PARAMS)
@@ -64,19 +63,35 @@ vx0 = refFile['tasks']["velocity"][0, 0]
 vz0 = refFile['tasks']["velocity"][0, 1]
 b0 = refFile['tasks']["buoyancy"][0]
 p0 = refFile['tasks']["pressure"][0]
-
-# -- initial solution
 u0 = np.array([vx0, vz0, b0, p0])
 u1 = model.predict(u0)
 
+# Comparison
+lookingAt = "buoyancy"
+if lookingAt.startswith("velocity"):
+    try:
+        idx = {
+            "x": 0,
+            "z": 1,
+        }[lookingAt[-1]]
+    except KeyError:
+        raise ValueError(f"wrong format for lookingAt ({lookingAt})")
+    refSol = refSol["velocity"][:, idx]
+    modSol = u1[idx]
+elif lookingAt in ["buoyancy", "pressure"]:
+    refSol = refSol[lookingAt][:]
+    modSol = u1[2 if lookingAt == "buoyancy" else 3]
+else:
+    raise ValueError(f"wrong format for lookingAt ({lookingAt})")
+
 contourPlot(
-    refSol[1].T, gridX, gridZ, refField=u1[2].T,
-    title="FNO model", refTitle="Dedalus simulation",
+    modSol.T, gridX, gridZ, refField=refSol[1].T,
+    title=f"FNO model ({lookingAt})", refTitle="Dedalus simulation",
     saveFig=f"{baseDir}/buoyancy_inference.jpg")
 
 if False:
     for i in range(refSol.shape[0]):
         contourPlot(
             refSol[i].T, gridX, gridZ, refField=refSol[i].T,
-            title="FNO model", refTitle="Dedalus simulation",
+            title=f"FNO model ({lookingAt})", refTitle="Dedalus simulation",
             saveFig=f"{baseDir}/buoyancy_{i:02d}.jpg")
