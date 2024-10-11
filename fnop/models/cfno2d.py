@@ -5,13 +5,14 @@ from torch_dct import dct, idct
 
 
 class CF2DConv(nn.Module):
-    """2D Neural Convolution, FFT in X, DCT in Y"""
+    """2D Neural Convolution, FFT in X, DCT in Y (can switch to FFT in Y for comparison)"""
 
-    def __init__(self, kX, kY, dv):
+    def __init__(self, kX, kY, dv, forceFFT=False):
         super().__init__()
 
         self.kX = kX
         self.kY = kY
+        self.forceFFT = forceFFT
 
         # Layer's parameters : kX * kY * dv * dv
         self.R = nn.Parameter(th.rand(kX, kY, dv, dv, dtype=th.cfloat))
@@ -27,8 +28,11 @@ class CF2DConv(nn.Module):
         # Permute dimensions -> [nBatch, dv, nX, nY]
         x = x.movedim(-1, -3)
 
-        # DCT on last dimension -> [nBatch, dv, nX, nY]
-        x = dct(x, norm="ortho")
+        # DCT on last dimension -> [nBatch, dv, nX, nY] (or not ...)
+        if self.forceFFT:
+            x = th.fft.rfft(x, dim=-1, norm="ortho")
+        else:
+            x = dct(x, norm="ortho")
 
         # RFFT on before-last dimension -> [nBatch, dv, nX, nY]
         x = th.fft.rfft(x, dim=-2, norm="ortho")
@@ -48,7 +52,10 @@ class CF2DConv(nn.Module):
         x = th.fft.irfft(x, dim=-2, norm="ortho")
 
         # IDCT on last dimension -> [nBatch, dv, nX, nY]
-        x = idct(x, norm="ortho")
+        if self.forceFFT:
+            x = th.fft.irfft(x, dim=-1, norm="ortho")
+        else:
+            x = idct(x, norm="ortho")
 
         # Permute dimensions -> [nBatch, nX, nY, dv]
         x = x.movedim(-3, -1)
@@ -58,10 +65,10 @@ class CF2DConv(nn.Module):
 
 class CF2DLayer(nn.Module):
 
-    def __init__(self, kX, kY, dv):
+    def __init__(self, kX, kY, dv, forceFFT=False):
         super().__init__()
 
-        self.conv = CF2DConv(kX, kY, dv)
+        self.conv = CF2DConv(kX, kY, dv, forceFFT)
         self.sigma = nn.ReLU(inplace=True)
         self.W = nn.Linear(dv, dv)
 
@@ -80,12 +87,12 @@ class CF2DLayer(nn.Module):
 
 class CFNO2D(nn.Module):
 
-    def __init__(self, da, dv, du, kX=4, kY=4, nLayers=1):
+    def __init__(self, da, dv, du, kX=4, kY=4, nLayers=1, forceFFT=False):
         super().__init__()
 
         self.P = nn.Linear(da, dv)
         self.Q = nn.Linear(dv, du)
-        self.layers = [CF2DLayer(kX, kY, dv) for _ in range(nLayers)]
+        self.layers = [CF2DLayer(kX, kY, dv, forceFFT) for _ in range(nLayers)]
 
 
     def forward(self, x):
