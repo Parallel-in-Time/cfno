@@ -32,7 +32,7 @@ class CF2DConv(nn.Module):
         return th.cat([
             th.eye(kMax, dtype=th.cfloat, device=device),
             th.zeros(kMax, n-kMax, device=device)], dim=1)
-    
+
     def T_WITH_CACHE(self, kMax, n, device):
         try:
             T = self._T_CACHE[(kMax, n)]
@@ -81,7 +81,7 @@ class CF2DConv(nn.Module):
         x = th.einsum("ax,by,eixy->eiab", Tx, Ty, x)
 
         # Apply R -> [nBatch, dv, kX, kY]
-        x = th.einsum("ijab,ejab->eiab", self.R, x)
+        x = th.einsum("abij,ejab->eiab", self.R, x)
 
         # Padding on high frequency modes -> [nBatch, dv, nX, nY]
         x = th.einsum("xa,yb,eiab->eixy", Tx.T, Ty.T, x)
@@ -137,3 +137,10 @@ class CFNO2D(nn.Module):
         x = self.Q(x)
 
         return x
+
+
+if __name__ == "__main__":
+    # Quick script testing
+    model = CFNO2D(4, 6, 4, nLayers=4, kX=6, kY=12).to("cuda")
+    uIn = th.rand(5, 64, 128, 4).to("cuda")
+    print(model(uIn).shape)
