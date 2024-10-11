@@ -22,7 +22,7 @@ class CF2DConv(nn.Module):
 
 
     def forward(self, x:th.tensor):
-        """ x[nBatch, nX, nY, dv] """
+        """ x[nBatch, nX, nY, dv] -> x[nBatch, nX, nY, dv] """
 
         # Permute dimensions -> [nBatch, dv, nX, nY]
         x = x.movedim(-1, -3)
@@ -67,7 +67,7 @@ class CF2DLayer(nn.Module):
 
 
     def forward(self, x):
-        """ x[nBatch, nX, nY, dv] """
+        """ x[nBatch, nX, nY, dv] -> x[nBatch, nX, nY, dv] """
 
         v = self.conv(x)    # 2D Convolution
         w = self.W(x)       # Linear operator
@@ -89,7 +89,7 @@ class CFNO2D(nn.Module):
 
 
     def forward(self, x):
-        """ x[nBatch, nX, nY, dv] """
+        """ x[nBatch, nX, nY, da] -> x[nBatch, nX, nY, du]"""
 
         x = self.P(x)
         for layer in self.layers:
