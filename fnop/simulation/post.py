@@ -223,8 +223,9 @@ def generateChunkPairs(folder:str, N:int, M:int,
     return pairs
 
 
-def contourPlot(field, x, y, time=None,
-                title=None, refField=None, refTitle=None, saveFig=False):
+def contourPlot(field, x, y,
+                title=None, refField=None, refTitle=None, saveFig=False,
+                closeFig=True):
 
     fig, axs = plt.subplots(1 if refField is None else 2)
     ax = axs if refField is None else axs[0]
@@ -253,4 +254,5 @@ def contourPlot(field, x, y, time=None,
     plt.tight_layout()
     if saveFig:
         plt.savefig(saveFig)
-    plt.close(fig)
+    if closeFig:
+        plt.close(fig)

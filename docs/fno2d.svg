@@ -24,9 +24,9 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
-     inkscape:zoom="1.399398"
-     inkscape:cx="1445.2644"
-     inkscape:cy="311.20526"
+     inkscape:zoom="0.98952382"
+     inkscape:cx="1146.5111"
+     inkscape:cy="365.32724"
      inkscape:window-width="1858"
      inkscape:window-height="1129"
      inkscape:window-x="62"
@@ -4409,12 +4409,12 @@
        y="93.708443"
        ry="1.9408389" />
     <rect
-       style="fill:#e1e1e1;fill-opacity:1;stroke:#000000;stroke-width:0.3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1.20000005,1.20000005;stroke-opacity:1;stroke-dashoffset:0"
+       style="fill:#e1e1e1;fill-opacity:1;stroke:#000000;stroke-width:0.3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1.2, 1.2;stroke-dashoffset:0;stroke-opacity:1"
        id="rect1-6-2"
        width="35.147316"
        height="24.146307"
-       x="403.87354"
-       y="11.00209"
+       x="405.99023"
+       y="15.23542"
        ry="3.7248561" />
     <text
        xml:space="preserve"
@@ -4441,18 +4441,18 @@
     <text
        xml:space="preserve"
        style="font-size:7.76111px;line-height:1.25;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';stroke-width:0.264583"
-       x="421.01566"
-       y="19.825392"
+       x="423.13235"
+       y="24.058729"
        id="text310-5"><tspan
          sodipodi:role="line"
          style="font-style:italic;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:7.76111px;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono Italic';text-align:center;text-anchor:middle;stroke-width:0.264583"
-         x="421.01566"
-         y="19.825392"
+         x="423.13235"
+         y="24.058729"
          id="tspan311">Fourier</tspan><tspan
          sodipodi:role="line"
          style="font-style:italic;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:7.76111px;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono Italic';text-align:center;text-anchor:middle;stroke-width:0.264583"
-         x="421.01566"
-         y="29.526779"
+         x="423.13235"
+         y="33.760117"
          id="tspan312">Layer</tspan></text>
     <text
        xml:space="preserve"

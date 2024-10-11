@@ -25,8 +25,8 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
      inkscape:zoom="0.75767346"
-     inkscape:cx="1106.6773"
-     inkscape:cy="458.64085"
+     inkscape:cx="1086.8798"
+     inkscape:cy="421.68562"
      inkscape:window-width="1858"
      inkscape:window-height="1129"
      inkscape:window-x="62"
@@ -7924,23 +7924,23 @@
        width="35.147316"
        height="24.146307"
        x="357.84601"
-       y="11.161959"
+       y="13.80779"
        ry="3.7248561" />
     <text
        xml:space="preserve"
        style="font-size:7.76111px;line-height:1.25;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';stroke-width:0.264583"
        x="374.97745"
-       y="19.825392"
+       y="22.471228"
        id="text310-5"><tspan
          sodipodi:role="line"
          style="font-style:italic;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:7.76111px;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono Italic';text-align:center;text-anchor:middle;stroke-width:0.264583"
          x="374.97745"
-         y="19.825392"
+         y="22.471228"
          id="tspan311">Fourier</tspan><tspan
          sodipodi:role="line"
          style="font-style:italic;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:7.76111px;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono Italic';text-align:center;text-anchor:middle;stroke-width:0.264583"
          x="374.97745"
-         y="29.526779"
+         y="32.172615"
          id="tspan312">Layer</tspan></text>
     <g
        transform="matrix(0.529176,0,0,0.529176,215.46183,121.17885)"
