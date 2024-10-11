@@ -9,5 +9,6 @@
 
 - [base FNO paper](https://arxiv.org/pdf/2010.08895)
 - [Github FNO package](https://github.com/neuraloperator/neuraloperator)
+- [DCT for torch](https://github.com/zh217/torch-dct)
 - [SHNO paper](https://arxiv.org/pdf/2306.03838)
-- [Torch SH transformations](https://github.com/NVIDIA/torch-harmonics)
+- [SHT for torch](https://github.com/NVIDIA/torch-harmonics)
