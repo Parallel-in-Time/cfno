@@ -223,7 +223,7 @@ def generateChunkPairs(folder:str, N:int, M:int,
     return pairs
 
 
-def contourPlot(field, x, y,
+def contourPlot(field, x, y, time=None,
                 title=None, refField=None, refTitle=None, saveFig=False,
                 closeFig=True):
 
