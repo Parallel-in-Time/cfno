@@ -4,6 +4,7 @@ import random
 import numpy as np
 import scipy.optimize as sco
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
 class OutputFiles():
@@ -233,12 +234,19 @@ def contourPlot(field, x, y,
         ax.set_xlabel("x")
         ax.set_ylabel("z")
 
-    ax.pcolormesh(x, y, field)
+    def setColorbar(im, ax):
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        fig.colorbar(im, cax=cax)
+
+    im = ax.pcolormesh(x, y, field)
+    setColorbar(im, ax)
     ax.set_title(title)
     setup(ax)
 
     if refField is not None:
-        axs[1].pcolormesh(x, y, refField)
+        im = axs[1].pcolormesh(x, y, refField)
+        setColorbar(im, axs[1])
         axs[1].set_title(refTitle)
         setup(axs[1])
 
