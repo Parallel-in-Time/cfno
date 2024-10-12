@@ -5,7 +5,7 @@ from torch_dct import dct, idct
 
 
 class CF2DConv(nn.Module):
-    """2D Neural Convolution, FFT in X, DCT in Y (can switch to FFT in Y for comparison)"""
+    """2D Neural Convolution, FFT in X, DCT in Y (can force FFT in Y for comparison)"""
 
     USE_T_CACHE = False
 
@@ -16,7 +16,6 @@ class CF2DConv(nn.Module):
         self.kY = kY
         self.forceFFT = forceFFT
 
-        # Layer's parameters : kX * kY * dv * dv
         self.R = nn.Parameter(th.rand(kX, kY, dv, dv, dtype=th.cfloat))
 
         if forceFFT:
@@ -44,46 +43,47 @@ class CF2DConv(nn.Module):
         return T
 
     def _toFourierSpace(self, x):
-        """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY] """
+        """ x[nBatch, dv, nX, nY] -> [nBatch, dv, fX = nX/2+1, fY = nY] """
         x = dct(x, norm="ortho")                    # DCT on last dimension
         x = th.fft.rfft(x, dim=-2, norm="ortho")    # RFFT on before-last dimension
         return x
 
     def _toRealSpace(self, x):
-        """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY] """
+        """ x[nBatch, dv, fX = nX/2+1, fY = nY] -> [nBatch, dv, nX, nY] """
         x = th.fft.irfft(x, dim=-2, norm="ortho")   # IRFFT on before-last dimension
         x = idct(x, norm="ortho")                   # IDCT on last dimension
         return x
 
     def _toFourierSpace_FORCE_FFT(self, x):
-        """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY] """
+        """ x[nBatch, dv, nX, nY] -> [nBatch, dv, fX = nX/2+1, fY = nY/2+1] """
         x = th.fft.rfft2(x, norm="ortho")   # RFFT on last 2 dimensions
         return x
 
     def _toRealSpace_FORCE_FFT(self, x):
-        """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY]"""
+        """ x[nBatch, dv, fX = nX/2+1, fY = nY/2+1] -> [nBatch, dv, nX, nY]"""
         x = th.fft.irfft2(x, norm="ortho")  # IRFFT on last 2 dimensions
         return x
 
 
     def forward(self, x:th.tensor):
-        """ x[nBatch, nX, nY, dv] -> x[nBatch, nX, nY, dv] """
+        """ x[nBatch, nX, nY, dv] -> [nBatch, nX, nY, dv] """
 
         # Permute dimensions -> [nBatch, dv, nX, nY]
         x = x.movedim(-1, -3)
 
-        # Transform to Fourier space -> [nBatch, dv, nX, nY]
+        # Transform to Fourier space -> [nBatch, dv, fX, fY]
         x = self._toFourierSpace(x)
 
         # Truncate and keep only first modes -> [nBatch, dv, kX, kY]
-        nX, nY = x.shape[-2:]
-        Tx, Ty = self.T(self.kX, nX, x.device), self.T(self.kY, nY, x.device)
+        fX, fY = x.shape[-2:]
+        Tx, Ty = self.T(self.kX, fX, x.device), self.T(self.kY, fY, x.device)
+        # -- Tx[kX, fX], Ty[kY, fY]
         x = th.einsum("ax,by,eixy->eiab", Tx, Ty, x)
 
-        # Apply R -> [nBatch, dv, kX, kY]
+        # Apply R[kX, kY, dv, dv] -> [nBatch, dv, kX, kY]
         x = th.einsum("abij,ejab->eiab", self.R, x)
 
-        # Padding on high frequency modes -> [nBatch, dv, nX, nY]
+        # Padding on high frequency modes -> [nBatch, dv, fX, fY]
         x = th.einsum("xa,yb,eiab->eixy", Tx.T, Ty.T, x)
 
         # Transform back to Real space -> [nBatch, dv, nX, nY]
