@@ -37,7 +37,7 @@ args = parser.parse_args()
 
 dataDir = args.dataDir
 Rayleigh = args.Rayleigh
-tInit = args.tInits
+tInit = args.tInit
 resFactor = args.resFactor
 nSimu = args.nSimu
 dtSimu = args.dtSimu

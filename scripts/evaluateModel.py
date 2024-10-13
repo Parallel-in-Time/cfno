@@ -70,10 +70,7 @@ u1 = model.predict(u0)
 lookingAt = "buoyancy"
 if lookingAt.startswith("velocity"):
     try:
-        idx = {
-            "x": 0,
-            "z": 1,
-        }[lookingAt[-1]]
+        idx = {"x": 0, "z": 1}[lookingAt[-1]]
     except KeyError:
         raise ValueError(f"wrong format for lookingAt ({lookingAt})")
     refSol = refSol["velocity"][:, idx]

@@ -34,5 +34,5 @@ contourPlot(
     data["inputs"][iSample, varChoices.index(var)].T,
     xGrid, zGrid, title=f"Input for {var}",
     refField=data["outputs"][iSample, varChoices.index(var)].T,
-    refTitle=f"Output for {var}",
+    refTitle=f"Output for {var} after dt={data['infos/dtInput'][()]:1.2g}s",
     saveFig=saveFig, closeFig=False)
