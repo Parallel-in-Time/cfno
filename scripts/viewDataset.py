@@ -28,7 +28,7 @@ saveFig = args.saveFig
 # Script execution
 data = h5py.File(dataFile, "r")
 nSamples = len(data["inputs"])
-assert iSample < nSamples, "iSample={iSample} to big for {nSamples} samples"
+assert iSample < nSamples, f"iSample={iSample} to big for {nSamples} samples"
 xGrid, zGrid = data["infos/xGrid"][:], data["infos/zGrid"][:]
 contourPlot(
     data["inputs"][iSample, varChoices.index(var)].T,
