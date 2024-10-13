@@ -9,7 +9,7 @@ from fnop.simulation.post import OutputFiles
 
 # Script parameters
 parser = argparse.ArgumentParser(
-    description='Generate Dedalus simulation data',
+    description='Generate Dedalus simulation data for 2D RBC',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     "--dataDir", default="generateData", help="dir. containing simulation data")

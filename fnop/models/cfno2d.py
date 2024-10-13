@@ -1,3 +1,5 @@
+import math
+
 import torch as th
 import torch.nn as nn
 
@@ -16,7 +18,7 @@ class CF2DConv(nn.Module):
         self.kY = kY
         self.forceFFT = forceFFT
 
-        self.R = nn.Parameter(th.rand(kX, kY, dv, dv, dtype=th.cfloat))
+        self.R = nn.Parameter(th.rand(dv, dv, kX, kY, dtype=th.cfloat))
 
         if forceFFT:
             self._toFourierSpace = self._toFourierSpace_FORCE_FFT
@@ -66,10 +68,7 @@ class CF2DConv(nn.Module):
 
 
     def forward(self, x:th.tensor):
-        """ x[nBatch, nX, nY, dv] -> [nBatch, nX, nY, dv] """
-
-        # Permute dimensions -> [nBatch, dv, nX, nY]
-        x = x.movedim(-1, -3)
+        """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY] """
 
         # Transform to Fourier space -> [nBatch, dv, fX, fY]
         x = self._toFourierSpace(x)
@@ -80,8 +79,8 @@ class CF2DConv(nn.Module):
         # -- Tx[kX, fX], Ty[kY, fY]
         x = th.einsum("ax,by,eixy->eiab", Tx, Ty, x)
 
-        # Apply R[kX, kY, dv, dv] -> [nBatch, dv, kX, kY]
-        x = th.einsum("abij,ejab->eiab", self.R, x)
+        # Apply R[dv, dv, kX, kY] -> [nBatch, dv, kX, kY]
+        x = th.einsum("ijab,ejab->eiab", self.R, x)
 
         # Padding on high frequency modes -> [nBatch, dv, fX, fY]
         x = th.einsum("xa,yb,eiab->eixy", Tx.T, Ty.T, x)
@@ -89,9 +88,32 @@ class CF2DConv(nn.Module):
         # Transform back to Real space -> [nBatch, dv, nX, nY]
         x = self._toRealSpace(x)
 
-        # Permute dimensions -> [nBatch, nX, nY, dv]
-        x = x.movedim(-3, -1)
+        return x
 
+
+class Grid2DLinear(nn.Module):
+
+    def __init__(self, inSize, outSize, bias=True):
+        super().__init__()
+
+        self.weights = nn.Parameter(th.empty((outSize, inSize)))
+        if bias:
+            self.bias = nn.Parameter(th.empty((outSize, 1, 1)))
+        else:
+            self.register_parameter('bias', None)
+
+        # Initialize parameters (same as in pytorch for nn.Linear)
+        nn.init.kaiming_uniform_(self.weights, a=math.sqrt(5))
+        if bias:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weights)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x):
+        """ x[nBatch, inSize, nX, nY] -> [nBatch, outSize, nX, nY] """
+        x = th.einsum("ij,ejxy->eixy", self.weights, x)
+        if self.bias is not None:
+            x += self.bias
         return x
 
 
@@ -102,11 +124,11 @@ class CF2DLayer(nn.Module):
 
         self.conv = CF2DConv(kX, kY, dv, forceFFT)
         self.sigma = nn.ReLU(inplace=True)
-        self.W = nn.Linear(dv, dv)
+        self.W = Grid2DLinear(dv, dv)
 
 
     def forward(self, x):
-        """ x[nBatch, nX, nY, dv] -> x[nBatch, nX, nY, dv] """
+        """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY] """
 
         v = self.conv(x)    # 2D Convolution
         w = self.W(x)       # Linear operator
@@ -122,14 +144,14 @@ class CFNO2D(nn.Module):
     def __init__(self, da, dv, du, kX=4, kY=4, nLayers=1, forceFFT=False):
         super().__init__()
 
-        self.P = nn.Linear(da, dv)
-        self.Q = nn.Linear(dv, du)
+        self.P = Grid2DLinear(da, dv)
+        self.Q = Grid2DLinear(dv, du)
         self.layers = nn.ModuleList(
             [CF2DLayer(kX, kY, dv, forceFFT) for _ in range(nLayers)])
 
 
     def forward(self, x):
-        """ x[nBatch, nX, nY, da] -> x[nBatch, nX, nY, du]"""
+        """ x[nBatch, da, nX, nY] -> [nBatch, du, nX, nY]"""
 
         x = self.P(x)
         for layer in self.layers:
@@ -141,6 +163,6 @@ class CFNO2D(nn.Module):
 
 if __name__ == "__main__":
     # Quick script testing
-    model = CFNO2D(4, 6, 4, nLayers=4, kX=6, kY=12).to("cuda")
-    uIn = th.rand(5, 64, 128, 4).to("cuda")
+    model = CFNO2D(4, 6, 4, nLayers=4, kX=12, kY=6)
+    uIn = th.rand(5, 4, 256, 64)
     print(model(uIn).shape)
