@@ -2,8 +2,9 @@
 
 ## Generated
 
-- [fno.svg](./fno.svg) : mathematical representation of a 1D FNO with one Fourier layer
-- [fno2d.svg](./fno2d.svg) : mathematical representation of a 2D FNO with one Fourier layer
+- [fno.svg](./fno.svg) : graphical representation of a 1D FNO with one Fourier layer
+- [fno2d.svg](./fno2d.svg) : graphical representation of a 2D FNO with one Fourier layer
+- [cfno2d.svg](./cfno2d.svg): graphical representation of a 2D Chebyshev-Fourier Neural Operator (CFNO) with one Fourier layer 
 
 ## Useful links
 
