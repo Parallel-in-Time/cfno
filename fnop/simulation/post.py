@@ -49,6 +49,10 @@ class OutputFiles():
         return self.z.size
 
     @property
+    def shape(self):
+        return (4, self.nX, self.nZ)
+
+    @property
     def k(self):
         nX = self.nX
         k = np.fft.rfftfreq(nX, 1/nX) + 0.5
@@ -63,11 +67,30 @@ class OutputFiles():
     def pData(self, iFile:int):
         return self.file(iFile)['tasks']['pressure']
 
-    def times(self, iFile:int):
+    def times(self, iFile:int=None):
+        if iFile is None:
+            return np.array([self.times(i) for i in range(self.nFiles)])
         if self.inference:
             return np.array(self.vData(iFile)[:,0,0,0])
         else:
             return np.array(self.vData(iFile).dims[0]["sim_time"])
+
+    @property
+    def nFields(self):
+        return [self.nTimes(i) for i in range(self.nFiles)]
+
+    def fields(self, iField):
+        offset = np.cumsum(self.nFields)
+        iFile = np.argmax(iField < offset)
+        iTime = iField - sum(offset[:iFile])
+
+        data = self.file(iFile)["tasks"]
+        vx = data["velocity"][iTime, 0]
+        vz = data["velocity"][iTime, 1]
+        b = data["buoyancy"][iTime]
+        p = data["pressure"][iTime]
+
+        return np.array([vx, vz, b, p])
 
     def nTimes(self, iFile:int):
         return self.times(iFile).size
@@ -242,13 +265,14 @@ def contourPlot(field, x, y, time=None,
 
     im = ax.pcolormesh(x, y, field)
     setColorbar(im, ax)
-    ax.set_title(f'{title} at t = {np.round(time,3)}s')
+    timeSuffix = ' at t = {np.round(time,3)}s' if time is not None else ''
+    ax.set_title(f'{title}{timeSuffix}')
     setup(ax)
 
     if refField is not None:
         im = axs[1].pcolormesh(x, y, refField)
         setColorbar(im, axs[1])
-        axs[1].set_title(f'{refTitle} at t = {np.round(time,3)}s')
+        axs[1].set_title(f'{refTitle}{timeSuffix}')
         setup(axs[1])
 
     plt.tight_layout()

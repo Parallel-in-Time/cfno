@@ -24,9 +24,9 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
-     inkscape:zoom="0.49476191"
-     inkscape:cx="971.1742"
-     inkscape:cy="534.60057"
+     inkscape:zoom="0.67063927"
+     inkscape:cx="1314.4175"
+     inkscape:cy="454.04439"
      inkscape:window-width="1920"
      inkscape:window-height="1043"
      inkscape:window-x="0"
@@ -4522,7 +4522,7 @@
        sodipodi:nodetypes="cc" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.4;stroke-linecap:butt;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#DartArrow-8-6)"
-       d="m 356.04966,15.100065 c 15.13646,6.555542 46.9179,6.888302 60.21937,0.556956"
+       d="m 359.75385,15.100065 c 15.13646,6.555542 46.9179,6.888302 60.21937,0.556956"
        id="path2-8-2"
        sodipodi:nodetypes="cc" />
     <path
@@ -10025,7 +10025,7 @@
       </g>
     </g>
     <g
-       transform="matrix(0.529176,0,0,0.529176,369.12217,10.459187)"
+       transform="matrix(0.529176,0,0,0.529176,373.35553,10.459187)"
        ns1:version="1.10.0"
        ns1:texconverter="pdflatex"
        ns1:pdfconverter="inkscape"
@@ -11287,7 +11287,7 @@
       </g>
     </g>
     <g
-       transform="matrix(0.705568,0,0,0.705568,415.604,4.5328)"
+       transform="matrix(0.705568,0,0,0.705568,424.59989,4.5328)"
        ns1:version="1.10.0"
        ns1:texconverter="pdflatex"
        ns1:pdfconverter="inkscape"
@@ -12123,7 +12123,7 @@
       </g>
     </g>
     <g
-       transform="matrix(0.705568,0,0,0.705568,413.073,34.3502)"
+       transform="matrix(0.705568,0,0,0.705568,422.06889,34.3502)"
        ns1:version="1.10.0"
        ns1:texconverter="pdflatex"
        ns1:pdfconverter="inkscape"
