@@ -11,7 +11,7 @@ MPI_SIZE = COMM_WORLD.Get_size()
 MPI_RANK = COMM_WORLD.Get_rank()
 
 def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
-    tBeg=0, tEnd=150, dtWrite=0.1, useSDC=False, 
+    tBeg=0, tEnd=150, dtWrite=0.1, useSDC=False,
     writeVort=False, writeFull=False, initFields=None):
     """
     Run RBC simulation in a given folder.
@@ -42,7 +42,7 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         Write Tau variables to snapshot
     initFields: dictionary, optional
         Initial conditions
-    
+
     """
     if os.path.isfile(f"{dirName}/01_finalized.txt"):
         if MPI_RANK == 0:
@@ -165,7 +165,7 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         log('Starting main loop')
         for _ in range(nSteps+1): # need to do one more step to write last solution ...
             solver.step(timestep)
-            if (solver.iteration-1) % 10 == 0:
+            if (solver.iteration-1) % 100 == 0:
                 log(f'Iteration={solver.iteration}, Time={solver.sim_time}, dt={timestep}')
         if MPI_RANK == 0:
             with open(f"{dirName}/01_finalized.txt", "w") as f:
@@ -175,4 +175,3 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         raise
     finally:
         solver.log_stats()
-        
