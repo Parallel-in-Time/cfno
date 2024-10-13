@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Generate Dedalus simulation data
-"""
 import os
-import sys
 import argparse
 import numpy as np
 
@@ -13,7 +9,7 @@ from fnop.simulation.post import OutputFiles
 
 # Script parameters
 parser = argparse.ArgumentParser(
-    description='Create training (and validation) dataset from Dedalus simulation data',
+    description='Generate Dedalus simulation data',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     "--dataDir", default="generateData", help="dir. containing simulation data")
