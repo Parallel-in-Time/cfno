@@ -24,7 +24,10 @@ class HDF5Dataset(Dataset):
         return th.tensor(input), th.tensor(output)
 
     def __del__(self):
-        self.file.close()
+        try:
+            self.file.close()
+        except:
+            pass
 
 
 def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None):
