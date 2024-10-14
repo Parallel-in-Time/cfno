@@ -3,7 +3,7 @@ Minimal utilities to generate training and validation data
 """
 import h5py
 import torch as th
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader, random_split, Subset
 
 
 class HDF5Dataset(Dataset):
@@ -27,14 +27,21 @@ class HDF5Dataset(Dataset):
         self.file.close()
 
 
-def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=12345678):
+def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None):
     dataset = HDF5Dataset(dataFile)
-    trainSize = int(trainRatio*len(dataset))
-    valSize = len(dataset) - trainSize
+    nBatches = len(dataset)
+    trainSize = int(trainRatio*nBatches)
+    valSize = nBatches - trainSize
 
-    generator = th.Generator().manual_seed(seed)
-    trainSet, valSet = random_split(
-        dataset, [trainSize, valSize], generator=generator)
+    if seed is None:
+        trainIdx = list(range(0, trainSize))
+        valIdx = list(range(trainSize, nBatches))
+        trainSet = Subset(dataset, trainIdx)
+        valSet = Subset(dataset, valIdx)
+    else:
+        generator = th.Generator().manual_seed(seed)
+        trainSet, valSet = random_split(
+            dataset, [trainSize, valSize], generator=generator)
 
     trainLoader = DataLoader(trainSet, batch_size=batchSize, shuffle=True)
     valLoader = DataLoader(valSet, batch_size=batchSize, shuffle=False)

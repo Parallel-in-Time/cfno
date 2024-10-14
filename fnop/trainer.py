@@ -24,12 +24,17 @@ class Trainer:
             lr=0.00039,
             weight_decay=1e-5
             )
+        self.scheduler = th.optim.lr_scheduler.StepLR(
+            self.optimizer,
+            step_size=100.0,
+            gamma=0.98)
 
     def train(self):
         size = len(self.trainLoader.dataset)
         batchSize = self.batchSize
         model = self.model
         optimizer = self.optimizer
+        scheduler = self.scheduler
 
         model.train()
         for iBatch, (inputs, outputs) in enumerate(self.trainLoader):
@@ -38,6 +43,7 @@ class Trainer:
 
             loss.backward()
             optimizer.step()
+            scheduler.step()
             optimizer.zero_grad()
 
             loss, current = loss.item(), iBatch*batchSize + len(inputs)
@@ -51,11 +57,30 @@ class Trainer:
 
         model.eval()
         with th.no_grad():
-            for input, output in self.valLoader:
-                pred = model(input)
-                testLoss += lossFunction(pred, output).item()
+            for inputs, outputs in self.valLoader:
+                pred = model(inputs)
+                testLoss += lossFunction(pred, outputs).item()
         testLoss /= nBatches
         print(f"Test Error: \n Avg loss: {testLoss:>8f} \n")
+
+
+    def idLoss(self, dataset="valid"):
+        if dataset == "valid":
+            loader = self.valLoader
+        elif dataset == "train":
+            loader = self.trainLoader
+        else:
+            ValueError(f"cannot compute id loss on {loader} dataset")
+        nBatches = len(loader)
+        avgLoss = 0
+        model = self.model
+
+        model.eval()
+        with th.no_grad():
+            for inputs, outputs in loader:
+                avgLoss += lossFunction(inputs, outputs).item()
+        avgLoss /= nBatches
+        return avgLoss
 
 
     def runTraining(self, nEpochs):
@@ -64,3 +89,9 @@ class Trainer:
             self.train()
             self.test()
         print("Done!")
+
+
+    def loadCheckpoint(self, filePath):
+        checkpoint = th.load(filePath, weights_only=True)
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
