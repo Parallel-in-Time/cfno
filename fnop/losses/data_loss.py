@@ -2,7 +2,7 @@ import torch
 
 class LpLoss(object):
     """
-    FNO model loss
+    Model loss
     Args:
         d (int): dimension
         p (int): order of norm 
@@ -56,3 +56,30 @@ class LpLoss(object):
 
     def __call__(self, x, y):
         return self.rel(x, y)
+
+
+class VectormNormLoss(object):
+    """
+    Vector norm model loss
+    Args:
+        p (int): order of norm 
+        out: model prediction of shape [nBatch,nVar,nX,nZ]
+        ref: data reference of shape [nBatch,nVar,nX,nZ]
+    """
+    def __init__(self, 
+                 p:int=2,
+    ):
+        super().__init__()
+        # Lp-norm type is postive
+        assert p > 0
+        self.p = p
+
+
+    def vectorNorm(self, x, dim=(-2,-1)):
+        return torch.linalg.vector_norm(x, ord=self.p, dim=dim)
+    
+    def __call__(self, out, ref):
+        refNorms = self.vectorNorm(ref)
+        diffNorms = self.vectorNorm(out-ref)
+        return torch.mean(diffNorms/refNorms)
+

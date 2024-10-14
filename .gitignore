@@ -20,3 +20,4 @@ dedalus/scripts
 *.jpg
 *.png
 scratch.py
+fnop/configs/sub_configs

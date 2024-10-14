@@ -1,1 +1,1 @@
-from .data_loss import LpLoss
+from .data_loss import LpLoss, VectormNormLoss

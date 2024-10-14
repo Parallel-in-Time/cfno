@@ -3,7 +3,7 @@ Train a FNO2D model to map solution at previous T_in timesteps
     to next T timesteps by recurrently propogating in time domain
     
 Usage:
-    python fno2d_recurrent.py 
+    python cfno2d.py 
         --config_file=<config_file>
                  
 """
@@ -19,8 +19,8 @@ import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from fnop.utils import _set_signal_handler, CudaMemoryDebugger, activation_selection
-from fnop.models.fno2d import FNO2D
-from fnop.losses.data_loss import LpLoss
+from fnop.models.cfno2d import CFNO2D
+from fnop.losses.data_loss import LpLoss, VectormNormLoss
 from fnop.training.trainer import Trainer
 
 _GLOBAL_SIGNAL_HANDLER = None
@@ -64,31 +64,30 @@ def main(config_file:str):
     dataloader_time_stop = default_timer()
     print(f'Total time taken for dataloading (s): {dataloader_time_stop - dataloader_time_start}')
 
-    fno_path = Path(f'{config.save_path}/rbc_{config.dim}_N{data_config.train_samples}_m{model_config.modes}_w{model_config.width}_bs{data_config.batch_size}_dt{data_config.dt}_tin{model_config.T_in}_{device}_run{config.run}')
-    fno_path.mkdir(parents=True, exist_ok=True)
+    cfno_path = Path(f'{config.save_path}/rbc_{config.dim}_N{data_config.train_samples}_m{model_config.modesX}_{model_config.modesY}_w{model_config.width}_bs{data_config.batch_size}_dt{data_config.dt}_tin{model_config.T_in}_{device}_run{config.run}')
+    cfno_path.mkdir(parents=True, exist_ok=True)
 
-    checkpoint_path = Path(f'{fno_path}/checkpoint')
+    checkpoint_path = Path(f'{cfno_path}/checkpoint')
     checkpoint_path.mkdir(parents=True, exist_ok=True)
 
-    tensorboard_writer = SummaryWriter(log_dir=f"{fno_path}/tensorboard")
+    tensorboard_writer = SummaryWriter(log_dir=f"{cfno_path}/tensorboard")
 
     ################################################################
     # training and evaluation
     ################################################################
-    
-    non_linearity = nn.functional.gelu
-    if model_config.non_linearity is not None:
-        non_linearity = activation_selection(model_config.non_linearity)
+    if model_config.non_linearity is None:
+        non_linearity = nn.functional.gelu
+    else:
+        non_linearity = activation_selection(non_linearity)
         
-    model = FNO2D(model_config.modes, 
-                  model_config.modes, 
-                  model_config.lifting_width,
-                  model_config.width, 
-                  model_config.projection_width,
-                  model_config.n_layers,
-                  model_config.T_in,
-                  model_config.T,
-                  non_linearity,
+    model = CFNO2D(da=model_config.T_in,
+                   dv=model_config.lifting_width,
+                   du=model_config.T,
+                   kX=model_config.modesX,
+                   kY=model_config.modesY,
+                   nLayers=model_config.n_layers,
+                   forceFFT=model_config.forceFFT,
+                   non_linearity=non_linearity
             ).to(device)
     
 
@@ -100,21 +99,21 @@ def main(config_file:str):
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=opt_config.T_max)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=opt_config.scheduler_step, gamma=opt_config.scheduler_gamma)
 
-    loss = LpLoss(size_average=False)
+    loss = VectormNormLoss()
 
     if config.verbose:
-        with open(f'{fno_path}/info.txt', 'a') as file:
+        with open(f'{cfno_path}/info.txt', 'a') as file:
             file.write("-------------------------------------------------\n")
-            file.write(f"Model Card for FNO-2D with (x,y) and Recurrent in Time\n")
+            file.write(f"Model Card for CFNO-2D with (x,y) and Recurrent in Time\n")
             file.write("-------------------------------------------------\n")
             file.write(f"{model.print_size()}\n")
             file.write("-------------------------------------------------\n")
-            file.write(f"FNO config\n")
+            file.write(f"CFNO config\n")
             file.write("-------------------------------------------------\n")
-            file.write(f"Fourier modes:{model_config.modes}\n")
-            file.write(f"FNO Layers:{model_config.n_layers}\n")
+            file.write(f"Fourier modes:{model_config.modesX, model_config.modesY}\n")
+            file.write(f"CFNO Layers:{model_config.n_layers}\n")
             file.write(f"Lifting width:{model_config.lifting_width}\n")
-            file.write(f"FNO Layer width:{model_config.width}\n")
+            file.write(f"CFNO Layer width:{model_config.width}\n")
             file.write(f"Projection width:{model_config.projection_width}\n")
             file.write(f"(nTrain, nVal): {train_input.shape[0], val_input.shape[0]}\n")
             file.write(f"Batchsize: {data_config.batch_size}\n")
@@ -123,7 +122,7 @@ def main(config_file:str):
             file.write(f"LR scheduler: {scheduler}\n")
             file.write(f"LR scheduler step: {opt_config.scheduler_step}\n")
             file.write(f"LR scheduler gamma: {opt_config.scheduler_gamma}\n")
-            file.Write(f"Training loss: {loss}\n")
+            file.write(f"Training loss: {loss}\n")
             file.write(f"Input timesteps given to FNO: {model_config.T_in}\n")
             file.write(f"Output timesteps given by FNO: {model_config.T}\n")
             file.write(f"Dedalus data dt: {data_config.dt}\n")
@@ -135,7 +134,7 @@ def main(config_file:str):
             if data_config.subdomain_process:
                 file.write(f"Subdomain (x,y):{data_config.subdomain_args.ndomain_x,data_config.subdomain_args.ndomain_y}\n")
                 file.write(f"Subdomain Grid(x,y):{int(train_input.shape[1]/4),int(val_input.shape[1]/4)}\n")
-            file.write(f"FNO model path: {fno_path}\n")
+            file.write(f"CFNO model path: {cfno_path}\n")
             file.write("-------------------------------------------------\n")
 
     trainer = Trainer(
@@ -156,7 +155,7 @@ def main(config_file:str):
     )
     
     trainer.train(
-        save_path=fno_path,
+        save_path=cfno_path,
         train_loader=train_loader,
         val_loader=val_loader,
         optimizer=optimizer,
@@ -171,9 +170,9 @@ def main(config_file:str):
     )
          
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='FNO2D Training')
+    parser = argparse.ArgumentParser(description='CFNO2D Training')
     parser.add_argument('--config_file', type=str,
-                        help='FNO2D config yaml file')
+                        help='CFNO2D config yaml file')
 
     args = parser.parse_args()
     

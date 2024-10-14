@@ -24,6 +24,7 @@ from fnop.utils import CudaMemoryDebugger, DEFAULT_DEVICE, read_config
 from fnop.data_procesing.data_utils import time_extract, state_extract
 from fnop.models.fno2d import FNO2D
 from fnop.models.fno3d import FNO3D
+from fnop.models.cfno2d import CFNO2D
 from fnop.utils import activation_selection
 
 class FNOInference:
@@ -69,6 +70,17 @@ class FNOInference:
                           self.model_config.modes,self.model_config.width,
                           self.model_config.T_in, self.T
                          ).to(self.device)
+        elif self.config.dim == 'CFNO2D':
+            model = CFNO2D(da=self.model_config.T_in,
+                   dv=self.model_config.lifting_width,
+                   du=self.model_config.T,
+                   kX=self.model_config.modesX,
+                   kY=self.model_config.modesY,
+                   nLayers=self.model_config.n_layers,
+                   forceFFT=self.model_config.forceFFT,
+                   non_linearity=non_linearity
+                  ).to(self.device)
+    
         else:
             model = FNO2D(self.model_config.modes,
                           self.model_config.modes,

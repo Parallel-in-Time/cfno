@@ -265,7 +265,7 @@ def contourPlot(field, x, y, time=None,
 
     im = ax.pcolormesh(x, y, field)
     setColorbar(im, ax)
-    timeSuffix = ' at t = {np.round(time,3)}s' if time is not None else ''
+    timeSuffix = f' at t = {np.round(time,3)}s' if time is not None else ''
     ax.set_title(f'{title}{timeSuffix}')
     setup(ax)
 

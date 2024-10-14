@@ -140,6 +140,79 @@ class Trainer:
         
         return train_error, train_step_error, avg_loss, grads_norm_epoch
     
+    def cfno2d_train_single_epoch (self, tepoch, train_loader,
+                                  nTrain, training_loss,
+    ):
+        """
+        Perform one epoch training for CFNO2D recurrent in time 
+
+        Args:
+            train_loader (torch.utils.data.DataLoader): training dataloaders
+            nTrain (int): number of training samples
+            training_loss  : training loss
+            
+        Returns:
+            train_error (float): training error for one epoch
+            train_step_error (float): training recurrence step error for one epoch
+            avg_loss (float): average train error per individual sample
+            grads_norm_epoch (float): torch gradient norm for one epoch
+        """
+        
+        self.model.train()
+        # memory.print("After model2d.train()")
+        
+        train_l2_step = 0.0
+        train_l2_full = 0.0
+        grads_norm_epoch = 0.0
+        avg_loss = 0.0
+        
+        for step, (xx, yy) in enumerate(train_loader):
+            loss = 0
+            xx = xx.to(self.device)
+            yy = yy.to(self.device)
+            # self.memory.print("After loading first batch")
+
+            for t in tqdm(range(0, self.T, self.tStep), desc="Train loop"):
+                y = yy[..., t:t + self.tStep]
+                im = self.model(xx)
+                loss += training_loss(im.reshape(self.batch_size, -1), y.reshape(self.batch_size, -1))
+
+                if t == 0:
+                    pred = im
+                else:
+                    pred = torch.cat((pred, im), -1)
+                    
+                # print(f"{t}: y={y.shape},x={xx.shape},pred={pred.shape}")
+                xx = torch.cat((xx[..., self.tStep:], im), dim=-1)
+                # print(f"{t}: new_xx={xx.shape}")
+
+            train_l2_step += loss.item()
+            l2_full = training_loss(pred.reshape(self.batch_size, -1), yy.reshape(self.batch_size, -1))
+            train_l2_full += l2_full.item()
+
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+            self.scheduler.step()
+            
+            grads = [param.grad.detach().flatten() for param in self.model.parameters() if param.grad is not None]
+            grads_norm = torch.cat(grads).norm()
+            self.tensorboard_writer.add_histogram("train/GradNormStep", grads_norm, step)
+            grads_norm_epoch += grads_norm
+            
+            # self.memory.print("After backwardpass")
+            
+            tepoch.set_postfix({'Batch': step + 1, 'Train l2 loss (in progress)': train_l2_full,\
+                    'Train l2 step loss (in progress)': train_l2_step})
+        
+
+        train_error = train_l2_full / len(train_loader)
+        train_step_error = train_l2_step /len(train_loader) / (self.T / self.tStep)
+        grads_norm_epoch = grads_norm_epoch / nTrain
+        avg_loss = train_l2_full/ nTrain
+        
+        return train_error, train_step_error, avg_loss, grads_norm_epoch
+    
     def fno3d_train_single_epoch (self, tepoch, train_loader,
                                   nTrain, training_loss,
     ):
@@ -205,6 +278,54 @@ class Trainer:
     def fno2d_eval(self, val_loader, nVal, val_loss):
         """
         Performs validation for FNO2D recurrent in time model
+
+        Args:
+            val_loader (torch.utils.data.DataLoader): validation dataloaders
+            nVal: number of validation samples
+            val_loss : validation loss
+
+        Returns:
+           val_error (float): validation error for one epoch
+           val_step_error (float): validation recurrence step error for one epoch
+           avg_val_loss (float): average validation error per individual sample
+        """
+        
+        val_l2_step = 0.0
+        val_l2_full = 0.0
+        avg_val_loss = 0.0
+        
+        self.model.eval()
+        with torch.no_grad():
+            for (xx,yy) in (val_loader):
+                loss = 0
+                xx = xx.to(self.device)
+                yy = yy.to(self.device)
+
+                for t in tqdm(range(0, self.T, self.tStep), desc="Validation loop"):
+                    y = yy[..., t:t + self.tStep] 
+                    im = self.model(xx)
+                    loss += val_loss(im.reshape(self.batch_size, -1), y.reshape(self.batch_size, -1))
+
+                    if t == 0:
+                        pred = im
+                    else:
+                        pred = torch.cat((pred, im), -1)
+
+                    xx = torch.cat((xx[..., self.tStep:], im), dim=-1)
+                    
+                val_l2_step += loss.item()
+                val_l2_full += val_loss(pred.reshape(self.batch_size, -1), yy.reshape(self.batch_size, -1)).item()
+                # self.memory.print("After val first batch")
+
+        val_error = val_l2_full / len(val_loader)
+        val_step_error = val_l2_step / len(val_loader) / (self.T / self.tStep)
+        avg_val_loss = val_l2_full/ nVal
+       
+        return val_error, val_step_error, avg_val_loss
+    
+    def cfno2d_eval(self, val_loader, nVal, val_loss):
+        """
+        Performs validation for CFNO2D recurrent in time model
 
         Args:
             val_loader (torch.utils.data.DataLoader): validation dataloaders
@@ -378,7 +499,13 @@ class Trainer:
                 
                     self.tensorboard_writer.add_scalar("train_loss/train_step_l2loss", train_step_error, epoch)
                     self.tensorboard_writer.add_scalar("val_loss/val_step_l2loss", val_step_error, epoch)
-                   
+                
+                elif self.dim == 'CFNO2D':
+                    train_error, train_step_error, avg_train_loss, grad_norm = self.cfno2d_train_single_epoch(tepoch, train_loader, nTrain, training_loss)
+                    val_error, val_step_error, avg_val_loss = self.cfno2d_eval(val_loader, nVal, val_loss)
+                
+                    self.tensorboard_writer.add_scalar("train_loss/train_step_l2loss", train_step_error, epoch)
+                    self.tensorboard_writer.add_scalar("val_loss/val_step_l2loss", val_step_error, epoch)
                 else:
                     train_error, train_mse, avg_train_loss, grad_norm = self.fno3d_train_single_epoch(tepoch, train_loader, nTrain, training_loss)
                     val_error, val_mse, avg_val_loss = self.fno3d_eval(val_loader, nVal, val_loss)

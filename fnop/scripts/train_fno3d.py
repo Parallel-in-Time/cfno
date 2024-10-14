@@ -105,6 +105,7 @@ def main(config_file:str):
             file.write(f"LR scheduler: {scheduler}\n")
             file.write(f"LR scheduler step: {opt_config.scheduler_step}\n")
             file.write(f"LR scheduler gamma: {opt_config.scheduler_gamma}\n")
+            file.Write(f"Training loss: {loss}\n")
             file.write(f"Input timesteps given to FNO: {model_config.T_in}\n")
             file.write(f"Output timesteps given by FNO: {model_config.T}\n")
             file.write(f"Dedalus data dt: {data_config.dt}\n")
