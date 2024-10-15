@@ -143,7 +143,7 @@ class Trainer:
             print(f"loss: {loss:>7f} (id: {idLoss:>7f}) [{current:>5d}/{nBatches:>5d}]")
             avgLoss += loss
 
-        avgLoss /= nBatches
+        avgLoss /= nBatches/batchSize
         print(f"Training: \n Avg loss: {avgLoss:>8f} (id: {idLoss:>7f})\n")
         self.losses["model"]["train"] = avgLoss
         self.epochs += 1
