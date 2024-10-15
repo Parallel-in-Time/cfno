@@ -30,9 +30,15 @@ data = h5py.File(dataFile, "r")
 nSamples = len(data["inputs"])
 assert iSample < nSamples, f"iSample={iSample} to big for {nSamples} samples"
 xGrid, zGrid = data["infos/xGrid"][:], data["infos/zGrid"][:]
+print(f"Reading {dataFile} ...")
+print(f" -- dtData : {data['infos/dtData'][()]:1.2g}")
+print(f" -- dtInput : {data['infos/dtInput'][()]:1.2g}")
+print(f" -- outType : {data['infos/outType'][()].decode('utf-8')}")
+print(f" -- outScaling : {data['infos/outScaling'][()]:1.2g}")
 contourPlot(
     data["inputs"][iSample, varChoices.index(var)].T,
     xGrid, zGrid, title=f"Input for {var}",
     refField=data["outputs"][iSample, varChoices.index(var)].T,
     refTitle=f"Output for {var} after dt={data['infos/dtInput'][()]:1.2g}s",
     saveFig=saveFig, closeFig=False)
+print(f" -- saved {var} contour for sample {iSample}")

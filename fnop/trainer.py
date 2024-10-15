@@ -18,6 +18,7 @@ class Trainer:
         # Training setup
         self.xStep, self.yStep = trainConfig.pop("xStep", 1), trainConfig.pop("yStep", 1)
         self.trainLoader, self.valLoader, self.dataset = getDataLoaders(**trainConfig)
+        # sample : [batchSize, 4, nX, nY]
         self.losses = {
             "model": {
                 "valid": -1,
@@ -121,6 +122,8 @@ class Trainer:
             inputs = data[0][..., ::self.xStep, ::self.yStep].to(self.device)
             outputs = data[1][..., ::self.xStep, ::self.yStep].to(self.device)
 
+            optimizer.zero_grad()
+            
             pred = model(inputs)
             loss = lossFunction(pred, outputs)
             loss.backward()
@@ -136,8 +139,6 @@ class Trainer:
                     loss.backward()
                     return loss
                 optimizer.step(closure)
-
-            optimizer.zero_grad()
 
             loss, current = loss.item(), iBatch*batchSize + len(inputs)
             print(f"loss: {loss:>7f} (id: {idLoss:>7f}) [{current:>5d}/{nBatches:>5d}]")

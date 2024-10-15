@@ -13,7 +13,7 @@ class HDF5Dataset(Dataset):
         self.inputs = self.file['inputs']
         self.outputs = self.file['outputs']
         assert len(self.inputs) == len(self.outputs), \
-            f"different sample number for inputs and outputs ({len(self.inputs)},{len(self.outputs),})"
+            f"different sample number for inputs and outputs ({len(self.inputs)},{len(self.outputs)})"
 
     def __len__(self):
         return len(self.inputs)

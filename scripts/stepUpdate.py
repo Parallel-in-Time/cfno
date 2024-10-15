@@ -11,8 +11,8 @@ dataset = HDF5Dataset("dataset.h5")
 xGrid = dataset.file['infos/xGrid'][:]
 zGrid = dataset.file['infos/zGrid'][:]
 
-iVar = 3
-iSample = 510
+iVar = 2
+iSample = 999
 factor = 20
 
 
