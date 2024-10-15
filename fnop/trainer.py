@@ -13,11 +13,11 @@ def lossFunction(out, ref):
 
 class Trainer:
 
-    def __init__(self, trainConfig:dict, modelConfig:dict, optimConfig:dict):
+    def __init__(self, data:dict, model:dict, optim:dict):
 
         # Training setup
-        self.xStep, self.yStep = trainConfig.pop("xStep", 1), trainConfig.pop("yStep", 1)
-        self.trainLoader, self.valLoader, self.dataset = getDataLoaders(**trainConfig)
+        self.xStep, self.yStep = data.pop("xStep", 1), data.pop("yStep", 1)
+        self.trainLoader, self.valLoader, self.dataset = getDataLoaders(**data)
         # sample : [batchSize, 4, nX, nY]
         self.losses = {
             "model": {
@@ -32,11 +32,11 @@ class Trainer:
 
         # Model setup
         self.device = th.device('cuda:0' if th.cuda.is_available() else 'cpu')
-        self.model = CFNO2D(**modelConfig).to(self.device)
+        self.model = CFNO2D(**model).to(self.device)
 
         # Optim configuration
-        self.optim = optimConfig.pop("name", "adam")
-        self.setOptimizer(self.optim, **optimConfig)
+        self.optim = optim.pop("name", "adam")
+        self.setOptimizer(self.optim, **optim)
         self.epochs = 0
 
 
@@ -123,7 +123,7 @@ class Trainer:
             outputs = data[1][..., ::self.xStep, ::self.yStep].to(self.device)
 
             optimizer.zero_grad()
-            
+
             pred = model(inputs)
             loss = lossFunction(pred, outputs)
             loss.backward()
@@ -170,7 +170,7 @@ class Trainer:
         self.losses["model"]["valid"] = avgLoss
 
 
-    def runTraining(self, nEpochs):
+    def learn(self, nEpochs):
         for _ in range(nEpochs):
             print(f"Epoch {self.epochs+1}\n-------------------------------")
             self.train()
@@ -178,7 +178,7 @@ class Trainer:
         print("Done!")
 
 
-    def loadCheckpoint(self, filePath):
+    def load(self, filePath):
         checkpoint = th.load(filePath, weights_only=True)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         optim = checkpoint['optim']
@@ -190,7 +190,7 @@ class Trainer:
         self.losses['model'] = checkpoint['losses']
 
 
-    def saveCheckpoint(self, filePath):
+    def save(self, filePath):
         th.save({
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),

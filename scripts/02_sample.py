@@ -6,13 +6,16 @@ import argparse
 import numpy as np
 
 from fnop.simulation.post import OutputFiles
+from fnop.utils import read_config
 
+# -----------------------------------------------------------------------------
 # Script parameters
+# -----------------------------------------------------------------------------
 parser = argparse.ArgumentParser(
-    description='Create training (and validation) dataset from Dedalus simulation data',
+    description='Create training dataset from Dedalus simulation data',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
-    "--dataDir", default="generateData", help="dir. containing simulation data")
+    "--dataDir", default="simuData", help="directory containing simulation data")
 parser.add_argument(
     "--inSize", default=1, help="input size", type=int)
 parser.add_argument(
@@ -26,7 +29,18 @@ parser.add_argument(
     "--outScaling", default=1, type=float, help="scaling factor for the output")
 parser.add_argument(
     "--dataFile", default="dataset.h5", help="name of the dataset HDF5 file")
+parser.add_argument(
+    "--config", default=None, help="config file, overwriting all parameters specified in it")
 args = parser.parse_args()
+
+if args.config is not None:
+    config = read_config(args.config)
+    assert "sample" in config, f"config file needs a data section"
+    args.__dict__.update(**config.data)
+    if "simu" in config and "simDir" in config.simu:
+        args.simDir = config.simu.simDir
+    if "data" in config and "dataFile" in config.data:
+        args.dataFile = config.data.dataFile
 
 dataDir = args.dataDir
 inSize = args.inSize
@@ -39,7 +53,7 @@ dataFile = args.dataFile
 # -----------------------------------------------------------------------------
 # Script execution
 # -----------------------------------------------------------------------------
-assert inSize == 1, "inSize > 1 not implemented yet ..."
+assert inSize == 1, "inSize != 1 not implemented yet ..."
 simDirs = glob.glob(f"{dataDir}/simu_*")
 
 # -- retrieve informations from first simulation
@@ -66,8 +80,8 @@ for name in ["inSize", "outStep", "inStep", "outType", "outScaling",
 dataShape = (nSamples*len(simDirs), *outFiles.shape)
 inputs = dataset.create_dataset("inputs", dataShape)
 outputs = dataset.create_dataset("outputs", dataShape)
-for iSim, simDir in enumerate(simDirs):
-    outFiles = OutputFiles(f"{simDir}/run_data")
+for iSim, dataDir in enumerate(simDirs):
+    outFiles = OutputFiles(f"{dataDir}/run_data")
     print(f" -- sampling data from {outFiles.folder}")
     for iSample, iField in enumerate(sRange):
         inpt, outp = outFiles.fields(iField), outFiles.fields(iField+outStep)

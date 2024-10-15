@@ -7,6 +7,9 @@ from fnop.simulation.post import contourPlot
 
 varChoices = ["vx", "vz", "b", "p"]
 
+# -----------------------------------------------------------------------------
+# Script parameters
+# -----------------------------------------------------------------------------
 parser = argparse.ArgumentParser(
     description='View sample fields within a dataset stored in a HDF5 file',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -25,12 +28,17 @@ var = args.var
 iSample = args.iSample
 saveFig = args.saveFig
 
+# -----------------------------------------------------------------------------
 # Script execution
+# -----------------------------------------------------------------------------
 data = h5py.File(dataFile, "r")
 nSamples = len(data["inputs"])
 assert iSample < nSamples, f"iSample={iSample} to big for {nSamples} samples"
 xGrid, zGrid = data["infos/xGrid"][:], data["infos/zGrid"][:]
 print(f"Reading {dataFile} ...")
+print(f" -- inSize : {data['infos/inSize'][()]}")
+print(f" -- outStep : {data['infos/outStep'][()]}")
+print(f" -- inStep : {data['infos/inStep'][()]}")
 print(f" -- dtData : {data['infos/dtData'][()]:1.2g}")
 print(f" -- dtInput : {data['infos/dtInput'][()]:1.2g}")
 print(f" -- outType : {data['infos/outType'][()].decode('utf-8')}")
