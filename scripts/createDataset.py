@@ -20,6 +20,11 @@ parser.add_argument(
 parser.add_argument(
     "--inStep", default=5, help="input step", type=int)
 parser.add_argument(
+    "--outType", default="solution", help="output type in the dataset",
+    choices=["solution", "update"])
+parser.add_argument(
+    "--outScaling", default=1, type=float, help="scaling factor for the output")
+parser.add_argument(
     "--dataFile", default="dataset.h5", help="name of the dataset HDF5 file")
 args = parser.parse_args()
 
@@ -27,9 +32,13 @@ dataDir = args.dataDir
 inSize = args.inSize
 outStep = args.outStep
 inStep = args.inStep
+outType = args.outType
+outScaling = args.outScaling
 dataFile = args.dataFile
 
+# -----------------------------------------------------------------------------
 # Script execution
+# -----------------------------------------------------------------------------
 assert inSize == 1, "inSize > 1 not implemented yet ..."
 simDirs = glob.glob(f"{dataDir}/simu_*")
 
@@ -58,6 +67,11 @@ for iSim, simDir in enumerate(simDirs):
     outFiles = OutputFiles(f"{simDir}/run_data")
     print(f" -- sampling data from {outFiles.folder}")
     for iSample, iField in enumerate(sRange):
-        inputs[iSim*nSamples + iSample] = outFiles.fields(iField)
-        outputs[iSim*nSamples + iSample] = outFiles.fields(iField+outStep)
+        inpt, outp = outFiles.fields(iField), outFiles.fields(iField+outStep)
+        if outType == "update":
+            outp -= inpt
+        if outScaling != 1:
+            outp *= outScaling
+        inputs[iSim*nSamples + iSample] = inpt
+        outputs[iSim*nSamples + iSample] = outp
 print(" -- done !")
