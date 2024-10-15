@@ -11,44 +11,60 @@ def lossFunction(out, ref):
     return th.mean(diffNorms/refNorms)
 
 
-class Trainer:
+class FourierNeuralOp:
+    """
+    Base superclass for a Fourier Neural Operator, that can :
 
-    def __init__(self, data:dict, model:dict, optim:dict):
+    - train itself with some given model settings provided some training data
+    - evaluate itself on given inputs using a provided model checkpoint
 
-        # Training setup
-        self.xStep, self.yStep = data.pop("xStep", 1), data.pop("yStep", 1)
-        self.trainLoader, self.valLoader, self.dataset = getDataLoaders(**data)
-        # sample : [batchSize, 4, nX, nY]
-        self.losses = {
-            "model": {
-                "valid": -1,
-                "train": -1,
-                },
-            "id": {
-                "valid": self.idLoss(),
-                "train": self.idLoss("train"),
+    It can be used like this :
+
+    >>>
+    """
+
+    def __init__(self, data:dict, model:dict, optim:dict=None, checkpoint=None):
+
+        # Data setup
+        if "dataFile" in data:
+            self.xStep, self.yStep = data.pop("xStep", 1), data.pop("yStep", 1)
+            data.pop("outType", None), data.pop("outScaling", None)
+            self.trainLoader, self.valLoader, self.dataset = getDataLoaders(**data)
+            # sample : [batchSize, 4, nX, nY]
+            self.outType = self.dataset.outType
+            self.outScaling = self.dataset.outScaling
+            self.losses = {
+                "model": {
+                    "valid": -1,
+                    "train": -1,
+                    },
+                "id": {
+                    "valid": self.idLoss(),
+                    "train": self.idLoss("train"),
+                    }
                 }
-            }
+        else:
+            # Model only configuration (no training possible)
+            assert "outType" in data, "config needs outType in data section"
+            self.outType = data["outType"]
+            if self.outType == "update":
+                assert "outScaling" in data, "config needs outScaling in data section"
+                self.outScaling = data["outScaling"]
 
         # Model setup
         self.device = th.device('cuda:0' if th.cuda.is_available() else 'cpu')
         self.model = CFNO2D(**model).to(self.device)
 
-        # Optim configuration
+        # Optimizer setup
+        if optim is None: optim = {"name": "adam"}
         self.optim = optim.pop("name", "adam")
         self.setOptimizer(self.optim, **optim)
         self.epochs = 0
 
+        # Eventually load checkpoint if provided (for inference)
+        if checkpoint is not None:
+            self.load(checkpoint)
 
-    @property
-    def outType(self):
-        # [()] needed to extract hdf5 scalar
-        # .decode to convert from bytes to string
-        return self.dataset.infos["outType"][()].decode("utf-8")
-
-    @property
-    def outScaling(self):
-        return float(self.dataset.infos["outScaling"][()])
 
     @property
     def batchSize(self):
@@ -122,8 +138,6 @@ class Trainer:
             inputs = data[0][..., ::self.xStep, ::self.yStep].to(self.device)
             outputs = data[1][..., ::self.xStep, ::self.yStep].to(self.device)
 
-            optimizer.zero_grad()
-
             pred = model(inputs)
             loss = lossFunction(pred, outputs)
             loss.backward()
@@ -139,6 +153,8 @@ class Trainer:
                     loss.backward()
                     return loss
                 optimizer.step(closure)
+
+            optimizer.zero_grad()
 
             loss, current = loss.item(), iBatch*batchSize + len(inputs)
             print(f"loss: {loss:>7f} (id: {idLoss:>7f}) [{current:>5d}/{nBatches:>5d}]")
@@ -198,3 +214,18 @@ class Trainer:
             'epochs': self.epochs,
             'losses': self.losses["model"],
             }, filePath)
+
+
+    def __call__(self, u0):
+        model = self.model
+        inpt = th.tensor(u0[None,...], device=self.device)
+
+        model.eval()
+        with th.no_grad():
+            outp = model(inpt)
+            if self.outType == "update":
+                outp /= self.outScaling
+                outp += inpt
+
+        u1 = outp[0].cpu().detach().numpy()
+        return u1

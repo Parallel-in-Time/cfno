@@ -6,7 +6,7 @@ import argparse
 import numpy as np
 
 from fnop.simulation.post import OutputFiles
-from fnop.utils import read_config
+from fnop.utils import readConfig
 
 # -----------------------------------------------------------------------------
 # Script parameters
@@ -26,7 +26,7 @@ parser.add_argument(
     "--outType", default="solution", help="output type in the dataset",
     choices=["solution", "update"])
 parser.add_argument(
-    "--outScaling", default=1, type=float, help="scaling factor for the output")
+    "--outScaling", default=1, type=float, help="scaling factor for the output (ignored with outType=solution !)")
 parser.add_argument(
     "--dataFile", default="dataset.h5", help="name of the dataset HDF5 file")
 parser.add_argument(
@@ -34,13 +34,14 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.config is not None:
-    config = read_config(args.config)
+    config = readConfig(args.config)
     assert "sample" in config, f"config file needs a data section"
     args.__dict__.update(**config.data)
-    if "simu" in config and "simDir" in config.simu:
-        args.simDir = config.simu.simDir
-    if "data" in config and "dataFile" in config.data:
-        args.dataFile = config.data.dataFile
+    if "simu" in config and "dataDir" in config.simu:
+        args.dataDir = config.simu.dataDir
+    if "data" in config:
+        for key in ["outType", "outScaling", "dataFile"]:
+            if key in config.data: args.__dict__[key] = config.data[key]
 
 dataDir = args.dataDir
 inSize = args.inSize
@@ -62,7 +63,7 @@ outFiles = OutputFiles(f"{simDirs[0]}/run_data")
 times = outFiles.times().ravel()
 dtData = times[1]-times[0]
 dtInput = dtData*outStep
-xGrid, zGrid = outFiles.x, outFiles.z
+xGrid, yGrid = outFiles.x, outFiles.y
 
 nFields = sum(outFiles.nFields)
 sRange = range(0, nFields-inSize-outStep+1, inStep)
@@ -71,7 +72,7 @@ nSamples = len(sRange)
 print(f"Creating dataset from {len(simDirs)} simulations, {nSamples} samples each ...")
 dataset = h5py.File(dataFile, "w")
 for name in ["inSize", "outStep", "inStep", "outType", "outScaling",
-             "dtData", "dtInput", "xGrid", "zGrid"]:
+             "dtData", "dtInput", "xGrid", "yGrid"]:
     try:
         dataset.create_dataset(f"infos/{name}", data=np.asarray(eval(name)))
     except:
@@ -87,8 +88,8 @@ for iSim, dataDir in enumerate(simDirs):
         inpt, outp = outFiles.fields(iField), outFiles.fields(iField+outStep)
         if outType == "update":
             outp -= inpt
-        if outScaling != 1:
-            outp *= outScaling
+            if outScaling != 1:
+                outp *= outScaling
         inputs[iSim*nSamples + iSample] = inpt
         outputs[iSim*nSamples + iSample] = outp
 print(" -- done !")

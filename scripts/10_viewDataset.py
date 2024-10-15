@@ -34,18 +34,20 @@ saveFig = args.saveFig
 data = h5py.File(dataFile, "r")
 nSamples = len(data["inputs"])
 assert iSample < nSamples, f"iSample={iSample} to big for {nSamples} samples"
-xGrid, zGrid = data["infos/xGrid"][:], data["infos/zGrid"][:]
+xGrid, yGrid = data["infos/xGrid"][:], data["infos/yGrid"][:]
 print(f"Reading {dataFile} ...")
 print(f" -- inSize : {data['infos/inSize'][()]}")
 print(f" -- outStep : {data['infos/outStep'][()]}")
 print(f" -- inStep : {data['infos/inStep'][()]}")
+print(f" -- grid shape : ({xGrid.size}, {yGrid.size})")
+print(f" -- grid domain : [{xGrid.min():.1f}, {xGrid.max():.1f}] x [{yGrid.min():.1f}, {yGrid.max():.1f}]")
 print(f" -- dtData : {data['infos/dtData'][()]:1.2g}")
 print(f" -- dtInput : {data['infos/dtInput'][()]:1.2g}")
 print(f" -- outType : {data['infos/outType'][()].decode('utf-8')}")
 print(f" -- outScaling : {data['infos/outScaling'][()]:1.2g}")
 contourPlot(
     data["inputs"][iSample, varChoices.index(var)].T,
-    xGrid, zGrid, title=f"Input for {var}",
+    xGrid, yGrid, title=f"Input for {var}",
     refField=data["outputs"][iSample, varChoices.index(var)].T,
     refTitle=f"Output for {var} after dt={data['infos/dtInput'][()]:1.2g}s",
     saveFig=saveFig, closeFig=False)

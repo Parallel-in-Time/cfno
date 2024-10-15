@@ -3,6 +3,7 @@ import torch.nn.functional as F
 
 import signal
 import math
+import yaml
 from configmypy import ConfigPipeline, YamlConfig, Bunch
 
 _GLOBAL_SIGNAL_HANDLER = None
@@ -27,6 +28,15 @@ def read_config(config):
     assert isinstance(config, str), "config parameter must be a string"
     pipe = ConfigPipeline([YamlConfig(config)])
     return pipe.read_conf()
+
+
+def readConfig(config):
+    """
+    Safe read config based on yaml, that does not convert scalar into weird ruaml types ...
+    """
+    with open(config, "r") as f:
+        conf = yaml.safe_load(f)
+    return Bunch(conf)
 
 units = {
     0: 'B',

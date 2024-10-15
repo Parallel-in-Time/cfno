@@ -6,8 +6,8 @@ Minimal training script
 import os
 import argparse
 
-from fnop.trainer import Trainer
-from fnop.utils import read_config
+from fnop.fno import FourierNeuralOp
+from fnop.utils import readConfig
 
 # -----------------------------------------------------------------------------
 # Script parameters
@@ -23,7 +23,7 @@ parser.add_argument(
     "--config", default="config.yaml", help="configuration file")
 args = parser.parse_args()
 
-config = read_config(args.config)
+config = readConfig(args.config)
 
 sections = ["data", "model", "optim"]
 for name in sections:
@@ -39,9 +39,10 @@ checkpoint = args.checkpoint
 # -----------------------------------------------------------------------------
 # Script execution
 # -----------------------------------------------------------------------------
-trainer = Trainer(**params)
+model = FourierNeuralOp(**params)
 
 if os.path.isfile(checkpoint):
-    trainer.load(checkpoint)
-trainer.learn(nEpochs)
-trainer.save(checkpoint)
+    model.load(checkpoint)
+
+model.learn(nEpochs)
+model.save(checkpoint)

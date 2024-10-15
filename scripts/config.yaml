@@ -9,10 +9,10 @@ sample:
   inSize: 1
   outStep: 1
   inStep: 5
-  outType: solution
-  outScaling: 1
 
 data:
+  outType: solution
+  outScaling: 1
   dataFile: dataset.h5
   trainRatio: 0.8
   seed: null
@@ -32,8 +32,8 @@ model:
 optim:
   name: adam
   lr: 0.0001
-  weight_decay: 1e-5
+  weight_decay: 1.0e-5
 
 train:
-  nEpochs: 2000
+  nEpochs: 0
   checkpoint: model_FFT.pt

@@ -19,9 +19,8 @@ class HDF5Dataset(Dataset):
         return len(self.inputs)
 
     def __getitem__(self, idx):
-        input = self.inputs[idx]
-        output = self.outputs[idx]
-        return th.tensor(input), th.tensor(output)
+        inpt, outp = self.sample(idx)
+        return th.tensor(inpt), th.tensor(outp)
 
     def __del__(self):
         try:
@@ -29,9 +28,24 @@ class HDF5Dataset(Dataset):
         except:
             pass
 
+    def sample(self, idx):
+        return self.inputs[idx], self.outputs[idx]
+
     @property
     def infos(self):
         return self.file["infos"]
+
+    @property
+    def grid(self):
+        return self.infos["xGrid"], self.infos["yGrid"]
+
+    @property
+    def outType(self):
+        return self.infos["outType"][()].decode("utf-8")
+
+    @property
+    def outScaling(self):
+        return float(self.infos["outScaling"][()])
 
 
 def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None):

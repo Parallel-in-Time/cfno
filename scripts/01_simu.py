@@ -6,7 +6,7 @@ import numpy as np
 
 from fnop.simulation.rbc2d import runSim, MPI_RANK
 from fnop.simulation.post import OutputFiles
-from fnop.utils import read_config
+from fnop.utils import readConfig
 
 # -----------------------------------------------------------------------------
 # Script parameters
@@ -37,7 +37,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.config is not None:
-    config = read_config(args.config)
+    config = readConfig(args.config)
     assert "simu" in config, "config file needs a simu section"
     args.__dict__.update(**config.simu)
 

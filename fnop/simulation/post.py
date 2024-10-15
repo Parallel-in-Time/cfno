@@ -28,6 +28,7 @@ class OutputFiles():
         else:
             self.x = np.array(vData0.dims[2]["x"])
             self.z = np.array(vData0.dims[3]["z"])
+            self.y = self.z
 
 
     def file(self, iFile:int):
