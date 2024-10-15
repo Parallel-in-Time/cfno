@@ -56,9 +56,12 @@ nSamples = len(sRange)
 
 print(f"Creating dataset from {len(simDirs)} simulations, {nSamples} samples each ...")
 dataset = h5py.File(dataFile, "w")
-for name in ["inSize", "outStep", "inStep", "dtData", "dtInput",
-             "xGrid", "zGrid"]:
-    dataset.create_dataset(f"infos/{name}", data=np.asarray(eval(name)))
+for name in ["inSize", "outStep", "inStep", "outType", "outScaling",
+             "dtData", "dtInput", "xGrid", "zGrid"]:
+    try:
+        dataset.create_dataset(f"infos/{name}", data=np.asarray(eval(name)))
+    except:
+        dataset.create_dataset(f"infos/{name}", data=eval(name))
 
 dataShape = (nSamples*len(simDirs), *outFiles.shape)
 inputs = dataset.create_dataset("inputs", dataShape)

@@ -29,6 +29,10 @@ class HDF5Dataset(Dataset):
         except:
             pass
 
+    @property
+    def infos(self):
+        return self.file["infos"]
+
 
 def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None):
     dataset = HDF5Dataset(dataFile)
@@ -49,4 +53,4 @@ def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None):
     trainLoader = DataLoader(trainSet, batch_size=batchSize, shuffle=True)
     valLoader = DataLoader(valSet, batch_size=batchSize, shuffle=False)
 
-    return trainLoader, valLoader
+    return trainLoader, valLoader, dataset

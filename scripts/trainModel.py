@@ -7,15 +7,31 @@ import os
 
 from fnop.trainer import Trainer
 
-trainer = Trainer("dataset.h5", xStep=1, zStep=1)
+
+config = {
+    "trainConfig": {
+        "dataFile": "dataset.h5",
+        "trainRatio": 0.8,
+        "seed": None,
+        "batchSize": 20,
+        "xStep": 1,
+        "yStep": 1,
+        },
+    "modelConfig": {
+        "da": 4, "du": 4, "dv": 4, "kX": 8, "kY": 8,
+        "nLayers": 2, "forceFFT": False
+        },
+    "optimConfig": {
+        "name": "adam",
+        "lr": 0.0001,
+        "weight_decay": 1e-5
+        }
+    }
 checkPtFile = "checkpoint.pt"
 
-trainer.switchOptimizer()
+trainer = Trainer(**config)
 if os.path.isfile(checkPtFile):
     trainer.loadCheckpoint(checkPtFile)
 
-# trainer.setLearningRate(0.0001)
-# trainer.switchOptimizer()
-
-trainer.runTraining(100)
+trainer.runTraining(10)
 trainer.saveCheckpoint(checkPtFile)
