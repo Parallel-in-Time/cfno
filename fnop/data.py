@@ -103,7 +103,7 @@ def createDataset(dataDir, inSize, outStep, inStep, outType, outScaling, dataFil
         outFiles = OutputFiles(f"{dataDir}/run_data")
         print(f" -- sampling data from {outFiles.folder}")
         for iSample, iField in enumerate(sRange):
-            inpt, outp = outFiles.fields(iField), outFiles.fields(iField+outStep)
+            inpt, outp = outFiles.fields(iField), outFiles.fields(iField+outStep).copy()
             if outType == "update":
                 outp -= inpt
                 if outScaling != 1:

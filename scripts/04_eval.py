@@ -61,9 +61,15 @@ assert iSimu < nSimu, f"cannot evaluate with iSimu={iSimu} with only {nSimu} sim
 indices = slice(iSimu*nSamples, (iSimu+1)*nSamples)
 
 u0Values = dataset.inputs[indices]
-uRefValues = dataset.outputs[indices]
-uPredValues = model(u0Values)
+uRefValues = dataset.outputs[indices].copy()
+if dataset.outType == "update":
+    uRefValues /= dataset.outScaling
+    uRefValues += u0Values
+uPredValues = model(u0Values)   # evaluate model on all inputs
 
+# -----------------------------------------------------------------------------
+# -- Spectrum computation
+# -----------------------------------------------------------------------------
 sxRef, szRef = computeMeanSpectrum(uRefValues)
 sxPred, szPred = computeMeanSpectrum(uPredValues)
 k = getModes(dataset.grid[0])
