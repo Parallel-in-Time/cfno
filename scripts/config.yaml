@@ -35,5 +35,6 @@ optim:
   weight_decay: 1.0e-5
 
 train:
-  nEpochs: 0
-  checkpoint: model_FFT.pt
+  trainDir: "."
+  nEpochs: 1
+  checkpoint: model.pt

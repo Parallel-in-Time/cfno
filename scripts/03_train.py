@@ -3,7 +3,6 @@
 """
 Minimal training script
 """
-import os
 import argparse
 
 from fnop.fno import FourierNeuralOp
@@ -16,6 +15,8 @@ parser = argparse.ArgumentParser(
     description='Train a 2D FNO model on a given dataset',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
+    "--trainDir", default="trainDir", help="directory to store training results")
+parser.add_argument(
     "--nEpochs", default=10, type=int, help="number of epochs to train on")
 parser.add_argument(
     "--checkpoint", default="model.pt", help="name of the file storing the model")
@@ -24,25 +25,25 @@ parser.add_argument(
 args = parser.parse_args()
 
 config = readConfig(args.config)
+if "train" in config:
+    args.__dict__.update(**config.train)
 
 sections = ["data", "model", "optim"]
 for name in sections:
     assert name in config, f"config file needs a {name} section"
-params = {name: config[name] for name in sections}  # trainer class parameters
-
-if "train" in config:
-    args.__dict__.update(**config.train)
+configs = {name: config[name] for name in sections}  # trainer class configs
 
 nEpochs = args.nEpochs
 checkpoint = args.checkpoint
 
+
 # -----------------------------------------------------------------------------
 # Script execution
 # -----------------------------------------------------------------------------
-model = FourierNeuralOp(**params)
-
-if os.path.isfile(checkpoint):
+FourierNeuralOp.TRAIN_DIR = args.trainDir
+model = FourierNeuralOp(**configs)
+try:
     model.load(checkpoint)
-
+except: pass
 model.learn(nEpochs)
 model.save(checkpoint)

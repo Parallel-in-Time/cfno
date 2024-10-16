@@ -164,6 +164,9 @@ class CFNO2D(nn.Module):
 
     def __init__(self, da, dv, du, kX=4, kY=4, nLayers=1, forceFFT=False):
         super().__init__()
+        self.config = {
+            key: val for key, val in locals().items()
+            if key != "self" and not key.startswith('__')}
 
         self.P = Grid2DLinear(da, dv)
         self.Q = Grid2DLinear(dv, du)

@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 import torch as th
 
 from fnop.data import getDataLoaders
@@ -18,57 +20,79 @@ class FourierNeuralOp:
     - train itself with some given model settings provided some training data
     - evaluate itself on given inputs using a provided model checkpoint
 
-    It can be used like this :
-
-    >>>
     """
+    TRAIN_DIR = None
+    def __init__(self, data:dict=None, model:dict=None, optim:dict=None, checkpoint=None):
 
-    def __init__(self, data:dict, model:dict, optim:dict=None, checkpoint=None):
+        self.device = th.device('cuda:0' if th.cuda.is_available() else 'cpu')
+
+        # Inference-only mode
+        if data is None and model is None and optim is None:
+            assert checkpoint is not None, "need a checkpoint in inference-only evaluation"
+            self.load(checkpoint, modelOnly=True)
+            return
 
         # Data setup
-        if "dataFile" in data:
-            self.xStep, self.yStep = data.pop("xStep", 1), data.pop("yStep", 1)
-            data.pop("outType", None), data.pop("outScaling", None)
-            self.trainLoader, self.valLoader, self.dataset = getDataLoaders(**data)
-            # sample : [batchSize, 4, nX, nY]
-            self.outType = self.dataset.outType
-            self.outScaling = self.dataset.outScaling
-            self.losses = {
-                "model": {
-                    "valid": -1,
-                    "train": -1,
-                    },
-                "id": {
-                    "valid": self.idLoss(),
-                    "train": self.idLoss("train"),
-                    }
+        assert "dataFile" in data, ""
+        self.xStep, self.yStep = data.pop("xStep", 1), data.pop("yStep", 1)
+        data.pop("outType", None), data.pop("outScaling", None)  # overwritten by dataset
+        self.trainLoader, self.valLoader, self.dataset = getDataLoaders(**data)
+        # sample : [batchSize, 4, nX, nY]
+        self.outType = self.dataset.outType
+        self.outScaling = self.dataset.outScaling
+        self.losses = {
+            "model": {
+                "valid": -1,
+                "train": -1,
+                },
+            "id": {
+                "valid": self.idLoss(),
+                "train": self.idLoss("train"),
                 }
-        else:
-            # Model only configuration (no training possible)
-            assert "outType" in data, "config needs outType in data section"
-            self.outType = data["outType"]
-            if self.outType == "update":
-                assert "outScaling" in data, "config needs outScaling in data section"
-                self.outScaling = data["outScaling"]
+            }
 
-        # Model setup
-        self.device = th.device('cuda:0' if th.cuda.is_available() else 'cpu')
-        self.model = CFNO2D(**model).to(self.device)
+        # Set model
+        self.setupModel(model)
 
-        # Optimizer setup
-        if optim is None: optim = {"name": "adam"}
-        self.optim = optim.pop("name", "adam")
-        self.setOptimizer(self.optim, **optim)
+        # Eventually load checkpoint if provided
+        if checkpoint is not None: self.load(checkpoint)
+        # /!\ overwrite model setup if checkpoint is loaded /!\
+
+        self.setupOptimizer(optim)
         self.epochs = 0
 
-        # Eventually load checkpoint if provided (for inference)
-        if checkpoint is not None:
-            self.load(checkpoint)
+
+    # -------------------------------------------------------------------------
+    # Setup methods
+    # -------------------------------------------------------------------------
+    def setupModel(self, model):
+        assert model is not None, "model configuration is required"
+        self.model = CFNO2D(**model).to(self.device)
+        self.modelConfig = {**self.model.config}
+        th.cuda.empty_cache()   # in case another model was setup before ...
 
 
-    @property
-    def batchSize(self):
-        return self.trainLoader.batch_size
+    def setupOptimizer(self, optim=None):
+        if optim is None: optim = {"name": "adam"}
+        name = optim.pop("name", "adam")
+        if name == "adam":
+            self.optimizer = th.optim.Adam(self.model.parameters(), **optim)
+        elif name == "lbfgs":
+            baseParams = {
+                "line_search_fn": "strong_wolfe"
+                }
+            params = {**baseParams, **optim}
+            self.optimizer = th.optim.LBFGS(self.model.parameters(), **params)
+        else:
+            raise ValueError(f"optim {name} not implemented yet")
+        self.optim = name
+        th.cuda.empty_cache()   # in case another optimizer was setup before ...
+
+
+    def setOptimizerParam(self, **params):
+        for g in self.optimizer.param_groups:
+            for name, val in params.items():
+                g[name] = val
 
 
     def idLoss(self, dataset="valid"):
@@ -93,41 +117,13 @@ class FourierNeuralOp:
         avgLoss /= nBatches
         return avgLoss
 
-
-    def setOptimizer(self, name="adam", **params):
-        if name == "adam":
-            self.optimizer = th.optim.Adam(self.model.parameters(), **params)
-        elif name == "lbfgs":
-            baseParams = {
-                "line_search_fn": "strong_wolfe"
-                }
-            params = {**baseParams, **params}
-            self.optimizer = th.optim.LBFGS(self.model.parameters(), **params)
-        else:
-            raise ValueError(f"optim {name} not implemented yet")
-
-
-    def setOptimizerParam(self, **params):
-        for g in self.optimizer.param_groups:
-            for name, val in params.items():
-                g[name] = val
-
-
-    def switchOptimizer(self, optim="lbfgs"):
-        """DEPRECATED ..."""
-        if optim == "lbfgs":
-            self.optimizer = th.optim.LBFGS(
-                self.model.parameters(),
-                line_search_fn="strong_wolfe")
-        else:
-            raise ValueError(f"cannot switch to {optim} optimizer")
-        self.optim = optim
-
-
+    # -------------------------------------------------------------------------
+    # Training methods
+    # -------------------------------------------------------------------------
     def train(self):
         """Train the model for one epoch"""
         nBatches = len(self.trainLoader.dataset)
-        batchSize = self.batchSize
+        batchSize = self.trainLoader.batch_size
         model = self.model
         optimizer = self.optimizer
         avgLoss = 0
@@ -191,31 +187,66 @@ class FourierNeuralOp:
             print(f"Epoch {self.epochs+1}\n-------------------------------")
             self.train()
             self.valid()
+            print(f" --- End of epoch {self.epochs} ---\n")
         print("Done!")
 
 
-    def load(self, filePath):
-        checkpoint = th.load(filePath, weights_only=True)
-        self.model.load_state_dict(checkpoint['model_state_dict'])
-        optim = checkpoint['optim']
-        if self.optim != optim:
-            self.setOptimizer(optim)
-            self.optim = optim
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self.epochs = checkpoint['epochs']
-        self.losses['model'] = checkpoint['losses']
+    # -------------------------------------------------------------------------
+    # Save/Load methods
+    # -------------------------------------------------------------------------
+    def fullPath(self, filePath):
+        if self.TRAIN_DIR is not None:
+            os.makedirs(self.TRAIN_DIR, exist_ok=True)
+            filePath = str(Path(self.TRAIN_DIR) / filePath)
+        return filePath
 
 
-    def save(self, filePath):
-        th.save({
+    def save(self, filePath, modelOnly=False):
+        fullPath = self.fullPath(filePath)
+        infos = {
+            # Model config and state
+            'model': self.modelConfig,
             'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
+            'outType': self.outType,
+            'outScaling': self.outScaling,
+            }
+        if not modelOnly:
+            infos.update({
+            # Optimizer config and state
             'optim': self.optim,
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            # Learning status
             'epochs': self.epochs,
             'losses': self.losses["model"],
-            }, filePath)
+            })
+        th.save(infos, fullPath)
 
 
+    def load(self, filePath, modelOnly=False):
+        fullPath = self.fullPath(filePath)
+        checkpoint = th.load(fullPath, weights_only=True)
+        # Load model state (eventually config before)
+        if 'model' in checkpoint:
+            if self.modelConfig != checkpoint['model']:
+                print("WARNING : different model settings in config file,"
+                      " overwriting with config from checkpoint ...")
+            self.setupModel(checkpoint['model'])
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.outType = checkpoint["outType"]
+        self.outScaling = checkpoint["outScaling"]
+        if not modelOnly:
+            # Load optimizer state
+            optim = checkpoint['optim']
+            self.setupOptimizer({"name": optim})
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            # Learning status
+            self.epochs = checkpoint['epochs']
+            self.losses['model'] = checkpoint['losses']
+
+
+    # -------------------------------------------------------------------------
+    # Inference method
+    # -------------------------------------------------------------------------
     def __call__(self, u0):
         model = self.model
         inpt = th.tensor(u0[None,...], device=self.device)
