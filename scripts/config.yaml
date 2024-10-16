@@ -36,5 +36,6 @@ optim:
 
 train:
   trainDir: "."
-  nEpochs: 1
+  nEpochs: 500
   checkpoint: model.pt
+  saveEvery: 100

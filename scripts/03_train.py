@@ -17,9 +17,11 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     "--trainDir", default="trainDir", help="directory to store training results")
 parser.add_argument(
-    "--nEpochs", default=10, type=int, help="number of epochs to train on")
+    "--nEpochs", default=200, type=int, help="number of epochs to train on")
 parser.add_argument(
     "--checkpoint", default="model.pt", help="name of the file storing the model")
+parser.add_argument(
+    "--saveEvery", default=100, type=int, help="save checkpoint every [...] epochs")
 parser.add_argument(
     "--config", default="config.yaml", help="configuration file")
 args = parser.parse_args()
@@ -34,6 +36,7 @@ for name in sections:
 configs = {name: config[name] for name in sections}  # trainer class configs
 
 nEpochs = args.nEpochs
+saveEvery = args.saveEvery
 checkpoint = args.checkpoint
 
 
@@ -45,5 +48,15 @@ model = FourierNeuralOp(**configs)
 try:
     model.load(checkpoint)
 except: pass
-model.learn(nEpochs)
-model.save(checkpoint)
+
+saveEvery = min(nEpochs, saveEvery)
+nChunks = nEpochs // saveEvery
+lastChunk = nEpochs % saveEvery
+
+for _ in range(nChunks):
+    model.learn(saveEvery)
+    model.save(checkpoint)
+
+if lastChunk > 0:
+    model.learn(lastChunk)
+    model.save(checkpoint)

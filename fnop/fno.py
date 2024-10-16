@@ -1,6 +1,9 @@
 import os
+import time
 from pathlib import Path
+
 import torch as th
+from torch.utils.tensorboard import SummaryWriter
 
 from fnop.data import getDataLoaders
 from fnop.models.cfno2d import CFNO2D
@@ -60,10 +63,11 @@ class FourierNeuralOp:
 
         self.setupOptimizer(optim)
         self.epochs = 0
+        self.writer = SummaryWriter(self.fullPath("tboard"))
 
 
     # -------------------------------------------------------------------------
-    # Setup methods
+    # Setup and utility methods
     # -------------------------------------------------------------------------
     def setupModel(self, model):
         assert model is not None, "model configuration is required"
@@ -117,6 +121,15 @@ class FourierNeuralOp:
         avgLoss /= nBatches
         return avgLoss
 
+
+    @classmethod
+    def fullPath(cls, filePath):
+        if cls.TRAIN_DIR is not None:
+            os.makedirs(cls.TRAIN_DIR, exist_ok=True)
+            filePath = str(Path(cls.TRAIN_DIR) / filePath)
+        return filePath
+
+
     # -------------------------------------------------------------------------
     # Training methods
     # -------------------------------------------------------------------------
@@ -159,6 +172,7 @@ class FourierNeuralOp:
         avgLoss /= nBatches/batchSize
         print(f"Training: \n Avg loss: {avgLoss:>8f} (id: {idLoss:>7f})\n")
         self.losses["model"]["train"] = avgLoss
+
         self.epochs += 1
 
 
@@ -185,22 +199,35 @@ class FourierNeuralOp:
     def learn(self, nEpochs):
         for _ in range(nEpochs):
             print(f"Epoch {self.epochs+1}\n-------------------------------")
+            tBeg = time.perf_counter()
             self.train()
             self.valid()
-            print(f" --- End of epoch {self.epochs} ---\n")
+            self.monitor()
+            tComp = time.perf_counter()-tBeg
+            print(f" --- End of epoch {self.epochs} (tComp: {tComp:1.2e}s) ---\n")
         print("Done!")
+
+
+    def monitor(self):
+        writer = self.writer
+        writer.add_scalars("Loss_avg", {
+            "train" : self.losses["model"]["train"],
+            "valid" : self.losses["model"]["valid"],
+            "train_id": self.losses["id"]["train"],
+            "valid_id": self.losses["id"]["valid"]
+            }, self.epochs)
+        writer.flush()
+
+
+    def __del__(self):
+        try:
+            self.writer.close()
+        except: pass
 
 
     # -------------------------------------------------------------------------
     # Save/Load methods
     # -------------------------------------------------------------------------
-    def fullPath(self, filePath):
-        if self.TRAIN_DIR is not None:
-            os.makedirs(self.TRAIN_DIR, exist_ok=True)
-            filePath = str(Path(self.TRAIN_DIR) / filePath)
-        return filePath
-
-
     def save(self, filePath, modelOnly=False):
         fullPath = self.fullPath(filePath)
         infos = {
@@ -227,7 +254,7 @@ class FourierNeuralOp:
         checkpoint = th.load(fullPath, weights_only=True)
         # Load model state (eventually config before)
         if 'model' in checkpoint:
-            if self.modelConfig != checkpoint['model']:
+            if hasattr(self, "modelConfig") and self.modelConfig != checkpoint['model']:
                 print("WARNING : different model settings in config file,"
                       " overwriting with config from checkpoint ...")
             self.setupModel(checkpoint['model'])
