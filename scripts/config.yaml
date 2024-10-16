@@ -42,4 +42,5 @@ train:
 
 eval:
   iSimu: 8
-  imgExt: "png"
+  imgExt: png
+  evalDir: evalDir

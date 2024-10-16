@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import os
 import argparse
 
 import matplotlib.pyplot as plt
@@ -25,6 +26,8 @@ parser.add_argument(
 parser.add_argument(
     "--imgExt", default="png", help="extension for figure files")
 parser.add_argument(
+    "--evalDir", default="eval", help="directory to store the evaluation results")
+parser.add_argument(
     "--config", default=None, help="configuration file")
 args = parser.parse_args()
 
@@ -43,12 +46,14 @@ dataFile = args.dataFile
 checkpoint = args.checkpoint
 iSimu = args.iSimu
 imgExt = args.imgExt
+evalDir = args.evalDir
 
 # -----------------------------------------------------------------------------
 # Script execution
 # -----------------------------------------------------------------------------
 dataset = HDF5Dataset(dataFile)
 model = FourierNeuralOp(checkpoint=checkpoint)
+os.makedirs(evalDir, exist_ok=True)
 
 nSamples = dataset.infos["nSamples"][()]
 nSimu = dataset.infos["nSimu"][()]
@@ -76,8 +81,8 @@ plt.ylabel("spectrum")
 plt.xlabel("wavenumber")
 plt.ylim(bottom=1e-10)
 plt.tight_layout()
-plt.savefig(f"spectrum.{imgExt}")
+plt.savefig(f"{evalDir}/spectrum.{imgExt}")
 
 plt.xlim(left=50)
 plt.ylim(top=1e-5)
-plt.savefig(f"spectrum_HF.{imgExt}")
+plt.savefig(f"{evalDir}/spectrum_HF.{imgExt}")
