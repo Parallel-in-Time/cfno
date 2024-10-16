@@ -276,7 +276,10 @@ class FourierNeuralOp:
     # -------------------------------------------------------------------------
     def __call__(self, u0):
         model = self.model
-        inpt = th.tensor(u0[None,...], device=self.device)
+        multi = len(u0.shape) == 4
+        if not multi: u0 = u0[None, ...]
+
+        inpt = th.tensor(u0, device=self.device)
 
         model.eval()
         with th.no_grad():
@@ -284,6 +287,8 @@ class FourierNeuralOp:
             if self.outType == "update":
                 outp /= self.outScaling
                 outp += inpt
+        if not multi:
+            outp = outp[0]
 
-        u1 = outp[0].cpu().detach().numpy()
+        u1 = outp.cpu().detach().numpy()
         return u1

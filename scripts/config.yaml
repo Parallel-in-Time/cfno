@@ -39,3 +39,7 @@ train:
   nEpochs: 500
   checkpoint: model.pt
   saveEvery: 100
+
+eval:
+  iSimu: 8
+  imgExt: "png"
