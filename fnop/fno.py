@@ -251,7 +251,7 @@ class FourierNeuralOp:
 
     def load(self, filePath, modelOnly=False):
         fullPath = self.fullPath(filePath)
-        checkpoint = th.load(fullPath, weights_only=True)
+        checkpoint = th.load(fullPath, weights_only=True, map_location=self.device)
         # Load model state (eventually config before)
         if 'model' in checkpoint:
             if hasattr(self, "modelConfig") and self.modelConfig != checkpoint['model']:
