@@ -7,6 +7,25 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
+def computeMeanSpectrum(uValues):
+    """ uValues[nT, nVar >= 2, nX, nY] """
+    energy_spectrum = []
+    for i in range(2):
+        u = uValues[:, i]                           # (nT, Nx, Nz)
+        spectrum = np.fft.rfft(u, axis=-2)          # over Nx -->  #(nT, k, Nz)
+        spectrum *= np.conj(spectrum)               # (nT, k, Nz)
+        spectrum /= spectrum.shape[-2]              # normalize with Nx --> (nT, k, Nz)
+        spectrum = np.mean(spectrum.real, axis=-1)  # mean over Nz --> (nT,k)
+        energy_spectrum.append(spectrum)
+    return energy_spectrum
+
+
+def getModes(grid):
+    nX = np.size(grid)
+    k = np.fft.rfftfreq(nX, 1/nX) + 0.5
+    return k
+
+
 class OutputFiles():
     """
     Object to load and manipulate hdf5 Dedalus generated solution output
@@ -28,6 +47,7 @@ class OutputFiles():
         else:
             self.x = np.array(vData0.dims[2]["x"])
             self.z = np.array(vData0.dims[3]["z"])
+            self.y = self.z
 
 
     def file(self, iFile:int):
@@ -54,9 +74,7 @@ class OutputFiles():
 
     @property
     def k(self):
-        nX = self.nX
-        k = np.fft.rfftfreq(nX, 1/nX) + 0.5
-        return k
+        return getModes(self.x)
 
     def vData(self, iFile:int):
         return self.file(iFile)['tasks']['velocity']
@@ -119,6 +137,7 @@ class OutputFiles():
             profile.append(np.mean(p, axis=1))          # (time_index, Nz)
         return profile
 
+
     def getMeanSpectrum(self, iFile:int):
         """
         Function to get mean spectrum
@@ -128,15 +147,8 @@ class OutputFiles():
         Returns:
             energy_spectrum (list): mean energy spectrum
         """
-        energy_spectrum = []
-        for i in range(2):
-            u = self.vData(iFile)[:, i]                    #(time_index, Nx, Nz)
-            spectrum = np.fft.rfft(u, axis=-2)             # over Nx -->  #(time_index, k, Nz)
-            spectrum *= np.conj(spectrum)                  #(time_index, k, Nz)
-            spectrum /= spectrum.shape[-2]                 # normalize with Nx --> (time_index, k, Nz)
-            spectrum = np.mean(spectrum.real, axis=-1)     # mean over Nz --> (time_index,k)
-            energy_spectrum.append(spectrum)
-        return energy_spectrum                             # (2,time_index,k)
+        return computeMeanSpectrum(self.vData(iFile))
+
 
     def getFullMeanSpectrum(self, iBeg:int, iEnd=None):
         """
@@ -155,11 +167,13 @@ class OutputFiles():
         sMean = []
         for iFile in range(iBeg, iEnd):
             energy_spectrum = self.getMeanSpectrum(iFile)
-            sx, sz = energy_spectrum[0], energy_spectrum[1]      # (1,time_index,k)
-            sMean.append(np.mean((sx+sz)/2, axis=0))             # mean over time ---> (2, k)
-        sMean = np.mean(sMean, axis=0)                           # mean over x and z ---> (k)
+            sx, sz = energy_spectrum                        # (1,time_index,k)
+            sMean.append(np.mean((sx+sz)/2, axis=0))        # mean over time ---> (2, k)
+        sMean = np.mean(sMean, axis=0)                      # mean over x and z ---> (k)
         np.savetxt(f'{self.folder}/spectrum.txt', np.vstack((sMean, self.k)))
         return sMean, self.k
+
+
 
 def checkDNS(sMean:np.ndarray, k:np.ndarray, vRatio:int=4, nThrow:int=1):
     """

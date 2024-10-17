@@ -19,5 +19,5 @@ dedalus/scripts
 *.ipynb
 *.jpg
 *.png
+scripts/*.pdf
 scratch.py
-fnop/configs/sub_configs

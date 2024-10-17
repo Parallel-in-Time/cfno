@@ -1,0 +1,46 @@
+simu:
+  dataDir: simuData
+  tInit: 100
+  nSimu: 10
+  dtData: 0.1
+  tEnd: 100
+
+sample:
+  inSize: 1
+  outStep: 1
+  inStep: 5
+
+data:
+  outType: solution
+  outScaling: 1
+  dataFile: dataset.h5
+  trainRatio: 0.8
+  seed: null
+  batchSize: 20
+  xStep: 1
+  yStep: 1
+
+model:
+  da: 4
+  du: 4
+  dv: 4
+  kX: 8
+  kY: 8
+  nLayers: 2
+  forceFFT: true
+
+optim:
+  name: adam
+  lr: 0.0001
+  weight_decay: 1.0e-5
+
+train:
+  trainDir: "."
+  nEpochs: 500
+  checkpoint: model.pt
+  saveEvery: 100
+
+eval:
+  iSimu: 8
+  imgExt: png
+  evalDir: evalDir

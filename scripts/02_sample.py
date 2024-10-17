@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+import argparse
+
+from fnop.utils import readConfig
+from fnop.data import createDataset
+
+# -----------------------------------------------------------------------------
+# Script parameters
+# -----------------------------------------------------------------------------
+parser = argparse.ArgumentParser(
+    description='Create training dataset from Dedalus simulation data',
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument(
+    "--dataDir", default="simuData", help="directory containing simulation data")
+parser.add_argument(
+    "--inSize", default=1, help="input size", type=int)
+parser.add_argument(
+    "--outStep", default=1, help="output step", type=int)
+parser.add_argument(
+    "--inStep", default=5, help="input step", type=int)
+parser.add_argument(
+    "--outType", default="solution", help="output type in the dataset",
+    choices=["solution", "update"])
+parser.add_argument(
+    "--outScaling", default=1, type=float, help="scaling factor for the output (ignored with outType=solution !)")
+parser.add_argument(
+    "--dataFile", default="dataset.h5", help="name of the dataset HDF5 file")
+parser.add_argument(
+    "--config", default=None, help="config file, overwriting all parameters specified in it")
+args = parser.parse_args()
+
+if args.config is not None:
+    config = readConfig(args.config)
+    assert "sample" in config, f"config file needs a data section"
+    args.__dict__.update(**config.data)
+    if "simu" in config and "dataDir" in config.simu:
+        args.dataDir = config.simu.dataDir
+    if "data" in config:
+        for key in ["outType", "outScaling", "dataFile"]:
+            if key in config.data: args.__dict__[key] = config.data[key]
+kwargs = {**args.__dict__}
+kwargs.pop("config")
+
+# -----------------------------------------------------------------------------
+# Script execution
+# -----------------------------------------------------------------------------
+createDataset(**kwargs)

@@ -18,7 +18,8 @@ class CF2DConv(nn.Module):
         self.kY = kY
         self.forceFFT = forceFFT
 
-        self.R = nn.Parameter(th.rand(dv, dv, kX, kY, dtype=th.cfloat))
+        self.R = nn.Parameter(
+            th.rand(dv, dv, kX, kY, dtype=th.cfloat))
 
         if forceFFT:
             self._toFourierSpace = self._toFourierSpace_FORCE_FFT
@@ -116,6 +117,26 @@ class Grid2DLinear(nn.Module):
         return x
 
 
+class Grid2DPartialPositiver(nn.Module):
+
+    def __init__(self, posIdx):
+        super().__init__()
+
+        posDiag = th.tensor(posIdx, dtype=bool)
+        Tpos = th.diag(posDiag).to(th.get_default_dtype())
+        Tneg = th.diag(~posDiag).to(th.get_default_dtype())
+        self.register_buffer('Tpos', Tpos)
+        self.register_buffer('Tneg', Tneg)
+        self.sigma = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        xPos = th.einsum("ij,ejxy->eixy", self.Tpos, x)
+        xNeg = th.einsum("ij,ejxy->eixy", self.Tneg, x)
+        xPos = self.sigma(xPos)
+        out = xNeg + xPos
+        return out
+
+
 class CF2DLayer(nn.Module):
 
     def __init__(self, kX, kY, dv, forceFFT=False, non_linearity=nn.functional.gelu):
@@ -132,7 +153,7 @@ class CF2DLayer(nn.Module):
         w = self.W(x)       # Linear operator
 
         v += w
-        o = self.sigma(v)   # Activation function
+        o = self.sigma(v)
 
         return o
 
@@ -141,11 +162,15 @@ class CFNO2D(nn.Module):
 
     def __init__(self, da, dv, du, kX=4, kY=4, nLayers=1, forceFFT=False, non_linearity=nn.functional.gelu):
         super().__init__()
+        self.config = {
+            key: val for key, val in locals().items()
+            if key != "self" and not key.startswith('__')}
 
         self.P = Grid2DLinear(da, dv)
         self.Q = Grid2DLinear(dv, du)
         self.layers = nn.ModuleList(
             [CF2DLayer(kX, kY, dv, forceFFT, non_linearity) for _ in range(nLayers)])
+        # self.pos = Grid2DPartialPositiver([0, 0, 1, 1])
 
         self.memory = CudaMemoryDebugger(print_mem=True)
         
@@ -158,6 +183,7 @@ class CFNO2D(nn.Module):
             x = layer(x)
             
         x = self.Q(x)
+        # x = self.pos(x)
         x = x.permute(0,2,3,1)
         return x
 
@@ -178,6 +204,6 @@ class CFNO2D(nn.Module):
     
 if __name__ == "__main__":
     # Quick script testing
-    model = CFNO2D(4, 6, 4, nLayers=4, kX=12, kY=6)
+    model = CFNO2D(4, 4, 4, nLayers=4, kX=12, kY=6)
     uIn = th.rand(5, 4, 256, 64)
     print(model(uIn).shape)
