@@ -60,7 +60,7 @@ class OutputFiles():
             self._file = h5py.File(self.files[iFile], mode='r')
         return self._file
     
-    def close(self):
+    def __del__(self):
         try:
             self._file.close()
         except: pass

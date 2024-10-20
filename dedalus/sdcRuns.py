@@ -28,7 +28,8 @@ print(f" -- running initial simulation with dt={dt:1.1e} in {dirName}")
 runSim(dirName, Rayleigh, resFactor, baseDt=dt, useSDC=False, tEnd=100,
        dtWrite=1, writeFull=True)
 # -- extract initial field
-initFields = OutputFiles(dirName).file(0)['tasks']
+initFiles = OutputFiles(dirName)
+initFields = initFiles.file(0)['tasks']
 
 
 tEnd = 1
@@ -65,7 +66,8 @@ for i, dt in enumerate(dtSizes):
     print(f" -- running SDC simulation with dt={dt:1.1e} in {dirName}")
     runSim(dirName, Rayleigh, resFactor, baseDt=dt, useSDC=True,
            tEnd=tEnd, dtWrite=tEnd, initFields=initFields)
-    numFields = OutputFiles(dirName).file(0)['tasks']
+    outFiles = OutputFiles(dirName)
+    numFields = outFiles.file(0)['tasks']
     diff = numFields[var][-1] - refFields[var][-1]
     err = np.linalg.norm(
         diff, ord=np.inf, axis=(1,2) if var == "velocity" else None)
@@ -83,7 +85,8 @@ for i, dt in enumerate(dtSizes):
     print(f" -- running non-SDC simulation with dt={dt:1.1e} in {dirName}")
     runSim(dirName, Rayleigh, resFactor, baseDt=dt, useSDC=False,
            tEnd=tEnd, dtWrite=tEnd, initFields=initFields)
-    numFields = OutputFiles(dirName).file(0)['tasks']
+    outFiles = OutputFiles(dirName)
+    numFields = outFiles.file(0)['tasks']
     diff = numFields[var][-1] - refFields[var][-1]
     err = np.linalg.norm(
         diff, ord=np.inf, axis=(1,2) if var == "velocity" else None)

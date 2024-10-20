@@ -72,7 +72,8 @@ for seed in seeds:
     runSim(initRunDir, Rayleigh, resFactor, baseDt=dtInit, useSDC=False, tEnd=tInit,
            dtWrite=1, writeFull=True, seed=seed)
     # -- extract initial field
-    initFields = OutputFiles(initRunDir).file(0)['tasks']
+    initFiles = OutputFiles(initRunDir)
+    initFields = initFiles.file(0)['tasks']
 
     # Generate simulation data
     dataRunDir = f"{simDir}/run_data"
