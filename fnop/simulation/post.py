@@ -59,7 +59,7 @@ class OutputFiles():
             self._iFile = iFile
             self._file = h5py.File(self.files[iFile], mode='r')
         return self._file
-    
+
     def __del__(self):
         try:
             self._file.close()
@@ -96,7 +96,7 @@ class OutputFiles():
 
     def times(self, iFile:int=None):
         if iFile is None:
-            return np.array([self.times(i) for i in range(self.nFiles)])
+            return np.concatenate([self.times(i) for i in range(self.nFiles)])
         if self.inference:
             return np.array(self.vData(iFile)[:,0,0,0])
         else:
