@@ -123,6 +123,7 @@ def createDataset(
                     outp *= outScaling
             inputs[iSim*nSamples + iSample] = inpt
             outputs[iSim*nSamples + iSample] = outp
+    dataset.close()
     print(" -- done !")
 
 
