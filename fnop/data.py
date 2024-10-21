@@ -82,8 +82,9 @@ def createDataset(
 
     times = outFiles.times().ravel()
     dtData = times[1]-times[0]
-    dtInput = dtData*outStep  # noqa: F841 (used lated by an eval call)
-    xGrid, yGrid = outFiles.x, outFiles.y  # noqa: F841 (used lated by an eval call)
+    dtInput = dtData*outStep                # noqa: F841 (used lated by an eval call)
+    dtSample = dtData*inStep                # noqa: F841 (used lated by an eval call)
+    xGrid, yGrid = outFiles.x, outFiles.y   # noqa: F841 (used lated by an eval call)
 
     nFields = sum(outFiles.nFields)
     sRange = range(0, nFields-inSize-outStep+1, inStep)
@@ -91,7 +92,7 @@ def createDataset(
 
     infoParams = [
         "inSize", "outStep", "inStep", "outType", "outScaling",
-        "dtData", "dtInput", "xGrid", "yGrid", "nSimu", "nSamples"]
+        "dtData", "dtInput", "xGrid", "yGrid", "nSimu", "nSamples", "dtSample"]
 
     if dryRun:
         print(f"To create : dataset from {len(simDirs)} simulations, {nSamples} samples each ...")
