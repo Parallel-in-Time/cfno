@@ -2,9 +2,6 @@
 # -*- coding: utf-8 -*-
 import argparse
 
-from fnop.utils import readConfig
-from fnop.data import createDataset
-
 # -----------------------------------------------------------------------------
 # Script parameters
 # -----------------------------------------------------------------------------
@@ -23,12 +20,20 @@ parser.add_argument(
     "--outType", default="solution", help="output type in the dataset",
     choices=["solution", "update"])
 parser.add_argument(
-    "--outScaling", default=1, type=float, help="scaling factor for the output (ignored with outType=solution !)")
+    "--outScaling", default=1, type=float, 
+    help="scaling factor for the output (ignored with outType=solution !)")
 parser.add_argument(
     "--dataFile", default="dataset.h5", help="name of the dataset HDF5 file")
 parser.add_argument(
     "--config", default=None, help="config file, overwriting all parameters specified in it")
+parser.add_argument(
+    "--dryRun", default=None, action='store_true', 
+    help="don't extract the data, just print the infos of the expected dataset")
 args = parser.parse_args()
+
+# To avoid import when using help ...
+from fnop.utils import readConfig
+from fnop.data import createDataset
 
 if args.config is not None:
     config = readConfig(args.config)

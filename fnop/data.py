@@ -69,7 +69,10 @@ class HDF5Dataset(Dataset):
         print(f" -- outScaling : {infos['outScaling'][()]:1.2g}")
 
 
-def createDataset(dataDir, inSize, outStep, inStep, outType, outScaling, dataFile):
+def createDataset(
+        dataDir, inSize, outStep, inStep, outType, outScaling, dataFile,
+        dryRun=False,
+        ):
     assert inSize == 1, "inSize != 1 not implemented yet ..."
     simDirs = glob.glob(f"{dataDir}/simu_*")
     nSimu = len(simDirs)
@@ -86,11 +89,20 @@ def createDataset(dataDir, inSize, outStep, inStep, outType, outScaling, dataFil
     sRange = range(0, nFields-inSize-outStep+1, inStep)
     nSamples = len(sRange)
 
+    infoParams = [
+        "inSize", "outStep", "inStep", "outType", "outScaling",
+        "dtData", "dtInput", "xGrid", "yGrid", "nSimu", "nSamples"]
+
+    if dryRun:
+        print(f"To create : dataset from {len(simDirs)} simulations, {nSamples} samples each ...")
+        for name in infoParams:
+            if "Grid" not in name:
+                print(f" -- {name} : {eval(name)}")
+        return
+
     print(f"Creating dataset from {len(simDirs)} simulations, {nSamples} samples each ...")
     dataset = h5py.File(dataFile, "w")
-    for name in ["inSize", "outStep", "inStep", "outType", "outScaling",
-                 "dtData", "dtInput", "xGrid", "yGrid",
-                 "nSimu", "nSamples"]:
+    for name in infoParams:
         try:
             dataset.create_dataset(f"infos/{name}", data=np.asarray(eval(name)))
         except:

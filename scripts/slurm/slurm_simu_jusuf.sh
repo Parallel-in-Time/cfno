@@ -16,4 +16,4 @@ source ~/tlunet/setup.sh
 # Go to script repo
 cd -P ~/tlunet/neural_operators/scripts
 
-srun -n 4 python -u 01_simu.py --dataDir=/p/scratch/cslmet/tlunet/scratch/simuData_dt1e-3 --dtData=0.001
+srun -n 4 python -u 01_simu.py --dataDir=/p/scratch/cslmet/tlunet/simuData_dt1e-3 --dtData=0.001
