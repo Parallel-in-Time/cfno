@@ -3,13 +3,12 @@
 """
 Base script to run tests with SDC
 """
-import os
 import numpy as np
 import matplotlib.pyplot as plt
 from mpi4py import MPI
 
-from rbc_simulation import runSim
-from data_processing import OutputFiles
+from fnop.simulation.rbc2d import runSim
+from fnop.simulation.post import OutputFiles
 from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX
 
 
@@ -23,7 +22,6 @@ Rayleigh = 1.5e7
 # Initial run
 dirName = f"{baseDir}/run_init"
 dt = 1e-2/2
-os.makedirs(dirName, exist_ok=True)
 print(f" -- running initial simulation with dt={dt:1.1e} in {dirName}")
 runSim(dirName, Rayleigh, resFactor, baseDt=dt, useSDC=False, tEnd=100,
        dtWrite=1, writeFull=True)
@@ -41,7 +39,6 @@ dtSizes = [dtBase/2**i for i in range(5)]
 
 # Reference solution
 dirName = f"{baseDir}/run_ref"
-os.makedirs(dirName, exist_ok=True)
 print(f" -- running reference simulation with dt={dt:1.1e} in {dirName}")
 runSim(dirName, Rayleigh, resFactor, baseDt=dtRef, useSDC=False,
        tEnd=tEnd, dtWrite=tEnd/10, initFields=initFields)
@@ -62,7 +59,6 @@ plt.figure("convergence")
 errors = []
 for i, dt in enumerate(dtSizes):
     dirName = f"{baseDir}/run_sdc_dt{dt:1.1e}"
-    os.makedirs(dirName, exist_ok=True)
     print(f" -- running SDC simulation with dt={dt:1.1e} in {dirName}")
     runSim(dirName, Rayleigh, resFactor, baseDt=dt, useSDC=True,
            tEnd=tEnd, dtWrite=tEnd, initFields=initFields)
@@ -81,7 +77,6 @@ plt.loglog(dtSizes, errors, 'o-', label="SDC")
 errors = []
 for i, dt in enumerate(dtSizes):
     dirName = f"{baseDir}/run_nosdc_dt{dt:1.1e}"
-    os.makedirs(dirName, exist_ok=True)
     print(f" -- running non-SDC simulation with dt={dt:1.1e} in {dirName}")
     runSim(dirName, Rayleigh, resFactor, baseDt=dt, useSDC=False,
            tEnd=tEnd, dtWrite=tEnd, initFields=initFields)
