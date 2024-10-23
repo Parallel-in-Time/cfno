@@ -1,33 +1,15 @@
 # Code to generate RBC data with Dedalus
 
-:scroll: _Recommended installation approach_ => [build from source](https://dedalus-project.readthedocs.io/en/latest/pages/installation.html#building-from-source)
+:ghost: DEPRECATED ...
 
-## Utility libraries
+:scroll: _Recommended installation approach for `dedalus`_ => [build from source](https://dedalus-project.readthedocs.io/en/latest/pages/installation.html#building-from-source)
+
+## Utility libraries (:ghost: deprecated ...)
 
 - [rbc_simulation.py](./rbc_simulation.py) : utility module containing function to generate data with Dedalus.
 - [convRuns.py](./convRuns.py) : script used to determine critical Rayleigh for one given space grid
 - [plotContours.py](./plotContours.py) : plotting script from dedalus
 - [data_processing.py](./data_processing.py) : script for quick post-processing (data, spectrum and profile extraction)
-
-## Install pySDC (dev version)
-
-Installation of `pySDC` is now required to use the Spectral Deferred Correction solver for dedalus. 
-For that, you have to retrieve a development fork of `pySDC` and install it as editable package in your python environment : 
-
-```bash
-# Somewhere in a root folder ...
-git clone https://github.com/tlunet/pySDC.git
-cd pySDC
-git switch dedalus
-pip install -e .
-```
-
-Some changes may happen regularly on the pySDC fork, to update your own version simply do
-
-```bash
-# In the pySDC repo
-git pull
-```
 
 ## Generate data
 

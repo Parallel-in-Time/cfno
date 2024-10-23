@@ -279,16 +279,16 @@ class FourierNeuralOp:
         multi = len(u0.shape) == 4
         if not multi: u0 = u0[None, ...]
 
-        inpt = th.tensor(u0, device=self.device)
+        inp = th.tensor(u0, device=self.device)
 
         model.eval()
         with th.no_grad():
-            outp = model(inpt)
+            out = model(inp)
             if self.outType == "update":
-                outp /= self.outScaling
-                outp += inpt
+                out /= self.outScaling
+                out += inp
         if not multi:
-            outp = outp[0]
+            out = out[0]
 
-        u1 = outp.cpu().detach().numpy()
+        u1 = out.cpu().detach().numpy()
         return u1
