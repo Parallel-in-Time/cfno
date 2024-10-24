@@ -32,9 +32,23 @@ initFields = initFiles.file(0)['tasks']
 
 tEnd = 1
 dtRef = 1e-6
-var = "velocity"
 dtBase = 0.05
 dtSizes = [dtBase/2**i for i in range(5)]
+
+
+def error(uNum, uRef):
+    refNorms = np.linalg.norm(uRef, axis=(-2, -1))
+    diffNorms = np.linalg.norm(uNum-uRef, axis=(-2, -1))
+    return np.mean(diffNorms/refNorms)
+
+
+def extractU(outFields):
+    return np.asarray([
+        outFields["velocity"][-1, 0],
+        outFields["velocity"][-1, 1],
+        outFields["buoyancy"][-1],
+        outFields["pressure"][-1]
+        ])
 
 
 # Reference solution
@@ -45,17 +59,18 @@ runSim(dirName, Rayleigh, resFactor, baseDt=dtRef, useSDC=False,
 refFiles = OutputFiles(dirName)
 refFields = refFiles.file(0)['tasks']
 
+uRef = extractU(refFields)
+
 
 # SDC runs
 SpectralDeferredCorrectionIMEX.setParameters(
-    nSweeps=4,
-    nNodes=3,
+    nSweeps=1,
+    nNodes=4,
     implSweep="MIN-SR-FLEX",
     explSweep="PIC")
 
+
 plt.figure("convergence")
-
-
 errors = []
 for i, dt in enumerate(dtSizes):
     dirName = f"{baseDir}/run_sdc_dt{dt:1.1e}"
@@ -64,11 +79,8 @@ for i, dt in enumerate(dtSizes):
            tEnd=tEnd, dtWrite=tEnd, initFields=initFields)
     outFiles = OutputFiles(dirName)
     numFields = outFiles.file(0)['tasks']
-    diff = numFields[var][-1] - refFields[var][-1]
-    err = np.linalg.norm(
-        diff, ord=np.inf, axis=(1,2) if var == "velocity" else None)
-    if var == "velocity":
-        err = np.mean(err)
+    uNum = extractU(numFields)
+    err = error(uNum, uRef)
     errors.append(err)
 plt.loglog(dtSizes, errors, 'o-', label="SDC")
 
@@ -82,13 +94,11 @@ for i, dt in enumerate(dtSizes):
            tEnd=tEnd, dtWrite=tEnd, initFields=initFields)
     outFiles = OutputFiles(dirName)
     numFields = outFiles.file(0)['tasks']
-    diff = numFields[var][-1] - refFields[var][-1]
-    err = np.linalg.norm(
-        diff, ord=np.inf, axis=(1,2) if var == "velocity" else None)
-    if var == "velocity":
-        err = np.mean(err)
+    uNum = extractU(numFields)
+    err = error(uNum, uRef)
     errors.append(err)
 
 plt.grid(True)
 plt.loglog(dtSizes, errors, 'o-', label="RK443")
+plt.xlabel(r"$\Delta{t}$")
 plt.legend()
