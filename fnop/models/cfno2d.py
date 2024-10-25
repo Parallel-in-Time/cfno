@@ -1,4 +1,5 @@
 import math
+import numpy as np
 
 import torch as th
 import torch.nn as nn
@@ -11,19 +12,24 @@ class CF2DConv(nn.Module):
 
     USE_T_CACHE = False
 
-    def __init__(self, kX, kY, dv, forceFFT=False):
+    def __init__(self, kX, kY, dv, forceFFT=False, reorder=False):
         super().__init__()
 
         self.kX = kX
         self.kY = kY
         self.forceFFT = forceFFT
+        self.reorder = reorder
 
         self.R = nn.Parameter(
             th.rand(dv, dv, kX, kY, dtype=th.cfloat))
 
         if forceFFT:
-            self._toFourierSpace = self._toFourierSpace_FORCE_FFT
-            self._toRealSpace = self._toRealSpace_FORCE_FFT
+            if reorder:
+                self._toFourierSpace = self._toFourierSpace_FORCE_FFT_REORDER
+                self._toRealSpace = self._toRealSpace_FORCE_FFT_REORDER
+            else:
+                self._toFourierSpace = self._toFourierSpace_FORCE_FFT
+                self._toRealSpace = self._toRealSpace_FORCE_FFT
 
         if self.USE_T_CACHE:
             self._T_CACHE = {}
@@ -65,6 +71,25 @@ class CF2DConv(nn.Module):
     def _toRealSpace_FORCE_FFT(self, x):
         """ x[nBatch, dv, fX = nX/2+1, fY = nY/2+1] -> [nBatch, dv, nX, nY]"""
         x = th.fft.irfft2(x, norm="ortho")  # IRFFT on last 2 dimensions
+        return x
+
+    def _toFourierSpace_FORCE_FFT_REORDER(self, x):
+        """ x[nBatch, dv, nX, nY] -> [nBatch, dv, fX = nX/2+1, fY = nY/2+1] """
+        nY = x.shape[-1]
+        reorder = np.append(np.arange((nY+1)//2)*2, -np.arange(nY//2)*2 - 1 - nY % 2)
+        x = x[:, :, :, reorder]
+        x = th.fft.rfft2(x, norm="ortho")   # RFFT on last 2 dimensions
+        return x
+
+    def _toRealSpace_FORCE_FFT_REORDER(self, x):
+        """ x[nBatch, dv, fX = nX/2+1, fY = nY/2+1] -> [nBatch, dv, nX, nY]"""
+        x = th.fft.irfft2(x, norm="ortho")  # IRFFT on last 2 dimensions
+        nY = x.shape[-1]
+        reorder = np.zeros(nY, dtype=int)
+        reorder[: nY - nY % 2 : 2] = np.arange(nY // 2)
+        reorder[1::2] = nY - np.arange(nY // 2) - 1
+        reorder[-1] = nY // 2
+        x = x[:, :, :, reorder]
         return x
 
 
@@ -140,10 +165,10 @@ class Grid2DPartialPositiver(nn.Module):
 
 class CF2DLayer(nn.Module):
 
-    def __init__(self, kX, kY, dv, forceFFT=False, nonLinearity="ReLU"):
+    def __init__(self, kX, kY, dv, forceFFT=False, reorder=False, nonLinearity="ReLU"):
         super().__init__()
 
-        self.conv = CF2DConv(kX, kY, dv, forceFFT)
+        self.conv = CF2DConv(kX, kY, dv, forceFFT, reorder)
         if nonLinearity == "ReLU":
             self.sigma = nn.ReLU(inplace=True)
         elif nonLinearity == "GeLU":
@@ -173,8 +198,8 @@ class CFNO2D(nn.Module):
 
     def __init__(
             self, da, dv, du,
-            kX=4, kY=4, nLayers=1, forceFFT=False,
-            nonLinearity="ReLU"):
+            kX=4, kY=4, nLayers=1,
+            forceFFT=False, reorder=False, nonLinearity="ReLU"):
         super().__init__()
         self.config = {
             key: val for key, val in locals().items()
@@ -183,7 +208,7 @@ class CFNO2D(nn.Module):
         self.P = Grid2DLinear(da, dv)
         self.Q = Grid2DLinear(dv, du)
         self.layers = nn.ModuleList(
-            [CF2DLayer(kX, kY, dv, forceFFT, nonLinearity) 
+            [CF2DLayer(kX, kY, dv, forceFFT, reorder, nonLinearity)
              for _ in range(nLayers)])
         # self.pos = Grid2DPartialPositiver([0, 0, 1, 1])
 
