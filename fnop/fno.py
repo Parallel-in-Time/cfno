@@ -238,7 +238,7 @@ class FourierNeuralOp:
             writer.flush()
 
         with open(self.fullPath(self.LOSSES_FILE), "a") as f:
-            f.write("{epochs}\t{train}\t{valid}\t{train_id}\t{valid_id}\n".format(
+            f.write("{epochs}\t{train:1.18f}\t{valid:1.18f}\t{train_id}\t{valid_id}\n".format(
                 epochs=self.epochs,
                 train_id=self.losses["id"]["train"], valid_id=self.losses["id"]["valid"],
                 **self.losses["model"]))
