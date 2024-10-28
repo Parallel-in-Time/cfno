@@ -34,3 +34,6 @@ plt.legend()
 plt.grid(which="major")
 plt.grid(which="minor", linestyle="--")
 plt.tight_layout()
+
+if saveFig:
+    plt.savefig("losses.pdf")
