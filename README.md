@@ -4,45 +4,61 @@ This repository contains implementation of [Fourier Neural Operators](https://ar
 
 ## Requirements
 
-The code is based on python3 (version 3.11) and the packages required can be installed with
+The code is based on python (version 3.11) and the packages required can be installed with
 
 ```bash
-python3 -m pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
-The code is developed into a python package allowing to do the model training, validation and inference :
-`fnop`. You can install it on your system, without root rights, by doing this in this repository :
+**Specific dependencies :**
+
+- `dedalus` : spectral discretization for RBC. Recommended installation approach: [build from source.](https://dedalus-project.readthedocs.io/en/latest/pages/installation.html#building-from-source)
+
+- `pySDC` : base package for SDC, need to be installed using a development version available in the `neuralpint` branch of its [main Github repo](https://github.com/Parallel-in-Time/pySDC/tree/neuralpint). To do that :
 
 ```bash
-pip install -e --user .
+# Somewhere in a root folder ...
+git clone https://github.com/Parallel-in-Time/pySDC.git
+cd pySDC
+git switch neuralpint
+pip install -e .
 ```
 
-> The `-e` option installs in _editable_ mode, which means any modification in the `fnop` code won't need a re-installation to take the change into account.
-
-To de-install the package, simply run :
+Some changes may happen regularly on the development branch, to update your own version simply do
 
 ```bash
-pip uninstall fnop
+# In the pySDC repo
+git pull
 ```
 
-## Data
+- `fnop` : base code for the FNO training, validation and inference. It is hosted on this repo and can
+be installed on your system by running the following command in the root folder of this repo :
 
-For 2D Rayleigh Benard Convection (RBC) problem the data is generated using [Dedalus](https://dedalus-project.readthedocs.io/en/latest/pages/examples/ivp_2d_rayleigh_benard.html).
+```bash
+pip install -e .
+```
 
-See also the [dedalus](./dedalus/) folder.
+> The `-e` option installs in _editable_ mode, which means any modification in the code won't need a re-installation to take the change into account.
 
+> You can also use the `--user` option with `pip` to install without admin rights.
 
-## Model Training : generating a mod
+To de-install any package, simply run :
 
-> 🛠️ In construction : needs improvements ...
+```bash
+pip uninstall fnop  # or pySDC, or even both at the same time ...
+```
+
+## Code for the original approach
+
+### Model Training
+
+For 2D Rayleigh Benard Convection (RBC) problem the data is generated using [Dedalus](https://dedalus-project.readthedocs.io/en/latest/pages/examples/ivp_2d_rayleigh_benard.html). See also the [dedalus](./dedalus/) folder.
 
 [Fourier Neural Operator 2D Spatial + Recurrent in time](./fnop/models/fno2d_recurrent.py) and [Fourier Neural Operator 2D Spatial + 1D time](./fnop/models/fno3d.py) solver for RBC 2D.
 
 Example submission script to train on JUWELS Booster is shown in [submit_juwels.sbatch](./launch_scripts/submit_juwels.sbatch.sh).
 
-## Model Inference
-
-> 🛠️ In construction : needs to be implemented
+### Model Inference
 
 Once a model is trained, it is saved into a _checkpoint_ file, that are stored in the [`model_archive` companion repo](https://codebase.helmholtz.cloud/neuralpint/model_archive) as `*.pt` files 
 (weights of the model).
@@ -54,9 +70,10 @@ One given trained model should be used like this :
 ```python
 from fnop.inference import FNOInference
 
-# Load the fully trained model
-model = FNOInference.fromFiles(
-	checkpointFile="path/to/checkpointFile.pt", configFile="path/to/configFile.yaml")
+# Load the trained model
+model = FNOInference(
+	config="path/to/configFile.yaml",
+	checkpoint="path/to/checkpointFile.pt")
 
 u0 = ... # some solution of RBC at a given time
 # --> numpy.ndarray format, with shape (nVar, nX, nZ), with nVar = 4
@@ -73,6 +90,10 @@ vx1, vy1, b1, p1 = u1
 # Time-step of the model can be retrieved like this :
 dt = model.dt 	# -> can be either an attribute or a property
 ```
+
+## Code for the recent (simplified) approach
+
+Data generation, model training / validation / inference described in the [scripts](./scripts) folder ...
 
 ## Note
 

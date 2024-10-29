@@ -25,6 +25,13 @@ class FourierNeuralOp:
 
     """
     TRAIN_DIR = None
+
+    LOG_FILE = "training.log"
+    LOG_STDOUT = True
+
+    LOSSES_FILE = "losses.txt"
+    USE_TENSORBOARD = True
+
     def __init__(self, data:dict=None, model:dict=None, optim:dict=None, checkpoint=None):
 
         self.device = th.device('cuda:0' if th.cuda.is_available() else 'cpu')
@@ -56,14 +63,16 @@ class FourierNeuralOp:
 
         # Set model
         self.setupModel(model)
+        self.epochs = 0
 
         # Eventually load checkpoint if provided
         if checkpoint is not None: self.load(checkpoint)
         # /!\ overwrite model setup if checkpoint is loaded /!\
 
         self.setupOptimizer(optim)
-        self.epochs = 0
-        self.writer = SummaryWriter(self.fullPath("tboard"))
+
+        if self.USE_TENSORBOARD:
+            self.writer = SummaryWriter(self.fullPath("tboard"))
 
 
     # -------------------------------------------------------------------------
@@ -130,6 +139,15 @@ class FourierNeuralOp:
         return filePath
 
 
+    @classmethod
+    def log(cls, msg):
+        if cls.LOG_STDOUT:
+            print(msg)
+        if cls.LOG_FILE:
+            with open(cls.fullPath(cls.LOG_FILE), "a") as f:
+                f.write(msg+"\n")
+
+
     # -------------------------------------------------------------------------
     # Training methods
     # -------------------------------------------------------------------------
@@ -166,11 +184,11 @@ class FourierNeuralOp:
             optimizer.zero_grad()
 
             loss, current = loss.item(), iBatch*batchSize + len(inputs)
-            print(f"loss: {loss:>7f} (id: {idLoss:>7f}) [{current:>5d}/{nBatches:>5d}]")
+            self.log(f"loss: {loss:>7f} (id: {idLoss:>7f}) [{current:>5d}/{nBatches:>5d}]")
             avgLoss += loss
 
         avgLoss /= nBatches/batchSize
-        print(f"Training: \n Avg loss: {avgLoss:>8f} (id: {idLoss:>7f})\n")
+        self.log(f"Training: \n Avg loss: {avgLoss:>8f} (id: {idLoss:>7f})\n")
         self.losses["model"]["train"] = avgLoss
 
         self.epochs += 1
@@ -192,31 +210,38 @@ class FourierNeuralOp:
                 avgLoss += lossFunction(pred, outputs).item()
 
         avgLoss /= nBatches
-        print(f"Validation: \n Avg loss: {avgLoss:>8f} (id: {idLoss:>7f})\n")
+        self.log(f"Validation: \n Avg loss: {avgLoss:>8f} (id: {idLoss:>7f})\n")
         self.losses["model"]["valid"] = avgLoss
 
 
     def learn(self, nEpochs):
         for _ in range(nEpochs):
-            print(f"Epoch {self.epochs+1}\n-------------------------------")
+            self.log(f"Epoch {self.epochs+1}\n-------------------------------")
             tBeg = time.perf_counter()
             self.train()
             self.valid()
             self.monitor()
             tComp = time.perf_counter()-tBeg
-            print(f" --- End of epoch {self.epochs} (tComp: {tComp:1.2e}s) ---\n")
-        print("Done!")
+            self.log(f" --- End of epoch {self.epochs} (tComp: {tComp:1.2e}s) ---\n")
+        self.log("Done!")
 
 
     def monitor(self):
-        writer = self.writer
-        writer.add_scalars("Loss_avg", {
-            "train" : self.losses["model"]["train"],
-            "valid" : self.losses["model"]["valid"],
-            "train_id": self.losses["id"]["train"],
-            "valid_id": self.losses["id"]["valid"]
-            }, self.epochs)
-        writer.flush()
+        if self.USE_TENSORBOARD:
+            writer = self.writer
+            writer.add_scalars("Loss_avg", {
+                "train" : self.losses["model"]["train"],
+                "valid" : self.losses["model"]["valid"],
+                "train_id": self.losses["id"]["train"],
+                "valid_id": self.losses["id"]["valid"]
+                }, self.epochs)
+            writer.flush()
+
+        with open(self.fullPath(self.LOSSES_FILE), "a") as f:
+            f.write("{epochs}\t{train:1.18f}\t{valid:1.18f}\t{train_id}\t{valid_id}\n".format(
+                epochs=self.epochs,
+                train_id=self.losses["id"]["train"], valid_id=self.losses["id"]["valid"],
+                **self.losses["model"]))
 
 
     def __del__(self):
@@ -255,20 +280,23 @@ class FourierNeuralOp:
         # Load model state (eventually config before)
         if 'model' in checkpoint:
             if hasattr(self, "modelConfig") and self.modelConfig != checkpoint['model']:
-                print("WARNING : different model settings in config file,"
-                      " overwriting with config from checkpoint ...")
+                self.log("WARNING : different model settings in config file,"
+                         " overwriting with config from checkpoint ...")
             self.setupModel(checkpoint['model'])
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.outType = checkpoint["outType"]
         self.outScaling = checkpoint["outScaling"]
+        # Learning status
+        self.epochs = checkpoint['epochs']
+        try:
+            self.losses['model'] = checkpoint['losses']
+        except AttributeError:
+            self.losses = {"model": checkpoint['losses']}
         if not modelOnly:
             # Load optimizer state
             optim = checkpoint['optim']
             self.setupOptimizer({"name": optim})
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            # Learning status
-            self.epochs = checkpoint['epochs']
-            self.losses['model'] = checkpoint['losses']
 
 
     # -------------------------------------------------------------------------
@@ -279,16 +307,16 @@ class FourierNeuralOp:
         multi = len(u0.shape) == 4
         if not multi: u0 = u0[None, ...]
 
-        inpt = th.tensor(u0, device=self.device)
+        inp = th.tensor(u0, device=self.device)
 
         model.eval()
         with th.no_grad():
-            outp = model(inpt)
+            out = model(inp)
             if self.outType == "update":
-                outp /= self.outScaling
-                outp += inpt
+                out /= self.outScaling
+                out += inp
         if not multi:
-            outp = outp[0]
+            out = out[0]
 
-        u1 = outp.cpu().detach().numpy()
+        u1 = out.cpu().detach().numpy()
         return u1

@@ -68,6 +68,7 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
     timestepper = SpectralDeferredCorrectionIMEX if useSDC else d3.RK443
     dtype = np.float64
 
+    os.makedirs(dirName, exist_ok=True)
     with open(f"{dirName}/00_infoSimu.txt", "w") as f:
         f.write(f"Rayleigh : {Rayleigh:1.2e}\n")
         f.write(f"Seed : {seed}\n")

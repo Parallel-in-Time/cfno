@@ -1,2 +1,2 @@
-from . import data_loader
-from . import data_utils
+from fnop.data_procesing import data_loader
+from fnop.data_procesing import data_utils

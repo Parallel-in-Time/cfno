@@ -39,6 +39,10 @@ There is also some companion scripts that can be used in parallel to the pipelin
 
 - [10_viewDataset.py](./10_viewDataset.py) : print infos from a dataset, and can plot some contours of its inputs / outputs
 - [11_modelOutput.py](./11_modelOutput.py) : plot solution (or update) contours of a model on a given sample of a dataset
+- [12_inspectModel.py](./12_inspectModel.py) : print model configuration on status from a checkpoint file
+- [13_plotLoss.py](./13_plotLoss.py) : plot loss evolution from a file storing it
+
+> :scroll: Examples of slurm scripts using those scripts are provided in the [`slurm`](./slurm/) folder ...
 
 
 ## Stage 1 : simulation

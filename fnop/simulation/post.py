@@ -36,7 +36,8 @@ class OutputFiles():
         fileNames = glob.glob(f"{self.folder}/*.h5")
         fileNames.sort(key=lambda f: int(f.split("_s")[-1].split(".h5")[0]))
         self.files = fileNames
-        self._iFile = None
+        self._file = None   # temporary buffer to store the HDF5 file
+        self._iFile = None  # index of the HDF5 stored in the temporary buffer
         vData0 = self.file(0)['tasks']['velocity']
         if self.inference:
              self.x = np.array(vData0[0,0,:,0])
@@ -52,9 +53,17 @@ class OutputFiles():
 
     def file(self, iFile:int):
         if iFile != self._iFile:
+            try:
+                self._file.close()
+            except: pass
             self._iFile = iFile
             self._file = h5py.File(self.files[iFile], mode='r')
         return self._file
+
+    def __del__(self):
+        try:
+            self._file.close()
+        except: pass
 
     @property
     def nFiles(self):
@@ -87,7 +96,7 @@ class OutputFiles():
 
     def times(self, iFile:int=None):
         if iFile is None:
-            return np.array([self.times(i) for i in range(self.nFiles)])
+            return np.concatenate([self.times(i) for i in range(self.nFiles)])
         if self.inference:
             return np.array(self.vData(iFile)[:,0,0,0])
         else:

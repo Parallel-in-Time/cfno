@@ -45,7 +45,6 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         Write Tau variables to snapshot
     initFields: dictionary, optional
         Initial conditions
-    
     """
     if os.path.isfile(f"{dirName}/01_finalized.txt"):
         if MPI_RANK == 0:
@@ -68,10 +67,10 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
     Prandtl = 1
     dealias = 3/2
     stop_sim_time = tEnd
-    # timestepper = SpectralDeferredCorrectionIMEX if useSDC else d3.RK443
-    timestepper = d3.RK443
+    timestepper = SpectralDeferredCorrectionIMEX if useSDC else d3.RK443
     dtype = np.float64
 
+    os.makedirs(dirName, exist_ok=True)
     with open(f"{dirName}/00_infoSimu.txt", "w") as f:
         f.write(f"Rayleigh : {Rayleigh:1.2e}\n")
         f.write(f"Seed : {seed}\n")
@@ -170,13 +169,15 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
             solver.step(timestep)
             if (solver.iteration-1) % 10000 == 0:
                 log(f'Iteration={solver.iteration}, Time={solver.sim_time}, dt={timestep}')
+        with open(f"{dirName}/01_finalized.txt", "w") as f:
+            f.write("Done !")
     except:
         log('Exception raised, triggering end of main loop.')
         raise
     finally:
         solver.log_stats()
-        with open(f"{dirName}/01_finalized.txt", "w") as f:
-            f.write("Done !")
+
+    return solver
 
 
 if __name__ == '__main__':
@@ -184,4 +185,6 @@ if __name__ == '__main__':
     parser.add_argument('--dir_name', type=str,
                         help="Folder name to store simulation data")
     args, unknown = parser.parse_known_args()
-    runSim(args.dir_Name)
+    try:
+        runSim(args.dir_Name)
+    except: pass

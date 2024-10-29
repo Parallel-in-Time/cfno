@@ -28,6 +28,7 @@ model:
   kY: 8
   nLayers: 2
   forceFFT: true
+  bias: false
 
 optim:
   name: adam
@@ -36,9 +37,10 @@ optim:
 
 train:
   trainDir: "."
-  nEpochs: 500
+  nEpochs: 50
   checkpoint: model.pt
-  saveEvery: 100
+  saveEvery: 10
+  savePermanent: true
 
 eval:
   iSimu: 8

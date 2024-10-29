@@ -139,6 +139,9 @@ class FNOInference:
         v0 = self.numpy2Torch(u0)
         v1 = self.inference(v0)
         return self.torch2Numpy(v1)
+    
+    def __call__(self, u0):
+        return self.predict(u0)
 
     def numpy2Torch(self, u:np.ndarray)->torch.tensor:
         nvar, nx, nz = u.shape

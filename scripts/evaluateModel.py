@@ -34,7 +34,8 @@ log(f" -- running initial simulation with dt={dtInit:1.1e} in {initRunDir}")
 runSim(initRunDir, Rayleigh, 1, baseDt=dtInit, useSDC=False, tEnd=100,
        dtWrite=1, writeFull=True)
 # -- extract initial field
-initFields = OutputFiles(initRunDir).file(0)['tasks']
+initFiles = OutputFiles(initRunDir)
+initFields = initFiles.file(0)['tasks']
 
 # Reference solution
 tEnd = 5
@@ -51,7 +52,8 @@ if len(sys.argv) > 1 and sys.argv[1] == "--runSimOnly":
     sys.exit()
 
 # Reference simulation data
-refFile = OutputFiles(refRunDir).file(0)
+refFiles = OutputFiles(refRunDir)
+refFile = refFiles.file(0)
 sKeys = list(refFile["scales"].keys())
 gridX = refFile["scales"][sKeys[-2]][:]
 gridZ = refFile["scales"][sKeys[-1]][:]
