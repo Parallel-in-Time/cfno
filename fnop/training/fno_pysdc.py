@@ -5,15 +5,9 @@ from pathlib import Path
 import torch as th
 from torch.utils.tensorboard import SummaryWriter
 
-from fnop.data import getDataLoaders
+from fnop.data.data_preprocessing import getDataLoaders
 from fnop.models.cfno2d import CFNO2D
-
-
-def lossFunction(out, ref):
-    """ out,ref[nBatch,nVar,nX,nY] """
-    refNorms = th.linalg.vector_norm(ref, ord=2, dim=(-2, -1))
-    diffNorms = th.linalg.vector_norm(out-ref, ord=2, dim=(-2, -1))
-    return th.mean(diffNorms/refNorms)
+from fnop.losses import VectormNormLoss 
 
 
 class FourierNeuralOp:
@@ -25,12 +19,13 @@ class FourierNeuralOp:
 
     """
     TRAIN_DIR = None
-    def __init__(self, data:dict=None, model:dict=None, optim:dict=None, checkpoint=None):
+    def __init__(self, data:dict=None, model:dict=None, optim:dict=None, lr_scheduler:dict=None, checkpoint=None):
 
         self.device = th.device('cuda:0' if th.cuda.is_available() else 'cpu')
+        # self.device = 'cpu'
 
         # Inference-only mode
-        if data is None and model is None and optim is None:
+        if data is None and model is None and optim is None and lr_scheduler is None:
             assert checkpoint is not None, "need a checkpoint in inference-only evaluation"
             self.load(checkpoint, modelOnly=True)
             return
@@ -43,10 +38,13 @@ class FourierNeuralOp:
         # sample : [batchSize, 4, nX, nY]
         self.outType = self.dataset.outType
         self.outScaling = self.dataset.outScaling
+        self.lossFunction = VectormNormLoss()
         self.losses = {
             "model": {
+                "avg_valid": -1,
+                "avg_train": -1,
                 "valid": -1,
-                "train": -1,
+                "train": -1
                 },
             "id": {
                 "valid": self.idLoss(),
@@ -54,6 +52,7 @@ class FourierNeuralOp:
                 }
             }
 
+        
         # Set model
         self.setupModel(model)
 
@@ -62,7 +61,9 @@ class FourierNeuralOp:
         # /!\ overwrite model setup if checkpoint is loaded /!\
 
         self.setupOptimizer(optim)
+        self.setupLRScheduler(lr_scheduler)
         self.epochs = 0
+        self.gradientNormEpoch = 0.0
         self.writer = SummaryWriter(self.fullPath("tboard"))
 
 
@@ -75,12 +76,13 @@ class FourierNeuralOp:
         self.modelConfig = {**self.model.config}
         th.cuda.empty_cache()   # in case another model was setup before ...
 
-
     def setupOptimizer(self, optim=None):
-        if optim is None: optim = {"name": "adam"}
+        if optim is None: optim = {"name": "adam", "lr" : 0.0001, "weight_decay": 1.0e-5}
         name = optim.pop("name", "adam")
         if name == "adam":
             self.optimizer = th.optim.Adam(self.model.parameters(), **optim)
+        elif name == "adamw":
+            self.optimizer = th.optim.AdamW(self.model.parameters(), **optim)
         elif name == "lbfgs":
             baseParams = {
                 "line_search_fn": "strong_wolfe"
@@ -92,12 +94,21 @@ class FourierNeuralOp:
         self.optim = name
         th.cuda.empty_cache()   # in case another optimizer was setup before ...
 
+    def setupLRScheduler(self, lr_scheduler=None):
+        if lr_scheduler is None: lr_scheduler = {"scheduler": "StepLR", "step_size": 100.0, "gamma": 0.98}
+        scheduler = lr_scheduler.pop('scheduler')
+        if scheduler == "StepLR":
+            self.lr_scheduler = th.optim.lr_scheduler.StepLR(self.optimizer, **lr_scheduler)
+        elif scheduler == "CosAnnealingLR":
+            self.lr_scheduler = th.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, **lr_scheduler)
+        else:
+            raise ValueError(f"LR scheduler {scheduler} not implemented yet")
 
+    # ToDo: what is this for?
     def setOptimizerParam(self, **params):
         for g in self.optimizer.param_groups:
             for name, val in params.items():
                 g[name] = val
-
 
     def idLoss(self, dataset="valid"):
         if dataset == "valid":
@@ -113,9 +124,9 @@ class FourierNeuralOp:
         with th.no_grad():
             for inputs, outputs in loader:
                 if outType == "solution":
-                    avgLoss += lossFunction(inputs, outputs).item()
+                    avgLoss += self.lossFunction(inputs, outputs).item()
                 elif outType == "update":
-                    avgLoss += lossFunction(0*inputs, outputs).item()
+                    avgLoss += self.lossFunction(0*inputs, outputs).item()
                 else:
                     raise ValueError(f"outType = {outType}")
         avgLoss /= nBatches
@@ -139,8 +150,11 @@ class FourierNeuralOp:
         batchSize = self.trainLoader.batch_size
         model = self.model
         optimizer = self.optimizer
-        avgLoss = 0
+        scheduler = self.lr_scheduler
+        avgLoss = 0.0
+        gradsEpoch = 0.0
         idLoss = self.losses['id']['train']
+        
 
         model.train()
         for iBatch, data in enumerate(self.trainLoader):
@@ -148,37 +162,47 @@ class FourierNeuralOp:
             outputs = data[1][..., ::self.xStep, ::self.yStep].to(self.device)
 
             pred = model(inputs)
-            loss = lossFunction(pred, outputs)
-            loss.backward()
-
-            if self.optim == "adam":
-                optimizer.step()
-
-            elif self.optim == "lbfgs":
-                def closure():
-                    optimizer.zero_grad()
-                    pred = model(inputs)
-                    loss = lossFunction(pred, outputs)
-                    loss.backward()
-                    return loss
-                optimizer.step(closure)
-
+            loss = self.lossFunction(pred, outputs)
             optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-            loss, current = loss.item(), iBatch*batchSize + len(inputs)
-            print(f"loss: {loss:>7f} (id: {idLoss:>7f}) [{current:>5d}/{nBatches:>5d}]")
+            # ToDo: what is happening here?
+            # if self.optim == "adam":
+            #     optimizer.step()
+
+            # elif self.optim == "lbfgs":
+            #     def closure():
+            #         optimizer.zero_grad()
+            #         pred = model(inputs)
+            #         loss = self.lossFunction(pred, outputs)
+            #         loss.backward()
+            #         return loss
+            #     optimizer.step(closure)
+
+            grads = [param.grad.detach().flatten() for param in self.model.parameters() if param.grad is not None]
+            gradsNorm = th.cat(grads).norm()
+            self.writer.add_histogram("Gradients/GradientNormBatch", gradsNorm, iBatch)
+            gradsEpoch += gradsNorm
+
+            loss, current = loss.item(), (iBatch+1)*batchSize
+            # print(f"loss: {loss:>7f} (id: {idLoss:>7f}) [{current:>5d}/{nBatches:>5d}]")
+            print(f" At [{iBatch}/{nBatches:>5d}] loss: {loss:>7f} (id: {idLoss:>7f})")
             avgLoss += loss
 
+        scheduler.step()
+        epochLoss = avgLoss /nBatches
         avgLoss /= nBatches/batchSize
-        print(f"Training: \n Avg loss: {avgLoss:>8f} (id: {idLoss:>7f})\n")
-        self.losses["model"]["train"] = avgLoss
-
-        self.epochs += 1
-
-
+    
+        print(f"Training: \n Epoch loss: {epochLoss:>8f} Avg loss: {avgLoss:>8f} (id: {idLoss:>7f})\n")
+        self.losses["model"]["avg_train"] = avgLoss
+        self.losses["model"]["train"] = epochLoss
+        self.gradientNormEpoch = gradsEpoch / nBatches
+     
     def valid(self):
         """Validate the model for one epoch"""
         nBatches = len(self.valLoader)
+        batchSize = self.valLoader.batch_size
         model = self.model
         avgLoss = 0
         idLoss = self.losses['id']['valid']
@@ -189,13 +213,15 @@ class FourierNeuralOp:
                 inputs = data[0].to(self.device)
                 outputs = data[1].to(self.device)
                 pred = model(inputs)
-                avgLoss += lossFunction(pred, outputs).item()
+                avgLoss += self.lossFunction(pred, outputs).item()
 
-        avgLoss /= nBatches
-        print(f"Validation: \n Avg loss: {avgLoss:>8f} (id: {idLoss:>7f})\n")
-        self.losses["model"]["valid"] = avgLoss
-
-
+        epochLoss = avgLoss /nBatches
+        avgLoss /= nBatches/batchSize
+    
+        print(f"Validation: \n Epoch loss: {epochLoss:>8f} Avg loss: {avgLoss:>8f} (id: {idLoss:>7f})\n")
+        self.losses["model"]["avg_valid"] = avgLoss
+        self.losses["model"]["valid"] = epochLoss
+        
     def learn(self, nEpochs):
         for _ in range(nEpochs):
             print(f"Epoch {self.epochs+1}\n-------------------------------")
@@ -204,20 +230,22 @@ class FourierNeuralOp:
             self.valid()
             self.monitor()
             tComp = time.perf_counter()-tBeg
-            print(f" --- End of epoch {self.epochs} (tComp: {tComp:1.2e}s) ---\n")
+            print(f" --- End of epoch {self.epochs+1} (tComp: {tComp:1.2e}s) ---\n")
+            self.epochs += 1
         print("Done!")
-
 
     def monitor(self):
         writer = self.writer
-        writer.add_scalars("Loss_avg", {
+        writer.add_scalars(f"Losses", {
             "train" : self.losses["model"]["train"],
             "valid" : self.losses["model"]["valid"],
+            "train_avg" : self.losses["model"]["avg_train"],
+            "valid_avg" : self.losses["model"]["avg_valid"],
             "train_id": self.losses["id"]["train"],
             "valid_id": self.losses["id"]["valid"]
             }, self.epochs)
+        writer.add_scalar(f"Gradients/GradientNormEpoch", self.gradientNormEpoch, self.epochs)
         writer.flush()
-
 
     def __del__(self):
         try:
@@ -228,7 +256,8 @@ class FourierNeuralOp:
     # -------------------------------------------------------------------------
     # Save/Load methods
     # -------------------------------------------------------------------------
-    def save(self, filePath, modelOnly=False):
+    def save(self, modelOnly=False):
+        filePath = f'model_{self.epochs-1}.pt'
         fullPath = self.fullPath(filePath)
         infos = {
             # Model config and state
@@ -247,7 +276,6 @@ class FourierNeuralOp:
             'losses': self.losses["model"],
             })
         th.save(infos, fullPath)
-
 
     def load(self, filePath, modelOnly=False):
         fullPath = self.fullPath(filePath)

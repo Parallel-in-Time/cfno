@@ -5,7 +5,7 @@ Evaluate a FNO model using some 2D RBC simulation as reference
 """
 import os
 import sys
-
+sys.path.insert(2, os.getcwd())
 import numpy as np
 
 from fnop.simulation.rbc2d import runSim, MPI_RANK

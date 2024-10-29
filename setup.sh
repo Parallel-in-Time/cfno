@@ -20,11 +20,11 @@ module load Python/3.11.3 \
             
 # module list
 if [[ "$SYSTEMNAME" = "juwelsbooster" ]]; then
-    echo "*********Using $SYSTEMNAME*********"
+    echo "********* Using $SYSTEMNAME *********"
     source /p/project1/cexalab/john2/NeuralOperators/py_venv/bin/activate   
     export PYTHONPATH=/p/project1/cexalab/john2/NeuralOperators/py_venv/lib/python*/site-packages:${PYTHONPATH}
 elif [[ "$SYSTEMNAME" = "jurecadc" ]]; then 
-    echo "*********Using $SYSTEMNAME*********"
+    echo "********* Using $SYSTEMNAME *********"
     source /p/project1/cexalab/john2/NeuralOperators/no_jureca_env/bin/activate
     export PYTHONPATH=/p/project1/cexalab/john2/NeuralOperators/no_jureca_env/lib/python3.11/site-packages:${PYTHONPATH}
 else

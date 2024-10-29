@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 from fnop.utils import CudaMemoryDebugger, DEFAULT_DEVICE, read_config
-from fnop.data_procesing.data_utils import time_extract, state_extract
+from fnop.data.data_utils import time_extract, state_extract
 from fnop.models.fno2d import FNO2D
 from fnop.models.fno3d import FNO3D
 from fnop.models.cfno2d import CFNO2D

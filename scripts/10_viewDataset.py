@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import os
 import sys
 import argparse
-
-from fnop.data import HDF5Dataset
+sys.path.insert(2, os.getcwd())
+from fnop.data.data_preprocessing import HDF5Dataset
 from fnop.simulation.post import contourPlot
 
 varChoices = ["vx", "vz", "b", "p"]

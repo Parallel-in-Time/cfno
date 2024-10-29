@@ -3,7 +3,6 @@
 TrainedModels_*
 .ipynb_checkpoints/
 __pycache__/
-data/
 .spyproject
 dedalus/run*
 dedalus/frames*
@@ -21,3 +20,4 @@ dedalus/scripts
 *.png
 scripts/*.pdf
 scratch.py
+launch_scripts/*.sh

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os
+import sys
 import argparse
 import numpy as np
-
+sys.path.insert(2, os.getcwd())
 from fnop.simulation.rbc2d import runSim, MPI_RANK
 from fnop.simulation.post import OutputFiles
 from fnop.utils import readConfig
@@ -70,7 +71,7 @@ for seed in seeds:
     os.makedirs(initRunDir, exist_ok=True)
     log(f" -- running initial simulation with dt={dtInit:1.1e} in {initRunDir}")
     runSim(initRunDir, Rayleigh, resFactor, baseDt=dtInit, useSDC=False, tEnd=tInit,
-           dtWrite=1, writeFull=True, seed=seed)
+           dtWrite=1, writeFull=True, tBeg=0,seed=seed)
     # -- extract initial field
     initFiles = OutputFiles(initRunDir)
     initFields = initFiles.file(0)['tasks']

@@ -96,57 +96,9 @@ def time_extract(time_index:int,
     print("Output Time", time_out)
     return time_in, time_out
 
-def multi_data(reader,
-               task:str,
-               start_index:int,
-               stop_index:int,
-               timestep:int,
-               samples:int,
-               T_in:int=1,
-               T:int=1,
-               xStep:int=1,
-               yStep:int=1,
-               tStep:int=1
-):
-    """
-    Load data from multiple timesteps
 
-    Args:
-        reader : hdf5 reader
-        task (str): 'train', 'val' or 'test'
-        start_index (int): start time index
-        stop_index (int): stop time index
-        timestep (int): time interval 
-        samples (int): number of simulations
-        T_in (int, optional): number of input timesteps. Defaults to 1.
-        T (int, optional): number of output timesteps. Defaults to 1.
-        xStep (int, optional): slicing in x. Defaults to 1.
-        yStep (int, optional): slicing in y. Defaults to 1.
-        tStep (int, optional): time slicing. Defaults to 1.
 
-    Returns:
-        a_multi (torch.tensor): training input data 
-        u_multi (torch.tensor): training output data
-        
-    """
-    a = []
-    u = []
-    for index in range(start_index, stop_index-(T_in + T)*tStep, timestep):
-        a.append(torch.tensor(reader[task][:samples, ::xStep, ::yStep,
-                                           index: index + (T_in*tStep): tStep],
-                              dtype=torch.float))
-        u.append(torch.tensor(reader[task][:samples, ::xStep, ::yStep,
-                                           index + (T_in*tStep): index + (T_in + T)*tStep: tStep],
-                              dtype=torch.float))
-    a = torch.stack(a)
-    u = torch.stack(u)
-    
-    a_multi = a.reshape(a.shape[0]*a.shape[1], a.shape[2], a.shape[3], a.shape[4])
-    u_multi = u.reshape(u.shape[0]*u.shape[1], u.shape[2], u.shape[3], u.shape[4])
-    
-    return a_multi, u_multi
-
-def data_process(self,data_path=None,
+def concat_variables(self,data_path=None,
                  xStep:int=1, zStep:int=1, tStep:int=1,
                  start_iteration:int=0, end_iteration:int=100):
     index = 0

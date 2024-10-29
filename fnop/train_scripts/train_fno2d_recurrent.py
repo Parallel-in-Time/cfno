@@ -49,7 +49,7 @@ def main(config_file:str):
     
     print('Starting data loading....')
     dataloader_time_start = default_timer()
-    reader = h5py.File(data_config.multistep_data_path, mode="r")
+    reader = h5py.File(data_config.processed_data_path, mode="r")
     train_input = torch.as_tensor(reader['train_inputs'][()])
     train_output = torch.as_tensor(reader['train_outputs'][()])
     val_input = torch.as_tensor(reader['val_inputs'][()])

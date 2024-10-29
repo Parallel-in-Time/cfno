@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import os
+import sys
 import argparse
+sys.path.insert(2, os.getcwd())
+from fnop.utils import readConfig
+from fnop.data.data_preprocessing import createDataset
 
 # -----------------------------------------------------------------------------
 # Script parameters
@@ -39,6 +44,7 @@ if args.config is not None:
     config = readConfig(args.config)
     assert "sample" in config, f"config file needs a data section"
     args.__dict__.update(**config.data)
+    args.__dict__.update(**config.sample)
     if "simu" in config and "dataDir" in config.simu:
         args.dataDir = config.simu.dataDir
     if "data" in config:

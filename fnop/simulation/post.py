@@ -1,11 +1,12 @@
 import h5py
+import sys
+import gc
 import glob
 import random
 import numpy as np
 import scipy.optimize as sco
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-
 
 def computeMeanSpectrum(uValues):
     """ uValues[nT, nVar >= 2, nX, nY] """
@@ -110,13 +111,19 @@ class OutputFiles():
         offset = np.cumsum(self.nFields)
         iFile = np.argmax(iField < offset)
         iTime = iField - sum(offset[:iFile])
-
+        # for obj in gc.get_objects():   # Browse through ALL objects
+        #     if isinstance(obj, h5py.File):   # Just HDF5 files
+        #         try:
+        #             obj.close()
+        #             print('Closed Files')
+        #         except:
+        #             pass # Was already closed
+        # print(f'Files {self.files}')
         data = self.file(iFile)["tasks"]
         vx = data["velocity"][iTime, 0]
         vz = data["velocity"][iTime, 1]
         b = data["buoyancy"][iTime]
         p = data["pressure"][iTime]
-
         return np.array([vx, vz, b, p])
 
     def nTimes(self, iFile:int):
@@ -271,7 +278,7 @@ def generateChunkPairs(folder:str, N:int, M:int,
 
 def contourPlot(field, x, y, time=None,
                 title=None, refField=None, refTitle=None, saveFig=False,
-                closeFig=True):
+                closeFig=True, error=False):
 
     fig, axs = plt.subplots(1 if refField is None else 2)
     ax = axs if refField is None else axs[0]
@@ -281,13 +288,19 @@ def contourPlot(field, x, y, time=None,
         ax.set_xlabel("x")
         ax.set_ylabel("z")
 
-    def setColorbar(im, ax):
+    def setColorbar(im, ax, error=False):
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="5%", pad=0.05)
-        fig.colorbar(im, cax=cax)
+        if error:
+            fig.colorbar(im, cax=cax, ax=ax, ticks=np.linspace(np.min(field),np.max(field),3))
+        else:
+            fig.colorbar(im, cax=cax, ax=ax, ticks=[0.25,0.50,0.75])
 
     im = ax.pcolormesh(x, y, field)
-    setColorbar(im, ax)
+    if error:
+        setColorbar(im, ax,error)
+    else:
+        setColorbar(im, ax)
     timeSuffix = f' at t = {np.round(time,3)}s' if time is not None else ''
     ax.set_title(f'{title}{timeSuffix}')
     setup(ax)
@@ -297,7 +310,7 @@ def contourPlot(field, x, y, time=None,
         setColorbar(im, axs[1])
         axs[1].set_title(f'{refTitle}{timeSuffix}')
         setup(axs[1])
-
+   
     plt.tight_layout()
     if saveFig:
         plt.savefig(saveFig)

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os
+import sys
 import argparse
-
+sys.path.insert(2, os.getcwd())
 import matplotlib.pyplot as plt
 
 from fnop.utils import readConfig
-from fnop.data import HDF5Dataset
-from fnop.fno import FourierNeuralOp
+from fnop.data.data_preprocessing import HDF5Dataset
+from fnop.training.fno_pysdc import FourierNeuralOp
 from fnop.simulation.post import computeMeanSpectrum, getModes
 
 
@@ -56,6 +57,7 @@ model = FourierNeuralOp(checkpoint=checkpoint)
 os.makedirs(evalDir, exist_ok=True)
 
 nSamples = dataset.infos["nSamples"][()]
+print(f'nSamples: {nSamples}')
 nSimu = dataset.infos["nSimu"][()]
 assert iSimu < nSimu, f"cannot evaluate with iSimu={iSimu} with only {nSimu} simu"
 indices = slice(iSimu*nSamples, (iSimu+1)*nSamples)

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import argparse
-
-from fnop.data import HDF5Dataset
-from fnop.fno import FourierNeuralOp
+import sys
+import os
+sys.path.insert(2, os.getcwd())
+from fnop.data.data_preprocessing import HDF5Dataset
+from fnop.training.fno_pysdc import FourierNeuralOp
 from fnop.simulation.post import contourPlot
 
 varChoices = ["vx", "vz", "b", "p"]

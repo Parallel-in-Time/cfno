@@ -4,9 +4,11 @@
 Base training script
 """
 import os
+import sys
+sys.path.insert(2, os.getcwd())
 import argparse
 
-from fnop.fno import FourierNeuralOp
+from fnop.training.fno_pysdc import FourierNeuralOp
 from fnop.utils import readConfig
 
 # -----------------------------------------------------------------------------
@@ -39,7 +41,7 @@ config = readConfig(args.config)
 if "train" in config:
     args.__dict__.update(**config.train)
 
-sections = ["data", "model", "optim"]
+sections = ["data", "model", "optim", "lr_scheduler"]
 for name in sections:
     assert name in config, f"config file needs a {name} section"
 configs = {name: config[name] for name in sections}  # trainer class configs
@@ -71,12 +73,8 @@ cPrefix = os.path.splitext(checkpoint)[0]
 
 for _ in range(nChunks):
     model.learn(saveEvery)
-    model.save(checkpoint)
-    if savePermanent:
-        model.save(f"{cPrefix}_epochs{model.epochs:06d}.pt")
+    model.save()
 
 if lastChunk > 0:
     model.learn(lastChunk)
-    model.save(checkpoint)
-    if savePermanent:
-        model.save(f"{cPrefix}_epochs{model.epochs:06d}.pt")
+    model.save()

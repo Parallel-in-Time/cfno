@@ -94,7 +94,6 @@ class CF2DConv(nn.Module):
 
     def forward(self, x:th.tensor):
         """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY] """
-
         # Transform to Fourier space -> [nBatch, dv, fX, fY]
         x = self._toFourierSpace(x)
 
@@ -164,10 +163,7 @@ class Grid2DPartialPositiver(nn.Module):
 
 class CF2DLayer(nn.Module):
 
-    def __init__(
-            self, kX, kY, dv,
-            forceFFT=False, reorder=False, nonLinearity="ReLU", bias=True):
-    def __init__(self, kX, kY, dv, forceFFT=False, non_linearity=nn.functional.gelu):
+    def __init__(self, kX, kY, dv, forceFFT=False, non_linearity='gelu'):
         super().__init__()
 
         self.conv = CF2DConv(kX, kY, dv, forceFFT, reorder)
@@ -183,7 +179,10 @@ class CF2DLayer(nn.Module):
             self.sigma == nn.ELU(inplace=True)
         self.W = Grid2DLinear(dv, dv, bias=bias)
         self.conv = CF2DConv(kX, kY, dv, forceFFT)
-        self.sigma = non_linearity
+        if non_linearity == 'gelu':
+            self.sigma = nn.functional.gelu
+        else:
+            self.sigma = nn.ReLU(inplace=True)
         self.W = Grid2DLinear(dv, dv)
 
 
@@ -201,10 +200,7 @@ class CF2DLayer(nn.Module):
 
 class CFNO2D(nn.Module):
 
-    def __init__(
-            self, da, dv, du,
-            kX=4, kY=4, nLayers=1,
-            forceFFT=False, reorder=False, nonLinearity="ReLU", bias=True):
+    def __init__(self, da, dv, du, kX=4, kY=4, nLayers=1, forceFFT=False, non_linearity='gelu'):
         super().__init__()
         self.config = {
             key: val for key, val in locals().items()
@@ -221,7 +217,7 @@ class CFNO2D(nn.Module):
         
     def forward(self, x):
         """ x[nBatch, nX, nY, da] -> [nBatch, du, nX, nY]"""
-        x = x.permute(0,3,1,2)
+        # x = x.permute(0,3,1,2)
         x = self.P(x)
         
         for layer in self.layers:
@@ -229,7 +225,8 @@ class CFNO2D(nn.Module):
             
         x = self.Q(x)
         # x = self.pos(x)
-        x = x.permute(0,2,3,1)
+        # x = x.permute(0,2,3,1)
+        
         return x
 
 
