@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from mpi4py import MPI
 
 from fnop.simulation.rbc2d import runSim
-from fnop.simulation.post import OutputFiles
+from fnop.simulation.post import OutputFiles, extractU
 from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX
 
 
@@ -40,15 +40,6 @@ def error(uNum, uRef):
     refNorms = np.linalg.norm(uRef, axis=(-2, -1))
     diffNorms = np.linalg.norm(uNum-uRef, axis=(-2, -1))
     return np.mean(diffNorms/refNorms)
-
-
-def extractU(outFields):
-    return np.asarray([
-        outFields["velocity"][-1, 0],
-        outFields["velocity"][-1, 1],
-        outFields["buoyancy"][-1],
-        outFields["pressure"][-1]
-        ])
 
 
 # Reference solution

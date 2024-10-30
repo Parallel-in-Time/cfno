@@ -1,6 +1,4 @@
 import h5py
-import sys
-import gc
 import glob
 import random
 import numpy as np
@@ -190,6 +188,14 @@ class OutputFiles():
         return sMean, self.k
 
 
+def extractU(outFields):
+    return np.asarray([
+        outFields["velocity"][-1, 0],
+        outFields["velocity"][-1, 1],
+        outFields["buoyancy"][-1],
+        outFields["pressure"][-1]
+        ])
+
 
 def checkDNS(sMean:np.ndarray, k:np.ndarray, vRatio:int=4, nThrow:int=1):
     """
@@ -310,7 +316,7 @@ def contourPlot(field, x, y, time=None,
         setColorbar(im, axs[1])
         axs[1].set_title(f'{refTitle}{timeSuffix}')
         setup(axs[1])
-   
+
     plt.tight_layout()
     if saveFig:
         plt.savefig(saveFig)
