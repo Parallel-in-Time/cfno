@@ -96,7 +96,6 @@ class CF2DConv(nn.Module):
         """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY] """
         # Transform to Fourier space -> [nBatch, dv, fX, fY]
         x = self._toFourierSpace(x)
-
         # Truncate and keep only first modes -> [nBatch, dv, kX, kY]
         fX, fY = x.shape[-2:]
         Tx, Ty = self.T(self.kX, fX, x.device), self.T(self.kY, fY, x.device)
@@ -111,7 +110,6 @@ class CF2DConv(nn.Module):
 
         # Transform back to Real space -> [nBatch, dv, nX, nY]
         x = self._toRealSpace(x)
-
         return x
 
 
@@ -166,18 +164,6 @@ class CF2DLayer(nn.Module):
     def __init__(self, kX, kY, dv, forceFFT=False, non_linearity='gelu'):
         super().__init__()
 
-        self.conv = CF2DConv(kX, kY, dv, forceFFT, reorder)
-        if nonLinearity == "ReLU":
-            self.sigma = nn.ReLU(inplace=True)
-        elif nonLinearity == "GeLU":
-            self.sigma = nn.GELU()
-        elif nonLinearity == "GeLU-tanh":
-            self.sigma = nn.GELU(approximate="tanh")
-        elif nonLinearity == "CeLU":
-            self.sigma = nn.CELU(inplace=True)
-        elif nonLinearity == "ELU":
-            self.sigma == nn.ELU(inplace=True)
-        self.W = Grid2DLinear(dv, dv, bias=bias)
         self.conv = CF2DConv(kX, kY, dv, forceFFT)
         if non_linearity == 'gelu':
             self.sigma = nn.functional.gelu
@@ -194,7 +180,6 @@ class CF2DLayer(nn.Module):
 
         v += w
         o = self.sigma(v)
-
         return o
 
 
@@ -206,10 +191,10 @@ class CFNO2D(nn.Module):
             key: val for key, val in locals().items()
             if key != "self" and not key.startswith('__')}
 
-        self.P = Grid2DLinear(da, dv, bias)
-        self.Q = Grid2DLinear(dv, du, bias)
+        self.P = Grid2DLinear(da, dv)
+        self.Q = Grid2DLinear(dv, du)
         self.layers = nn.ModuleList(
-            [CF2DLayer(kX, kY, dv, forceFFT, reorder, nonLinearity, bias)
+            [CF2DLayer(kX, kY, dv, forceFFT)
              for _ in range(nLayers)])
         # self.pos = Grid2DPartialPositiver([0, 0, 1, 1])
 
