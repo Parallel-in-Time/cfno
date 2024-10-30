@@ -6,7 +6,7 @@ import argparse
 sys.path.insert(2, os.getcwd())
 
 from fnop.simulation.rbc2d import runSim, MPI_SIZE, MPI_RANK
-from fnop.simulation.post import OutputFiles
+from fnop.simulation.post import OutputFiles, extractU
 
 from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX
 
@@ -41,9 +41,6 @@ SpectralDeferredCorrectionIMEX.setParameters(
 # Script execution
 # -----------------------------------------------------------------------------
 Rayleigh = 1e7
-dt = 1e-3
-tEnd = 1
-
 
 # Initial run
 dirName = f"{runDir}/run_init"
@@ -56,6 +53,9 @@ runSim(dirName, Rayleigh, resFactor=1, baseDt=dt, useSDC=False, tEnd=100,
 initFiles = OutputFiles(dirName)
 initFields = initFiles.file(0)['tasks']
 
+# SDC and SDC-FNO runs ...
+tEnd = 1
+dt = 1e-3
 
 # SDC reference solution
 dirName = f"{runDir}/run_sdc_ref"
@@ -76,3 +76,7 @@ runSim(dirName, Rayleigh, resFactor=1, baseDt=dt, useSDC=True,
        tEnd=tEnd, dtWrite=tEnd/100, initFields=initFields)
 fnoFiles = OutputFiles(dirName)
 fnoFields = refFiles.file(0)['tasks']
+
+# Comparison
+uRef = extractU(refFields)
+uFNO = extractU(fnoFields)

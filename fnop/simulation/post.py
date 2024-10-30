@@ -188,12 +188,12 @@ class OutputFiles():
         return sMean, self.k
 
 
-def extractU(outFields):
+def extractU(outFields, idx=-1):
     return np.asarray([
-        outFields["velocity"][-1, 0],
-        outFields["velocity"][-1, 1],
-        outFields["buoyancy"][-1],
-        outFields["pressure"][-1]
+        outFields["velocity"][idx, 0],
+        outFields["velocity"][idx, 1],
+        outFields["buoyancy"][idx],
+        outFields["pressure"][idx]
         ])
 
 
