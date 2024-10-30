@@ -13,7 +13,7 @@ sample:
 data:
   outType: solution
   outScaling: 1
-  dataFile: dataset.h5
+  dataFile: dataset_dt1e0.h5
   trainRatio: 0.8
   seed: null
   batchSize: 20
@@ -23,11 +23,11 @@ data:
 model:
   da: 4
   du: 4
-  dv: 4
-  kX: 8
-  kY: 8
+  dv: 16
+  kX: 12
+  kY: 12
   nLayers: 2
-  forceFFT: true
+  forceFFT: false
   bias: false
 
 optim:
@@ -35,12 +35,18 @@ optim:
   lr: 0.0001
   weight_decay: 1.0e-5
 
+lr_scheduler:
+  scheduler: StepLR
+  step_size: 100.0
+  gamma: 0.98
+
 train:
-  trainDir: "."
-  nEpochs: 50
+  trainDir: "noBias_DCT"
+  nEpochs: 10000
   checkpoint: model.pt
-  saveEvery: 10
+  saveEvery: 500
   savePermanent: true
+  noTensorboard: false
 
 eval:
   iSimu: 8
