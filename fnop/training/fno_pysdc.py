@@ -333,7 +333,7 @@ class FourierNeuralOp:
         multi = len(u0.shape) == 4
         if not multi: u0 = u0[None, ...]
 
-        inpt = th.tensor(u0, device=self.device)
+        inpt = th.tensor(u0, device=self.device, dtype=th.get_default_dtype())
 
         model.eval()
         with th.no_grad():
