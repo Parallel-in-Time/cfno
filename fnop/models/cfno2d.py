@@ -194,24 +194,24 @@ class CFNO2D(nn.Module):
         self.P = Grid2DLinear(da, dv)
         self.Q = Grid2DLinear(dv, du)
         self.layers = nn.ModuleList(
-            [CF2DLayer(kX, kY, dv, forceFFT)
+            [CF2DLayer(kX, kY, dv, forceFFT, non_linearity)
              for _ in range(nLayers)])
         # self.pos = Grid2DPartialPositiver([0, 0, 1, 1])
 
         self.memory = CudaMemoryDebugger(print_mem=True)
-        
+
     def forward(self, x):
         """ x[nBatch, nX, nY, da] -> [nBatch, du, nX, nY]"""
         # x = x.permute(0,3,1,2)
         x = self.P(x)
-        
+
         for layer in self.layers:
             x = layer(x)
-            
+
         x = self.Q(x)
         # x = self.pos(x)
         # x = x.permute(0,2,3,1)
-        
+
         return x
 
 
@@ -220,7 +220,7 @@ class CFNO2D(nn.Module):
 
         for param in self.parameters():
             properties.append([list(param.size()+(2,) if param.is_complex() else param.size()), param.numel(), (param.data.element_size() * param.numel())/1000])
-            
+
         elementFrame = pd.DataFrame(properties, columns = ['ParamSize', 'NParams', 'Memory(KB)'])
         total_param = elementFrame["NParams"].sum()
         total_mem = elementFrame["Memory(KB)"].sum()
@@ -228,7 +228,7 @@ class CFNO2D(nn.Module):
         elementFrame = pd.concat([elementFrame,totals], ignore_index=True, sort=False)
         print(f'Total number of model parameters: {total_param} with (~{format_tensor_size(total_mem*1000)})')
         return elementFrame
-    
+
 if __name__ == "__main__":
     # Quick script testing
     model = CFNO2D(4, 4, 4, nLayers=4, kX=12, kY=6)

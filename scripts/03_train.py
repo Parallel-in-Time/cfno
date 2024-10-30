@@ -30,9 +30,7 @@ parser.add_argument(
 parser.add_argument(
     "--noTensorboard", action="store_false", help="do not use tensorboard for losses output (only native)")
 parser.add_argument(
-    "--logFile", default=FourierNeuralOp.LOG_FILE, help='log file name (use "" for no log in file)')
-parser.add_argument(
-    "--noLogStdout", action="store_false", help="do not log training file in stdout")
+    "--lossesFile", default=FourierNeuralOp.LOSSES_FILE, help='base text file to write the loss')
 parser.add_argument(
     "--config", default="config.yaml", help="configuration file")
 args = parser.parse_args()
@@ -57,8 +55,7 @@ checkpoint = args.checkpoint
 # -----------------------------------------------------------------------------
 FourierNeuralOp.TRAIN_DIR = args.trainDir
 FourierNeuralOp.USE_TENSORBOARD = args.noTensorboard
-FourierNeuralOp.LOG_FILE = args.logFile
-FourierNeuralOp.LOG_STDOUT = args.noLogStdout
+FourierNeuralOp.LOSSES_FILE = args.lossesFile
 
 model = FourierNeuralOp(**configs)
 try:
