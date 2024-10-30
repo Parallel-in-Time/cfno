@@ -161,10 +161,10 @@ class Grid2DPartialPositiver(nn.Module):
 
 class CF2DLayer(nn.Module):
 
-    def __init__(self, kX, kY, dv, forceFFT=False, non_linearity='gelu', bias=True):
+    def __init__(self, kX, kY, dv, forceFFT=False, non_linearity='gelu', bias=True, reorder=False):
         super().__init__()
 
-        self.conv = CF2DConv(kX, kY, dv, forceFFT)
+        self.conv = CF2DConv(kX, kY, dv, forceFFT, reorder)
         if non_linearity == 'gelu':
             self.sigma = nn.functional.gelu
         else:
@@ -185,7 +185,8 @@ class CF2DLayer(nn.Module):
 
 class CFNO2D(nn.Module):
 
-    def __init__(self, da, dv, du, kX=4, kY=4, nLayers=1, forceFFT=False, non_linearity='gelu', bias=True):
+    def __init__(self, da, dv, du, kX=4, kY=4, nLayers=1,
+                 forceFFT=False, non_linearity='gelu', bias=True, reorder=False):
         super().__init__()
         self.config = {
             key: val for key, val in locals().items()
@@ -194,7 +195,7 @@ class CFNO2D(nn.Module):
         self.P = Grid2DLinear(da, dv, bias)
         self.Q = Grid2DLinear(dv, du, bias)
         self.layers = nn.ModuleList(
-            [CF2DLayer(kX, kY, dv, forceFFT, non_linearity, bias)
+            [CF2DLayer(kX, kY, dv, forceFFT, non_linearity, bias, reorder)
              for _ in range(nLayers)])
         # self.pos = Grid2DPartialPositiver([0, 0, 1, 1])
 
