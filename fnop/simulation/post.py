@@ -294,26 +294,20 @@ def contourPlot(field, x, y, time=None,
         ax.set_xlabel("x")
         ax.set_ylabel("z")
 
-    def setColorbar(im, ax, error=False):
+    def setColorbar(field, im, ax, error=False):
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="5%", pad=0.05)
-        if error:
-            fig.colorbar(im, cax=cax, ax=ax, ticks=np.linspace(np.min(field),np.max(field),3))
-        else:
-            fig.colorbar(im, cax=cax, ax=ax, ticks=[0.25,0.50,0.75])
+        fig.colorbar(im, cax=cax, ax=ax, ticks=np.linspace(np.min(field), np.max(field), 3))
 
     im = ax.pcolormesh(x, y, field)
-    if error:
-        setColorbar(im, ax,error)
-    else:
-        setColorbar(im, ax)
+    setColorbar(field, im, ax, error)
     timeSuffix = f' at t = {np.round(time,3)}s' if time is not None else ''
     ax.set_title(f'{title}{timeSuffix}')
     setup(ax)
 
     if refField is not None:
         im = axs[1].pcolormesh(x, y, refField)
-        setColorbar(im, axs[1])
+        setColorbar(refField, im, axs[1])
         axs[1].set_title(f'{refTitle}{timeSuffix}')
         setup(axs[1])
 

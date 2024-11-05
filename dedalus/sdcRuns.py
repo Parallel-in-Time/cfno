@@ -92,4 +92,5 @@ for i, dt in enumerate(dtSizes):
 plt.grid(True)
 plt.loglog(dtSizes, errors, 'o-', label="RK443")
 plt.xlabel(r"$\Delta{t}$")
+plt.ylabel("L2 mean error")
 plt.legend()

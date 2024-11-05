@@ -328,7 +328,7 @@ class FourierNeuralOp:
     # -------------------------------------------------------------------------
     # Inference method
     # -------------------------------------------------------------------------
-    def __call__(self, u0):
+    def __call__(self, u0, nEval=1):
         model = self.model
         multi = len(u0.shape) == 4
         if not multi: u0 = u0[None, ...]
@@ -337,10 +337,13 @@ class FourierNeuralOp:
 
         model.eval()
         with th.no_grad():
-            outp = model(inpt)
-            if self.outType == "update":
-                outp /= self.outScaling
-                outp += inpt
+            for i in range(nEval):
+                outp = model(inpt)
+                if self.outType == "update":
+                    outp /= self.outScaling
+                    outp += inpt
+                inpt = outp
+
         if not multi:
             outp = outp[0]
 
