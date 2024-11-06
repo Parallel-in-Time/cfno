@@ -56,13 +56,13 @@ See the full pipeline description in [scripts](./scripts/README.md). In particul
 
 This project has received funding from the [European High-Performance
 Computing Joint Undertaking](https://eurohpc-ju.europa.eu/) (JU) under
-grant agreement No 955701 ([TIME-X](https://www.time-x-eurohpc.eu/))
+grant agreement No 955701 ([Inno4Scale - NeuralPint](https://www.inno4scale.eu/neuralpint/))
 and grant agreement No 101118139.
 The JU receives support from the European Union's Horizon 2020 research
 and innovation programme and Germany.
 
 <p align="center">
   <img src="./docs/img/EuroHPC.jpg" height="105"/> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="./docs/img/LogoTime-X.png" height="105" /> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="./docs/img/LogoInno4Scale.png" height="105" /> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
   <img src="./docs/img/BMBF_gefoerdert_2017_en.jpg" height="105" />
 </p>
