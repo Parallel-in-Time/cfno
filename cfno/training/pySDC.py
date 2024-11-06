@@ -100,7 +100,8 @@ class FourierNeuralOp:
         th.cuda.empty_cache()   # in case another optimizer was setup before ...
 
     def setupLRScheduler(self, lr_scheduler=None):
-        if lr_scheduler is None: lr_scheduler = {"scheduler": "StepLR", "step_size": 100.0, "gamma": 0.98}
+        if lr_scheduler is None:
+            lr_scheduler = {"scheduler": "StepLR", "step_size": 100.0, "gamma": 0.98}
         scheduler = lr_scheduler.pop('scheduler')
         if scheduler == "StepLR":
             self.lr_scheduler = th.optim.lr_scheduler.StepLR(self.optimizer, **lr_scheduler)
@@ -164,7 +165,6 @@ class FourierNeuralOp:
         gradsEpoch = 0.0
         idLoss = self.losses['id']['train']
 
-
         model.train()
         for iBatch, data in enumerate(self.trainLoader):
             inputs = data[0][..., ::self.xStep, ::self.yStep].to(self.device)
@@ -196,9 +196,8 @@ class FourierNeuralOp:
             self.writer.add_histogram("Gradients/GradientNormBatch", gradsNorm, iBatch)
             gradsEpoch += gradsNorm
 
-            loss, current = loss.item(), (iBatch+1)*batchSize
-            # print(f"loss: {loss:>7f} (id: {idLoss:>7f}) [{current:>5d}/{nBatches:>5d}]")
-            print(f" At [{iBatch}/{nBatches:>5d}] loss: {loss:>7f} (id: {idLoss:>7f})")
+            loss = loss.item()
+            print(f" At [{iBatch}/{nBatches:>5d}] loss: {loss:>7f} (id: {idLoss:>7f}) -- lr: {optimizer.param_groups[0]['lr']}")
             avgLoss += loss
 
         scheduler.step()
@@ -276,8 +275,7 @@ class FourierNeuralOp:
     # -------------------------------------------------------------------------
     # Save/Load methods
     # -------------------------------------------------------------------------
-    def save(self, modelOnly=False):
-        filePath = f'model_{self.epochs-1}.pt'
+    def save(self, filePath, modelOnly=False):
         fullPath = self.fullPath(filePath)
         infos = {
             # Model config and state

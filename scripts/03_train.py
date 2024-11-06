@@ -70,8 +70,12 @@ cPrefix = os.path.splitext(checkpoint)[0]
 
 for _ in range(nChunks):
     model.learn(saveEvery)
-    model.save()
+    model.save(checkpoint)
+    if savePermanent:
+        model.save(f"{cPrefix}_epochs{model.epochs:06d}.pt")
 
 if lastChunk > 0:
     model.learn(lastChunk)
-    model.save()
+    model.save(checkpoint)
+    if savePermanent:
+        model.save(f"{cPrefix}_epochs{model.epochs:06d}.pt")
