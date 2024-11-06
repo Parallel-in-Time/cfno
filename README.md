@@ -55,9 +55,8 @@ See the full pipeline description in [scripts](./scripts/README.md). In particul
 ## Acknowledgements
 
 This project has received funding from the [European High-Performance
-Computing Joint Undertaking](https://eurohpc-ju.europa.eu/) (JU) under
-grant agreement No 955701 ([Inno4Scale - NeuralPint](https://www.inno4scale.eu/neuralpint/))
-and grant agreement No 101118139.
+Computing Joint Undertaking](https://eurohpc-ju.europa.eu/) (JU) 
+under grant agreement No 101118139 ([Inno4Scale - NeuralPint](https://www.inno4scale.eu/neuralpint/)).
 The JU receives support from the European Union's Horizon 2020 research
 and innovation programme and Germany.
 
