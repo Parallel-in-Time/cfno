@@ -7,7 +7,7 @@ simu:
 
 sample:
   inSize: 1
-  outStep: 1
+  outStep: 10
   inStep: 5
 
 data:
@@ -41,10 +41,10 @@ lr_scheduler:
   gamma: 0.98
 
 train:
-  trainDir: "noBias_DCT"
-  nEpochs: 10000
+  trainDir: "training"
+  nEpochs: 1000
   checkpoint: model.pt
-  saveEvery: 500
+  saveEvery: 100
   savePermanent: true
   noTensorboard: false
 
