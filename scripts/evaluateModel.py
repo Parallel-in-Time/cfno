@@ -8,9 +8,9 @@ import sys
 sys.path.insert(2, os.getcwd())
 import numpy as np
 
-from fnop.simulation.rbc2d import runSim, MPI_RANK
-from fnop.simulation.post import OutputFiles, contourPlot
-from fnop.inference.inference import FNOInference
+from cfno.simulation.rbc2d import runSim, MPI_RANK
+from cfno.simulation.post import OutputFiles, contourPlot
+from cfno.inference.inference import FNOInference
 
 baseDir = "evaluateModel"
 Rayleigh = 1e7

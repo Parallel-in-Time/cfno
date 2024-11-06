@@ -6,8 +6,8 @@ import argparse
 import numpy as np
 sys.path.insert(2, os.getcwd())
 
-from fnop.simulation.rbc2d import runSim, MPI_SIZE, MPI_RANK
-from fnop.simulation.post import OutputFiles, extractU, contourPlot
+from cfno.simulation.rbc2d import runSim, MPI_SIZE, MPI_RANK
+from cfno.simulation.post import OutputFiles, extractU, contourPlot
 
 from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX
 

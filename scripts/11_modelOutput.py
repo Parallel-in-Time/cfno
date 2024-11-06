@@ -4,9 +4,9 @@ import argparse
 import sys
 import os
 sys.path.insert(2, os.getcwd())
-from fnop.data.data_preprocessing import HDF5Dataset
-from fnop.training.fno_pysdc import FourierNeuralOp
-from fnop.simulation.post import contourPlot
+from cfno.data.preprocessing import HDF5Dataset
+from cfno.training.pySDC import FourierNeuralOp
+from cfno.simulation.post import contourPlot
 
 varChoices = ["vx", "vz", "b", "p"]
 

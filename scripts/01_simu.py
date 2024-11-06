@@ -5,9 +5,9 @@ import sys
 import argparse
 import numpy as np
 sys.path.insert(2, os.getcwd())
-from fnop.simulation.rbc2d import runSim, MPI_RANK
-from fnop.simulation.post import OutputFiles
-from fnop.utils import readConfig
+from cfno.simulation.rbc2d import runSim, MPI_RANK
+from cfno.simulation.post import OutputFiles
+from cfno.utils import readConfig
 
 # -----------------------------------------------------------------------------
 # Script parameters

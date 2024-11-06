@@ -17,7 +17,7 @@ checkpoint = args.checkpoint
 # -----------------------------------------------------------------------------
 # Script execution
 # -----------------------------------------------------------------------------
-from fnop.training.fno_pysdc import FourierNeuralOp
+from cfno.training.pySDC import FourierNeuralOp
 
 model = FourierNeuralOp(checkpoint=checkpoint)
 print(f"Inspecting model saved in {checkpoint} ({model.epochs} epochs) ...")

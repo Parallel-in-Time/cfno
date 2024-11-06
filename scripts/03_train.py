@@ -8,8 +8,8 @@ import sys
 sys.path.insert(2, os.getcwd())
 import argparse
 
-from fnop.training.fno_pysdc import FourierNeuralOp
-from fnop.utils import readConfig
+from cfno.training.pySDC import FourierNeuralOp
+from cfno.utils import readConfig
 
 # -----------------------------------------------------------------------------
 # Script parameters

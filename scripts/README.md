@@ -8,6 +8,7 @@ Can be summarized in 4 main stages :
 2. **Sampling** : create a training dataset by sampling Dedalus simulation data, [`02_sample.py` script](./02_sample.py).
 3. **Training** : train a FNO model on a given dataset, [`03_train.py` script](./03_train.py)
 4. **Evaluation** : evaluate the trained FNO with some metrics, [`04_eval.py` script](./04_eval.py)
+5. **SDC Run** : run SDC with FNO initialization, [`05_runSDC.py` script](./05_runSDC.py)
 
 Each script can be run separately with command-line arguments, with **all arguments having default value** (use `-h` for more details), ex :
 

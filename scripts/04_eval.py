@@ -6,10 +6,10 @@ import argparse
 sys.path.insert(2, os.getcwd())
 import matplotlib.pyplot as plt
 
-from fnop.utils import readConfig
-from fnop.data.data_preprocessing import HDF5Dataset
-from fnop.training.fno_pysdc import FourierNeuralOp
-from fnop.simulation.post import computeMeanSpectrum, getModes
+from cfno.utils import readConfig
+from cfno.data.preprocessing import HDF5Dataset
+from cfno.training.pySDC import FourierNeuralOp
+from cfno.simulation.post import computeMeanSpectrum, getModes
 
 
 # -----------------------------------------------------------------------------

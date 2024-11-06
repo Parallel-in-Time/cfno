@@ -7,8 +7,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpi4py import MPI
 
-from fnop.simulation.rbc2d import runSim
-from fnop.simulation.post import OutputFiles, extractU
+from cfno.simulation.rbc2d import runSim
+from cfno.simulation.post import OutputFiles, extractU
+
 from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX
 
 

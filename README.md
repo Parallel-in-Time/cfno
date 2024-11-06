@@ -1,16 +1,28 @@
-# Neural Operators for learning of PDEs
+# Chebyshev Fourier Neural Operators (CFNO)
 
-This repository contains implementation of [Fourier Neural Operators](https://arxiv.org/abs/2010.08895).
+_:scroll: Extension of the [Fourier Neural Operators](https://arxiv.org/abs/2010.08895) to PDE problems solved using pseudo-spectral (Chebyshev) space discretization methods._
 
-## Requirements
+## Content
 
-The code is based on python (version 3.11) and the packages required can be installed with
+- [cfno](./cfno/) : base Python module for CFNO
+- [dedalus](./dedalus/) : scripts to run RBC simulations with Dedalus and pySDC
+- [docs](./docs/) : some documentations about the FNO
+- [script](./scripts/) : scripts for the full training pipeline (data generation, training, evaluation)
+- [utils](./utils/) : utility scripts for cluster run
+
+## Installation
+
+In this folder, run this command to install `cfno` in your environment :
 
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
-**Specific dependencies :**
+> The `-e` option installs in _editable_ mode, which means any modification in the code won't need a re-installation to take the change into account.
+
+> You can also use the `--user` option with `pip` to install without admin rights.
+
+**Additional dependencies :**
 
 - `dedalus` : spectral discretization for RBC. Recommended installation approach: [build from source.](https://dedalus-project.readthedocs.io/en/latest/pages/installation.html#building-from-source)
 
@@ -31,85 +43,26 @@ Some changes may happen regularly on the development branch, to update your own 
 git pull
 ```
 
-- `fnop` : base code for the FNO training, validation and inference. It is hosted on this repo and can
-be installed on your system by running the following command in the root folder of this repo :
+## How to use the code
 
-```bash
-pip install -e .
-```
+See the full pipeline description in [scripts](./scripts/README.md). In particular, the main code parts it uses are :
 
-> The `-e` option installs in _editable_ mode, which means any modification in the code won't need a re-installation to take the change into account.
+- [cfno.models.cfno2d](./cfno/models/cfno2d.py) : implementation of the CFNO model
+- [cfno.losses](./cfno/losses) : module for the different losses
+- [cfno.training.pySDC](./cfno/training/pySDC.py) : base `FourierNeuralOp` class used for training and / or inference
+- [cfno.data.preprocessing](./cfno/data/preprocessing.py) : `HDF5Dataset` class and `createDataset` function used to create training datasets
 
-> You can also use the `--user` option with `pip` to install without admin rights.
+## Acknowledgements
 
-To de-install any package, simply run :
+This project has received funding from the [European High-Performance
+Computing Joint Undertaking](https://eurohpc-ju.europa.eu/) (JU) under
+grant agreement No 955701 ([TIME-X](https://www.time-x-eurohpc.eu/))
+and grant agreement No 101118139.
+The JU receives support from the European Union's Horizon 2020 research
+and innovation programme and Germany.
 
-```bash
-pip uninstall fnop  # or pySDC, or even both at the same time ...
-```
-
-## Code for the original approach
-
-### Model Training
-
-For 2D Rayleigh Benard Convection (RBC) problem the data is generated using [Dedalus](https://dedalus-project.readthedocs.io/en/latest/pages/examples/ivp_2d_rayleigh_benard.html). See also the [dedalus](./dedalus/) folder.
-
-[Fourier Neural Operator 2D Spatial + Recurrent in time](./fnop/models/fno2d_recurrent.py) and [Fourier Neural Operator 2D Spatial + 1D time](./fnop/models/fno3d.py) solver for RBC 2D.
-
-Example submission script to train on JUWELS Booster is shown in [submit_juwels.sbatch](./launch_scripts/submit_juwels.sbatch.sh).
-
-### Model Inference
-
-Once a model is trained, it is saved into a _checkpoint_ file, that are stored in the [`model_archive` companion repo](https://codebase.helmholtz.cloud/neuralpint/model_archive) as `*.pt` files 
-(weights of the model).
-Which each of those models is associated a YAML configuration file, that stores all the model setting
-parameters.
-
-One given trained model should be used like this :
-
-```python
-from fnop.inference import FNOInference
-
-# Load the trained model
-model = FNOInference(
-	config="path/to/configFile.yaml",
-	checkpoint="path/to/checkpointFile.pt")
-
-u0 = ... # some solution of RBC at a given time
-# --> numpy.ndarray format, with shape (nVar, nX, nZ), with nVar = 4
-
-# In particular, uInit could be unpacked like this :
-vx0, vy0, b0, p0 = u0
-
-# Evaluate the model with a given initial solution using a fixed time-step
-u1 = model.predict(u0)  # -> only one time-step !
-
-# --> u1 can also be unpacked like u0, e.g :
-vx1, vy1, b1, p1 = u1
-
-# Time-step of the model can be retrieved like this :
-dt = model.dt 	# -> can be either an attribute or a property
-```
-
-## Code for the recent (simplified) approach
-
-Data generation, model training / validation / inference described in the [scripts](./scripts) folder ...
-
-## Note
-
-- Training can be done using CPU or a single GPU.
-
-- GPU testing done on JUWELS Booster: 1X NVIDIA A100 (40GB) GPU with:
-	- GCC-12.3.0 
-	- OpenMPI-4.1.5 
-	- CUDA-12 
-
-- Python environment activated using [setup.sh](./setup.sh)
-- [examples](./examples/): Contains files for solving 
-	- Wave equation
-	- Darcy Flow equation
-	- Rayleigh Benard Convection 2D on 64 x 64 grid for Ra=10000 
-	
-## Reference:
-
-- [neural_operator](https://github.com/neuraloperator/neuraloperator.git)
+<p align="center">
+  <img src="./docs/img/EuroHPC.jpg" height="105"/> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="./docs/img/LogoTime-X.png" height="105" /> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="./docs/img/BMBF_gefoerdert_2017_en.jpg" height="105" />
+</p>
