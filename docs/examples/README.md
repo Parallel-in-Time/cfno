@@ -17,15 +17,12 @@ Run the script `download_cno_data.py` which downloads all required data into the
 
 For RBC problem the data is generated using [Dedalus](https://dedalus-project.readthedocs.io/en/latest/pages/examples/ivp_2d_rayleigh_benard.html)
 
-See also the [dedalus folder](../dedalus/)
+See also the [dedalus folder](../../dedalus/)
 
 
 ## Model Training
 
-To run on JUWELS booster use [submit_juwels.sbatch.sh](./submit_juwels.sbatch.sh) file that activates the python virtual environment and loads the required modules using [setup.sh](../setup.sh) and executes the  [train_FNO.py](./train_FNO.py) file.
-
-[DarcyWave.ipynb](./DarcyWave.ipynb) and [RBC.ipynb](./RBC.ipynb) jupyter notebook is also available.
-
+To run on JUWELS booster use [submit_train_fno.sbatch.sh](./submit_train_fno.sbatch.sh) file that activates the python virtual environment and loads the required modules using [setup.sh](../../utils/setup.sh) and executes the [train_FNO.py](./train_FNO.py) file.
 
 ## Note
 
@@ -38,18 +35,13 @@ GPU testing done on JUWELS Booster: 1X NVIDIA A100 (40GB) GPU with:
 
 The following files correspond to:
 
-
-- [DarcyWave.ipynb](./DarcyWave.ipynb): Jupyter notebook for solving Wave and Darcy equations using FNO
-- [RBC.ipynb](./RBC.ipynb): Jupyter notebook for solving RBC2D equation using FNO
 - [download_cno_data.py](./download_cno_data.py): Data for solving Wave and Darcy equations
 - [problems.py](./problems.py): Dataloader for FNO model
 - [fourier_operator.py](./fourier_operator.py): FNO modules
 - [utils.py](./utils.py): Supplemment functions
-- [DataVisual.ipynb](./DataVisual.ipynb): Data preprocessing
 - [train_FNO.py](./train_FNO.py): FNO model training 
 - [inference.py](./inference.py): FNO model inference
-- [submit_juwels.sbatch.sh](./submit_juwels.sbatch.sh): Example sbatch script for training FNO in JUWELS booster
-
+- [submit_train_fno.sbatch.sh](./submit_train_fno.sbatch.sh): Example sbatch script for training FNO in JUWELS booster
 
 
 ## Reference:

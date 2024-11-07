@@ -4,12 +4,12 @@ dim: 'FNO3D'
 exit_signal_handler: True
 exit_duration_in_mins: None
 resume_from_checkpoint: None
-save_path: '/p/project1/cexalab/john2/NeuralOperators/neural_operators/results/strategy4'
+save_path: 'results/strategy4'
 verbose: True
 
 data:
-  train_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/RBC2D_NX4_64_NZ1_64_TI50_TF100_Pr1_Ra1e7_dt0_1.h5'
-  val_data_path: '/p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/RBC2D_NX4_64_NZ1_64_TI50_TF100_Pr1_Ra1e7_dt0_1.h5'
+  train_data_path: 'RayleighBernardConvection/processed_data/RBC2D_NX4_64_NZ1_64_TI50_TF100_Pr1_Ra1e7_dt0_1.h5'
+  val_data_path: 'RayleighBernardConvection/processed_data/RBC2D_NX4_64_NZ1_64_TI50_TF100_Pr1_Ra1e7_dt0_1.h5'
   train_samples: 40
   val_samples: 20
   dt: 0.1
@@ -47,12 +47,12 @@ opt:
   
 inference:
   do_inference: True
-  model_checkpoint: '/p/project1/cexalab/john2/NeuralOperators/neural_operators/results/strategy3/rbc_fno3d_N10_epoch3_m12_w20_bs1_dt0.1_tin1_run1/checkpoint/model_checkpoint_2.pt'
+  model_checkpoint: 'results/strategy3/rbc_fno3d_N10_epoch3_m12_w20_bs1_dt0.1_tin1_run1/checkpoint/model_checkpoint_2.pt'
   output_timesteps: 1
   output_error: True
   save_inference: True
   plot_cross_section: True
-  test_data_path: /p/project1/cexalab/john2/NeuralOperators/RayleighBernardConvection/processed_data/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1.h5
+  test_data_path: RayleighBernardConvection/processed_data/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1.h5
   test_start_index: 50
   test_stop_index: 1
   test_timestep: 1

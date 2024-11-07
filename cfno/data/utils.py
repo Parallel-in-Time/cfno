@@ -1,6 +1,6 @@
 import h5py
 import numpy as np
-import torch
+
 
 def rbc_data(filename:str,
              time:int,
@@ -95,8 +95,6 @@ def time_extract(time_index:int,
         time_out.append(j*dt)
     print("Output Time", time_out)
     return time_in, time_out
-
-
 
 def concat_variables(self,data_path=None,
                  xStep:int=1, zStep:int=1, tStep:int=1,

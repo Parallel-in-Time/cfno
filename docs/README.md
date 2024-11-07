@@ -1,4 +1,4 @@
-# Some docs on the FNO stuff ...
+# Some docs on the FNO and CFNO stuff ...
 
 ## Generated
 
@@ -21,9 +21,9 @@
 
 For 2D Rayleigh Benard Convection (RBC) problem the data is generated using [Dedalus](https://dedalus-project.readthedocs.io/en/latest/pages/examples/ivp_2d_rayleigh_benard.html). See also the [dedalus](./dedalus/) folder.
 
-[Fourier Neural Operator 2D Spatial + Recurrent in time](./fnop/models/fno2d_recurrent.py) and [Fourier Neural Operator 2D Spatial + 1D time](./fnop/models/fno3d.py) solver for RBC 2D.
+[Fourier Neural Operator 2D Spatial + Recurrent in time](../cfno/models/fno2d.py) and [Fourier Neural Operator 2D Spatial + 1D time](../cfno/models/fno3d.py) solver for RBC 2D.
 
-Example submission script to train on JUWELS Booster is shown in [submit_juwels.sbatch](./launch_scripts/submit_juwels.sbatch.sh).
+Example submission scripts to train on JUWELS Booster is shown in [submit_training.sbatch.sh](../utils/launch_scripts/submit_training.sbatch.sh).
 
 ### Model Inference
 

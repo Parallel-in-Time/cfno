@@ -16,8 +16,8 @@ data:
   timestep: 1
   train_samples: 50                 
   val_samples: 25   
-  train_root_path: '/p/scratch/cexalab/john2/RBC2D_data_dt1e_1/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1_train'
-  val_root_path: '/p/scratch/cexalab/john2/RBC2D_data_dt1e_1/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1_val'
+  train_root_path: 'RBC2D_data_dt1e_1/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1_train'
+  val_root_path: 'RBC2D_data_dt1e_1/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1_val'
   subdomain_process: False
   subdomain_args: 
     start_time: 55.0

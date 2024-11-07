@@ -14,17 +14,17 @@
 # explicitly setting srun environment variable to inherit from SBATCH
 export SRUN_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK}
 
-export BASE_REPO="/p/project1/cexalab/john2/NeuralOperators/neural_operators/examples"
+export BASE_REPO="cfno"
 
 # Enable logging
 set -euo pipefail
 set -x
 
-source setup.sh
-cd "$BASE_REPO"
+source "$BASE_REPO"/utils/setup.sh
+cd "$BASE_REPO"/docs/examples
 echo "START TIME: $(date)"
 
-srun python  `pwd`/train_darcy_wave_FNO.py \
+srun python  `pwd`/train_FNO.py \
              --problem="wave" \
              --model_save_path="$SYSTEMNAME"_run1
              

@@ -82,21 +82,7 @@ class FNOData():
         # [samples, nx_state, ny, time]
         self.start_time_index = 0
         self.stop_time_index = reader[task].shape[-1]
-        
-        # if multistep:
-        #     inputs, outputs = multi_data(reader=reader,
-        #                                 task=task,
-        #                                 start_index=self.start_time_index,
-        #                                 stop_index=self.stop_time_index,
-        #                                 timestep=self.timestep,
-        #                                 samples=nsamples,
-        #                                 T_in=self.T_in,
-        #                                 T=self.T,
-        #                                 xStep=self.xStep,
-        #                                 yStep=self.yStep,
-        #                                 tStep=self.tStep
-        #                                 )
-        # else:
+     
         inputs = torch.tensor(reader[task][:nsamples, ::self.xStep, ::self.yStep, \
                                         self.start_time_index: self.start_time_index + (self.T_in*self.tStep): self.tStep], \
                                         dtype=torch.float)

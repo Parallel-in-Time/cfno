@@ -32,7 +32,7 @@ pip install -e .
 # Somewhere in a root folder ...
 git clone https://github.com/Parallel-in-Time/pySDC.git
 cd pySDC
-git switch neuralpint
+git switch cfno
 pip install -e .
 ```
 
