@@ -32,7 +32,7 @@ pip install -e .
 # Somewhere in a root folder ...
 git clone https://github.com/Parallel-in-Time/pySDC.git
 cd pySDC
-git switch cfno
+git switch neuralpint
 pip install -e .
 ```
 
@@ -58,10 +58,9 @@ This project has received funding from the [European High-Performance
 Computing Joint Undertaking](https://eurohpc-ju.europa.eu/) (JU) 
 under grant agreement No 101118139 ([Inno4Scale - NeuralPint](https://www.inno4scale.eu/neuralpint/)).
 The JU receives support from the European Union's Horizon 2020 research
-and innovation programme and Germany.
+and innovation programme.
 
 <p align="center">
   <img src="./docs/img/EuroHPC.jpg" height="105"/> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="./docs/img/LogoInno4Scale.png" height="105" /> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="./docs/img/BMBF_gefoerdert_2017_en.jpg" height="105" />
+  <img src="./docs/img/LogoInno4Scale.png" height="105" />
 </p>
