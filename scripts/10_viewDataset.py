@@ -4,8 +4,8 @@ import os
 import sys
 import argparse
 sys.path.insert(2, os.getcwd())
-from fnop.data.data_preprocessing import HDF5Dataset
-from fnop.simulation.post import contourPlot
+from cfno.data.preprocessing import HDF5Dataset
+from cfno.simulation.post import contourPlot
 
 varChoices = ["vx", "vz", "b", "p"]
 

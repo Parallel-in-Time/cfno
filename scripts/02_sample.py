@@ -36,8 +36,8 @@ args = parser.parse_args()
 
 # To avoid import when using help ...
 sys.path.insert(2, os.getcwd())
-from fnop.utils import readConfig
-from fnop.data.data_preprocessing import createDataset
+from cfno.utils import readConfig
+from cfno.data.preprocessing import createDataset
 
 if args.config is not None:
     config = readConfig(args.config)

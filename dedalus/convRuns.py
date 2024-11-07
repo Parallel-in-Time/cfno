@@ -5,8 +5,9 @@ Base script to run convergence studies in space
 """
 import os
 import numpy as np
-from rbc_simulation import runSim
-from data_processing import OutputFiles, checkDNS
+
+from cfno.simulation.rbc2d import runSim
+from cfno.simulation.post import OutputFiles, checkDNS
 
 nX, nZ = 256, 64
 resFactor = 2

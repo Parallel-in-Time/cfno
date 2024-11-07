@@ -8,8 +8,8 @@ import sys
 sys.path.insert(2, os.getcwd())
 import argparse
 
-from fnop.training.fno_pysdc import FourierNeuralOp
-from fnop.utils import readConfig
+from cfno.training.pySDC import FourierNeuralOp
+from cfno.utils import readConfig
 
 # -----------------------------------------------------------------------------
 # Script parameters
@@ -70,8 +70,12 @@ cPrefix = os.path.splitext(checkpoint)[0]
 
 for _ in range(nChunks):
     model.learn(saveEvery)
-    model.save()
+    model.save(checkpoint)
+    if savePermanent:
+        model.save(f"{cPrefix}_epochs{model.epochs:06d}.pt")
 
 if lastChunk > 0:
     model.learn(lastChunk)
-    model.save()
+    model.save(checkpoint)
+    if savePermanent:
+        model.save(f"{cPrefix}_epochs{model.epochs:06d}.pt")

@@ -3,13 +3,21 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "fnop"
+name = "cfno"
 version = "0.0.1"
-description = "Fourier Neural Operator for modeling PDEs"
+description = "Chebyshev Fourier Neural Operator"
 dependencies = [
+    "torch",
     "numpy",
     "scipy",
-    "torch",
+    "pandas",
+    "pyyaml",
+    "configmypy",
+    "h5py",
+    "matplotlib",
+    "tqdm",
+    "tensorboard",
+    "torch_dct",
 ]
 requires-python = ">=3.8"
 maintainers = [

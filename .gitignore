@@ -19,5 +19,8 @@ dedalus/scripts
 *.jpg
 *.png
 scripts/*.pdf
+scripts/*/*.pdf
 scratch.py
 launch_scripts/*.sh
+
+env

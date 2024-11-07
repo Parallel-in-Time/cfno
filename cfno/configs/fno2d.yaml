@@ -1,0 +1,68 @@
+default: &DEFAULT
+run: 1
+dim: 'FNO2D'
+exit_signal_handler: True
+exit_duration_in_mins: None
+resume_from_checkpoint: None
+save_path: 'results/strategy2'
+verbose: True
+
+data:
+  xStep: 1
+  yStep: 1
+  tStep: 1
+  start_time: 55.0
+  stop_time: 57.2
+  timestep: 1
+  train_samples: 50                 
+  val_samples: 25   
+  train_root_path: 'RBC2D_data_dt1e_1/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1_train'
+  val_root_path: 'RBC2D_data_dt1e_1/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1_val'
+  subdomain_process: False
+  subdomain_args: 
+    start_time: 55.0
+    stop_time: 57.2
+    ndomain_x: 4
+    ndomain_y: 1
+    subdomain_data_path: None
+  processed_data_path: 'RayleighBernardConvection/processed_data/dt1e_1/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1.h5'                
+  multistep : True
+  multistep_data_path: 'RayleighBernardConvection/processed_data/dt1e_1/RBC2D_NX256_NZ64_TI55_TF57_2_Pr1_Ra1e7_dt0_1_multi.h5'
+  dt: 0.1
+  nx: 256
+  ny: 64
+  rayleigh_number: 1e7
+  prandtl_number: 1
+  batch_size: 32
+  
+FNO:
+  modes: 12
+  lifting_width: 32
+  width: 64
+  projection_width: 32
+  n_layers: 4
+  T_in: 1
+  T: 1
+  non_linearity: None
+  
+opt:
+  epochs: 500
+  learning_rate: 0.00039
+  weight_decay: 1e-5
+  scheduler_step: 100.0
+  scheduler_gamma: 0.98
+  T_max: 3 # For cosine only, typically take epochs
+  
+inference:
+  do_inference: True
+  inference_save_path: 'results/strategy2/rbc_FNO2D_N50_m12_w64_bs32_dt0.1_tin1_cuda_run3'
+  output_timesteps: 10
+  output_error: True
+  save_inference: True
+  plot_cross_section: True
+  test_data_path: 'RayleighBernardConvection/processed_data/dt1e_1/RBC2D_NX256_NZ64_TI0_TF150_Pr1_Ra1e7_dt0_1.h5'
+  test_start_index: 555
+  test_dedalus_index: 0
+  test_batch_size: 1
+  # test_stop_index: 1
+  # test_timestep: 1
