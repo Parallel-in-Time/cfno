@@ -166,12 +166,16 @@ class HDF5Dataset(Dataset):
         print(f" -- outType : {infos['outType'][()].decode('utf-8')}")
         print(f" -- outScaling : {infos['outScaling'][()]:1.2g}")
 
-def createDataset(dataDir, inSize, outStep, inStep, outType, outScaling, dataFile, **kwargs):
+def createDataset(dataDir, inSize, outStep, inStep, outType, outScaling, dataFile,**kwargs):
     assert inSize == 1, "inSize != 1 not implemented yet ..."
-    simDirs = glob.glob(f"{dataDir}/simu_*")
-    print(f'SimDir: {simDirs}')
-    nSimu = len(simDirs)
-
+    simDirs = sorted(glob.glob(f"{dataDir}/simu_*"), key=lambda f: int(f.split('simu_',1)[1]))
+    if 'nSimu' in kwargs.keys():
+       nSimu = kwargs['nSimu']
+       simDirs = simDirs[:nSimu]
+    else:
+        nSimu = len(simDirs)
+    
+    print(f'Using Simulations: {simDirs}')
     # -- retrieve informations from first simulation
     outFiles = OutputFiles(f"{simDirs[0]}/run_data")
 
@@ -179,12 +183,16 @@ def createDataset(dataDir, inSize, outStep, inStep, outType, outScaling, dataFil
     dtData = times[1]-times[0]
     dtInput = dtData*outStep  # noqa: F841 (used lated by an eval call)
     xGrid, yGrid = outFiles.x, outFiles.y  # noqa: F841 (used lated by an eval call)
-
-    # nFields = sum(outFiles.nFields)
-    nFields = 70000
-    sRange = range(50000, nFields-inSize-outStep+1, inStep)
+    
+    try:
+        tBeg = int(kwargs['tBeg']/dtData)
+        nFields = int(kwargs['tEnd']/dtData)
+    except: 
+        tBeg = 0
+        nFields = sum(outFiles.nFields)
+    sRange = range(tBeg, nFields-inSize-outStep+1, inStep)
     nSamples = len(sRange)
-    print(f' range: {sRange},  outStep: {outStep}, inStep: {inStep}')
+    print(f' {sRange},  outStep: {outStep}, inStep: {inStep}')
     print(f"Creating dataset from {len(simDirs)} simulations, {nSamples} samples each ...")
     dataset = h5py.File(dataFile, "w")
     for name in ["inSize", "outStep", "inStep", "outType", "outScaling",

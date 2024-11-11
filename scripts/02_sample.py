@@ -46,6 +46,9 @@ if args.config is not None:
     args.__dict__.update(**config.sample)
     if "simu" in config and "dataDir" in config.simu:
         args.dataDir = config.simu.dataDir
+        args.nSimu = config.simu.nSimu
+        args.tBeg = config.simu.tInit
+        args.tEnd = config.simu.tEnd
     if "data" in config:
         for key in ["outType", "outScaling", "dataFile"]:
             if key in config.data: args.__dict__[key] = config.data[key]
