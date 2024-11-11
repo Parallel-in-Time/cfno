@@ -10,7 +10,7 @@ import numpy as np
 
 from cfno.simulation.rbc2d import runSim, MPI_RANK
 from cfno.simulation.post import OutputFiles, contourPlot
-from cfno.inference.inference import FNOInference
+from cfno.training.pySDC import FourierNeuralOp
 
 baseDir = "evaluateModel"
 Rayleigh = 1e7
@@ -18,7 +18,6 @@ Rayleigh = 1e7
 MODEL_PATH = "../../model_archive/FNO2D_RBC2D_strategy2/model_nx256_nz64_dt1e_3_tin1/run2"
 
 FNO_PARAMS = {
-    "config": f"{MODEL_PATH}/fno2d_strat2_dt1e-3.yaml",
     "checkpoint": f"{MODEL_PATH}/model_checkpoint_80.pt"
     }
 
@@ -60,7 +59,7 @@ gridZ = refFile["scales"][sKeys[-1]][:]
 refSol = refFile['tasks']
 time = refFile['scales']['sim_time'][:]
 # FNO evaluation
-model = FNOInference(**FNO_PARAMS)
+model = FourierNeuralOp(**FNO_PARAMS)
 vx0 = refFile['tasks']["velocity"][0, 0]
 vz0 = refFile['tasks']["velocity"][0, 1]
 b0 = refFile['tasks']["buoyancy"][0]
