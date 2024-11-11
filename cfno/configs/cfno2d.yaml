@@ -42,8 +42,8 @@ FNO:
   width: 6
   projection_width: 6
   n_layers: 4
-  T_in: 1
-  T: 1
+  T_in: 4  #4 variables at input timestep
+  T: 1     #4 variables at output timestep
   non_linearity: None
   forceFFT: True
   
