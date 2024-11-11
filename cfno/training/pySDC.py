@@ -147,7 +147,7 @@ class FourierNeuralOp:
     def fullPath(cls, filePath):
         if cls.TRAIN_DIR is not None:
             os.makedirs(cls.TRAIN_DIR, exist_ok=True)
-            filePath = str(Path(cls.TRAIN_DIR) / filePath)
+            filePath = str(Path(cls.TRAIN_DIR))+f"/{filePath}"
         return filePath
 
 
@@ -264,7 +264,6 @@ class FourierNeuralOp:
                     epochs=self.epochs,
                     train_id=self.losses["id"]["train"], valid_id=self.losses["id"]["valid"],
                     **self.losses["model"]))
-
 
     def __del__(self):
         try:
