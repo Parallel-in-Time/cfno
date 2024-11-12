@@ -18,6 +18,10 @@ parser.add_argument(
 parser.add_argument(
     "--outStep", default=1, help="output step", type=int)
 parser.add_argument(
+    "--iBeg", default=0, help="starting index of data sample", type=int)
+parser.add_argument(
+    "--iEnd", help="stopping index of data sample", type=int)
+parser.add_argument(
     "--inStep", default=5, help="input step", type=int)
 parser.add_argument(
     "--outType", default="solution", help="output type in the dataset",
@@ -47,8 +51,6 @@ if args.config is not None:
     if "simu" in config and "dataDir" in config.simu:
         args.dataDir = config.simu.dataDir
         args.nSimu = config.simu.nSimu
-        args.tBeg = config.simu.tInit
-        args.tEnd = config.simu.tEnd
     if "data" in config:
         for key in ["outType", "outScaling", "dataFile"]:
             if key in config.data: args.__dict__[key] = config.data[key]
