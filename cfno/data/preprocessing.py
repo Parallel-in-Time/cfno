@@ -185,14 +185,16 @@ def createDataset(dataDir, inSize, outStep, inStep, outType, outScaling, dataFil
     xGrid, yGrid = outFiles.x, outFiles.y  # noqa: F841 (used lated by an eval call)
     
     try:
-        tBeg = int(kwargs['tBeg']/dtData)
-        nFields = int(kwargs['tEnd']/dtData)
+        iBeg = kwargs['iBeg']
+        iEnd = kwargs['iEnd']
+        nFields = iEnd-iBeg+1
+        sRange = range(iBeg, iEnd-inSize-outStep+1, inStep)
     except: 
         tBeg = 0
         nFields = sum(outFiles.nFields)
-    sRange = range(tBeg, nFields-inSize-outStep+1, inStep)
+        sRange = range(tBeg, nFields-inSize-outStep+1, inStep)
     nSamples = len(sRange)
-    print(f' {sRange},  outStep: {outStep}, inStep: {inStep}')
+    print(f'{sRange},  outStep: {outStep}, inStep: {inStep}')
     print(f"Creating dataset from {len(simDirs)} simulations, {nSamples} samples each ...")
     dataset = h5py.File(dataFile, "w")
     for name in ["inSize", "outStep", "inStep", "outType", "outScaling",
