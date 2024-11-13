@@ -36,6 +36,8 @@ parser.add_argument(
 parser.add_argument(
     "--dryRun", default=None, action='store_true',
     help="don't extract the data, just print the infos of the expected dataset")
+parser.add_argument(
+    "--verbose", default=None, action='store_true', help="create dataset with verbose option on")
 args = parser.parse_args()
 
 # To avoid import when using help ...

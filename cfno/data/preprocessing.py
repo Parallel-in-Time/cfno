@@ -168,7 +168,7 @@ class HDF5Dataset(Dataset):
 
 def createDataset(
         dataDir, inSize, outStep, inStep, outType, outScaling, dataFile,
-        dryRun=False, **kwargs):
+        dryRun=False, verbose=False, **kwargs):
     assert inSize == 1, "inSize != 1 not implemented yet ..."
     simDirsSorted = sorted(glob.glob(f"{dataDir}/simu_*"), key=lambda f: int(f.split('simu_',1)[1]))
     nSimu = int(kwargs.get("nSimu", len(simDirsSorted)))
@@ -220,7 +220,8 @@ def createDataset(
         outFiles = OutputFiles(f"{dataDir}/run_data")
         print(f" -- sampling data from {outFiles.folder}")
         for iSample, iField in enumerate(sRange):
-            print(f"\t -- creating sample {iSample+1}/{nSamples}")
+            if verbose:
+                print(f"\t -- creating sample {iSample+1}/{nSamples}")
             inpt, outp = outFiles.fields(iField), outFiles.fields(iField+outStep).copy()
             if outType == "update":
                 outp -= inpt
