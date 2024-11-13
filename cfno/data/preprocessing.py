@@ -166,10 +166,12 @@ class HDF5Dataset(Dataset):
         print(f" -- outType : {infos['outType'][()].decode('utf-8')}")
         print(f" -- outScaling : {infos['outScaling'][()]:1.2g}")
 
-def createDataset(dataDir, inSize, outStep, inStep, outType, outScaling, dataFile,**kwargs):
+def createDataset(
+        dataDir, inSize, outStep, inStep, outType, outScaling, dataFile,
+        dryRun=False, **kwargs):
     assert inSize == 1, "inSize != 1 not implemented yet ..."
     simDirsSorted = sorted(glob.glob(f"{dataDir}/simu_*"), key=lambda f: int(f.split('simu_',1)[1]))
-    nSimu = int(kwargs.get("nSimu",len(simDirsSorted)))
+    nSimu = int(kwargs.get("nSimu", len(simDirsSorted)))
     simDirs = simDirsSorted[:nSimu]
     print(f'Using Simulations: {simDirs}')
     # -- retrieve informations from first simulation
@@ -178,6 +180,7 @@ def createDataset(dataDir, inSize, outStep, inStep, outType, outScaling, dataFil
     times = outFiles.times().ravel()
     dtData = times[1]-times[0]
     dtInput = dtData*outStep  # noqa: F841 (used lated by an eval call)
+    dtSample = dtData*inStep  # noqa: F841 (used lated by an eval call)
     xGrid, yGrid = outFiles.x, outFiles.y  # noqa: F841 (used lated by an eval call)
     
     iBeg = int(kwargs.get("iBeg", 0))
@@ -185,11 +188,22 @@ def createDataset(dataDir, inSize, outStep, inStep, outType, outScaling, dataFil
     sRange = range(iBeg, iEnd-inSize-outStep+1, inStep)
     nSamples = len(sRange)
     print(f'{sRange},  outStep: {outStep}, inStep: {inStep}')
-    print(f"Creating dataset from {len(simDirs)} simulations, {nSamples} samples each ...")
+    
+    infoParams = [
+        "inSize", "outStep", "inStep", "outType", "outScaling",
+        "dtData", "dtInput", "xGrid", "yGrid", "nSimu", "nSamples", "dtSample"
+    ]
+
+    if dryRun:
+        print(f"To create : dataset from {nSimu} simulations, {nSamples} samples each ...")
+        for name in infoParams:
+            if "Grid" not in name:
+                print(f" -- {name} : {eval(name)}")
+        return
+
+    print(f"Creating dataset from {nSimu} simulations, {nSamples} samples each ...")
     dataset = h5py.File(dataFile, "w")
-    for name in ["inSize", "outStep", "inStep", "outType", "outScaling",
-                 "dtData", "dtInput", "xGrid", "yGrid",
-                 "nSimu", "nSamples"]:
+    for name in infoParams:
         try:
             dataset.create_dataset(f"infos/{name}", data=np.asarray(eval(name)))
         except:
@@ -210,8 +224,9 @@ def createDataset(dataDir, inSize, outStep, inStep, outType, outScaling, dataFil
                     outp *= outScaling
             inputs[iSim*nSamples + iSample] = inpt
             outputs[iSim*nSamples + iSample] = outp
-    print(" -- done !")
     dataset.close()
+    print(" -- done !")
+    
 
 def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None):
     dataset = HDF5Dataset(dataFile)

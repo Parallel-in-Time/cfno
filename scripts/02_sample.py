@@ -56,6 +56,7 @@ if args.config is not None:
             if key in config.data: args.__dict__[key] = config.data[key]
 kwargs = {**args.__dict__}
 kwargs.pop("config")
+if kwargs.get("iEnd", None) is None: kwargs.pop("iEnd", None)
 
 # -----------------------------------------------------------------------------
 # Script execution
