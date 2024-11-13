@@ -220,7 +220,7 @@ def createDataset(
         outFiles = OutputFiles(f"{dataDir}/run_data")
         print(f" -- sampling data from {outFiles.folder}")
         for iSample, iField in enumerate(sRange):
-            print(f"\t -- creating sample {iSample+1}/{len(nSamples)}")
+            print(f"\t -- creating sample {iSample+1}/{nSamples}")
             inpt, outp = outFiles.fields(iField), outFiles.fields(iField+outStep).copy()
             if outType == "update":
                 outp -= inpt
