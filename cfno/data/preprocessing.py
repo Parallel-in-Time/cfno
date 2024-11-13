@@ -173,7 +173,10 @@ def createDataset(
     simDirsSorted = sorted(glob.glob(f"{dataDir}/simu_*"), key=lambda f: int(f.split('simu_',1)[1]))
     nSimu = int(kwargs.get("nSimu", len(simDirsSorted)))
     simDirs = simDirsSorted[:nSimu]
-    print(f'Using Simulations: {simDirs}')
+    print('Using Simulations:')
+    for s in simDirs:
+        print(f" -- {s}")
+
     # -- retrieve informations from first simulation
     outFiles = OutputFiles(f"{simDirs[0]}/run_data")
 
