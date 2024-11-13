@@ -190,11 +190,11 @@ def createDataset(
     iEnd = int(kwargs.get("iEnd", sum(outFiles.nFields)))
     sRange = range(iBeg, iEnd-inSize-outStep+1, inStep)
     nSamples = len(sRange)
-    print(f'{sRange},  outStep: {outStep}, inStep: {inStep}')
+    print(f'selector: {sRange},  outStep: {outStep}, inStep: {inStep}, iBeg: {iBeg}, iEnd: {iEnd}')
     
     infoParams = [
-        "inSize", "outStep", "inStep", "outType", "outScaling",
-        "dtData", "dtInput", "xGrid", "yGrid", "nSimu", "nSamples", "dtSample"
+        "inSize", "outStep", "inStep", "outType", "outScaling", "iBeg", "iEnd",
+        "dtData", "dtInput", "xGrid", "yGrid", "nSimu", "nSamples", "dtSample",
     ]
 
     if dryRun:
@@ -213,7 +213,7 @@ def createDataset(
             dataset.create_dataset(f"infos/{name}", data=eval(name))
 
     dataShape = (nSamples*nSimu, *outFiles.shape)
-    print(f'datashape: {dataShape}')
+    print(f'data shape: {dataShape}')
     inputs = dataset.create_dataset("inputs", dataShape)
     outputs = dataset.create_dataset("outputs", dataShape)
     for iSim, dataDir in enumerate(simDirs):
