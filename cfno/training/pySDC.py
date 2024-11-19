@@ -23,6 +23,7 @@ class FourierNeuralOp:
     LOSSES_FILE = None      # allows to write losses simultaneously in separate text file,
                             # for easier comparison between different training.
     USE_TENSORBOARD = True
+    LOG_PRINT = False
 
 
     def __init__(self, data:dict=None, model:dict=None, optim:dict=None, lr_scheduler:dict=None, checkpoint=None):
@@ -44,6 +45,9 @@ class FourierNeuralOp:
         # sample : [batchSize, 4, nX, nY]
         self.outType = self.dataset.outType
         self.outScaling = self.dataset.outScaling
+        if optim is not None:
+            print("setting relativeLoss param")
+            VectormNormLoss.ABSOLUTE = optim.pop("absLoss", VectormNormLoss.ABSOLUTE)
         self.lossFunction = VectormNormLoss()
         self.losses = {
             "model": {
@@ -67,9 +71,12 @@ class FourierNeuralOp:
 
         self.setupOptimizer(optim)
         self.setupLRScheduler(lr_scheduler)
+
         self.epochs = 0
+        self.tCompEpoch = 0
         self.gradientNormEpoch = 0.0
-        self.writer = SummaryWriter(self.fullPath("tboard"))
+        if self.USE_TENSORBOARD:
+            self.writer = SummaryWriter(self.fullPath("tboard"))
 
 
     # -------------------------------------------------------------------------
@@ -147,7 +154,7 @@ class FourierNeuralOp:
     def fullPath(cls, filePath):
         if cls.TRAIN_DIR is not None:
             os.makedirs(cls.TRAIN_DIR, exist_ok=True)
-            filePath = str(Path(cls.TRAIN_DIR))+f"/{filePath}"
+            filePath = str(Path(cls.TRAIN_DIR) / filePath)
         return filePath
 
 
@@ -156,7 +163,8 @@ class FourierNeuralOp:
     # -------------------------------------------------------------------------
     def train(self):
         """Train the model for one epoch"""
-        nBatches = len(self.trainLoader.dataset)
+        nSamples = len(self.trainLoader.dataset)
+        nBatches = len(self.trainLoader)
         batchSize = self.trainLoader.batch_size
         model = self.model
         optimizer = self.optimizer
@@ -175,7 +183,6 @@ class FourierNeuralOp:
             optimizer.zero_grad()
             loss.backward()
 
-            # ToDo: what is happening here?
             # -> lbfgs optimizer requires a closure function when calling
             #    optimizer step, hence the if condition depending on the type
             #    of optimizer.
@@ -193,26 +200,27 @@ class FourierNeuralOp:
 
             grads = [param.grad.detach().flatten() for param in self.model.parameters() if param.grad is not None]
             gradsNorm = th.cat(grads).norm()
-            self.writer.add_histogram("Gradients/GradientNormBatch", gradsNorm, iBatch)
+            if self.USE_TENSORBOARD:
+                self.writer.add_histogram("Gradients/GradientNormBatch", gradsNorm, iBatch)
             gradsEpoch += gradsNorm
 
-            loss = loss.item()
-            print(f" At [{iBatch}/{nBatches:>5d}] loss: {loss:>7f} (id: {idLoss:>7f}) -- lr: {optimizer.param_groups[0]['lr']}")
+            loss, current = loss.item(), iBatch*batchSize + len(inputs)
+            if self.LOG_PRINT:
+                print(f" At [{current}/{nSamples:>5d}] loss: {loss:>7f} (id: {idLoss:>7f}) -- lr: {optimizer.param_groups[0]['lr']}")
             avgLoss += loss
 
         scheduler.step()
-        epochLoss = avgLoss /nBatches
-        avgLoss /= nBatches/batchSize
+        avgLoss /= nBatches
+        gradsEpoch /= nBatches
 
-        print(f"Training: \n Epoch loss: {epochLoss:>8f} Avg loss: {avgLoss:>8f} (id: {idLoss:>7f})\n")
-        self.losses["model"]["avg_train"] = avgLoss
-        self.losses["model"]["train"] = epochLoss
-        self.gradientNormEpoch = gradsEpoch / nBatches
+        print(f"Training: \n Avg loss: {avgLoss:>8f} (id: {idLoss:>7f})\n")
+        self.losses["model"]["train"] = avgLoss
+        self.gradientNormEpoch = gradsEpoch
+
 
     def valid(self):
         """Validate the model for one epoch"""
         nBatches = len(self.valLoader)
-        batchSize = self.valLoader.batch_size
         model = self.model
         avgLoss = 0
         idLoss = self.losses['id']['valid']
@@ -225,12 +233,10 @@ class FourierNeuralOp:
                 pred = model(inputs)
                 avgLoss += self.lossFunction(pred, outputs).item()
 
-        epochLoss = avgLoss /nBatches
-        avgLoss /= nBatches/batchSize
+        avgLoss /= nBatches
 
-        print(f"Validation: \n Epoch loss: {epochLoss:>8f} Avg loss: {avgLoss:>8f} (id: {idLoss:>7f})\n")
-        self.losses["model"]["avg_valid"] = avgLoss
-        self.losses["model"]["valid"] = epochLoss
+        print(f"Validation: \n Avg loss: {avgLoss:>8f} (id: {idLoss:>7f})\n")
+        self.losses["model"]["valid"] = avgLoss
 
     def learn(self, nEpochs):
         for _ in range(nEpochs):
@@ -238,20 +244,24 @@ class FourierNeuralOp:
             tBeg = time.perf_counter()
             self.train()
             self.valid()
-            self.monitor()
             tComp = time.perf_counter()-tBeg
-            print(f" --- End of epoch {self.epochs+1} (tComp: {tComp:1.2e}s) ---\n")
+            self.tCompEpoch = tComp
+
+            tBeg = time.perf_counter()
+            self.monitor()
+            tMonit = time.perf_counter()-tBeg
+
             self.epochs += 1
+            print(f" --- End of epoch {self.epochs} (tComp: {tComp:1.2e}s, tMonit: {tMonit:1.2e}s) ---\n")
+
         print("Done!")
 
     def monitor(self):
         if self.USE_TENSORBOARD:
             writer = self.writer
             writer.add_scalars("Losses", {
-                "train" : self.losses["model"]["train"],
-                "valid" : self.losses["model"]["valid"],
-                "train_avg" : self.losses["model"]["avg_train"],
-                "valid_avg" : self.losses["model"]["avg_valid"],
+                "train_avg" : self.losses["model"]["train"],
+                "valid_avg" : self.losses["model"]["valid"],
                 "train_id": self.losses["id"]["train"],
                 "valid_id": self.losses["id"]["valid"]
                 }, self.epochs)
@@ -260,10 +270,10 @@ class FourierNeuralOp:
 
         if self.LOSSES_FILE:
             with open(self.fullPath(self.LOSSES_FILE), "a") as f:
-                f.write("{epochs}\t{train:1.18f}\t{valid:1.18f}\t{train_id}\t{valid_id}\n".format(
+                f.write("{epochs}\t{train:1.18f}\t{valid:1.18f}\t{train_id:1.18f}\t{valid_id:1.18f}\t{gradNorm:1.18f}\t{tComp}\n".format(
                     epochs=self.epochs,
                     train_id=self.losses["id"]["train"], valid_id=self.losses["id"]["valid"],
-                    **self.losses["model"]))
+                    gradNorm=self.gradientNormEpoch, tComp=self.tCompEpoch, **self.losses["model"]))
 
     def __del__(self):
         try:

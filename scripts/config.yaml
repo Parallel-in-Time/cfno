@@ -13,7 +13,7 @@ sample:
 data:
   outType: solution
   outScaling: 1
-  dataFile: dataset_dt1e0.h5
+  dataFile: dataset_dt1e-3.h5
   trainRatio: 0.8
   seed: null
   batchSize: 20
@@ -28,12 +28,13 @@ model:
   kY: 12
   nLayers: 2
   forceFFT: false
-  bias: false
+  bias: true
 
 optim:
   name: adam
   lr: 0.0001
   weight_decay: 1.0e-5
+  absLoss: false
 
 lr_scheduler:
   scheduler: StepLR
@@ -41,12 +42,14 @@ lr_scheduler:
   gamma: 0.98
 
 train:
-  trainDir: "training"
-  nEpochs: 1000
+  trainDir: training_dt1e-3_bias
+  nEpochs: 1500
   checkpoint: model.pt
+  lossesFile: losses.txt
   saveEvery: 100
-  savePermanent: true
+  savePermanent: false
   noTensorboard: false
+  logPrint: false
 
 eval:
   iSimu: 8

@@ -66,6 +66,7 @@ class VectormNormLoss(object):
         out: model prediction of shape [nBatch,nVar,nX,nZ]
         ref: data reference of shape [nBatch,nVar,nX,nZ]
     """
+    ABSOLUTE = False
     def __init__(self, 
                  p:int=2,
     ):
@@ -73,7 +74,8 @@ class VectormNormLoss(object):
         # Lp-norm type is postive
         assert p > 0
         self.p = p
-
+        if self.ABSOLUTE:
+            self.__class__.__call__ = self.__class__.__call__ABS
 
     def vectorNorm(self, x, dim=(-2,-1)):
         return torch.linalg.vector_norm(x, ord=self.p, dim=dim)
@@ -82,4 +84,7 @@ class VectormNormLoss(object):
         refNorms = self.vectorNorm(ref)
         diffNorms = self.vectorNorm(out-ref)
         return torch.mean(diffNorms/refNorms)
+
+    def __call__ABS(self, out, ref):
+        return torch.mean(self.vectorNorm(out-ref))
 
