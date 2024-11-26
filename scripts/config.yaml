@@ -27,8 +27,8 @@ model:
   kX: 12
   kY: 12
   nLayers: 2
-  forceFFT: false
-  bias: true
+  forceFFT: true
+  bias: false
 
 optim:
   name: adam
@@ -42,7 +42,7 @@ lr_scheduler:
   gamma: 0.98
 
 train:
-  trainDir: training_dt1e-3_bias
+  trainDir: training_dt1e-3_fft
   nEpochs: 1500
   checkpoint: model.pt
   lossesFile: losses.txt

@@ -27,6 +27,8 @@ parser.add_argument(
 parser.add_argument(
     "--outType", default="solution", help="type of output", choices=["solution", "update"])
 parser.add_argument(
+    "--refScales", action="store_true", help="use the same scales as the reference field")
+parser.add_argument(
     "--saveFig", default="modelView.jpg", help="output name for contour figure")
 args = parser.parse_args()
 
@@ -35,6 +37,7 @@ checkpoint = args.checkpoint
 var = args.var
 iSample = args.iSample
 outType = args.outType
+refScales = args.refScales
 saveFig = args.saveFig
 
 # -----------------------------------------------------------------------------
@@ -67,5 +70,5 @@ if outType == "update":
 contourPlot(
     uPred, xGrid, yGrid, title=f"Model {outType} for {var} using sample {iSample}",
     refField=uRef, refTitle=f"Dedalus reference (dt={dataset.infos['dtInput'][()]:1.2g}s)",
-    saveFig=saveFig, closeFig=False)
+    saveFig=saveFig, closeFig=False, refScales=refScales)
 print(f" -- saved {var} contour for sample {iSample}")

@@ -284,10 +284,13 @@ def generateChunkPairs(folder:str, N:int, M:int,
 
 def contourPlot(field, x, y, time=None,
                 title=None, refField=None, refTitle=None, saveFig=False,
-                closeFig=True, error=False):
+                closeFig=True, error=False, refScales=False):
 
     fig, axs = plt.subplots(1 if refField is None else 2)
     ax = axs if refField is None else axs[0]
+
+    if refField is not None and refScales:
+        scales = (np.min(refField), np.max(refField))
 
     def setup(ax):
         ax.set_aspect('equal', adjustable='box')
@@ -297,7 +300,13 @@ def contourPlot(field, x, y, time=None,
     def setColorbar(field, im, ax, error=False):
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="5%", pad=0.05)
-        fig.colorbar(im, cax=cax, ax=ax, ticks=np.linspace(np.min(field), np.max(field), 3))
+        if refScales:
+            im.cmap.set_under("white")
+            im.cmap.set_over("white")
+            im.set_clim(*scales)
+            fig.colorbar(im, cax=cax, ax=ax, ticks=np.linspace(*scales, 3))
+        else:
+            fig.colorbar(im, cax=cax, ax=ax, ticks=np.linspace(np.min(field), np.max(field), 3))
 
     im = ax.pcolormesh(x, y, field)
     setColorbar(field, im, ax, error)
