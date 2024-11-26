@@ -33,7 +33,7 @@ In fact, you can run the all pipeline using default value (from the scripts and 
 $ ./01_simu.py      # this may take a very long time, better to run with MPI
 $ ./02_sample.py    # run once, can be used for many training ...
 $ ./03_train.py     # faster when run on GPU 
-$ ./04_eval.py      # can be run separately from training ...
+$ ./04_eval.py      # can be run separately from training, without config file
 ```
 
 There is also some companion scripts that can be used in parallel to the pipeline scripts (they don't require any config file):
