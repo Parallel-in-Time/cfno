@@ -4,7 +4,7 @@
 
 Consider the generic non-linear autonomous ODE system :
 
-$\frac{dU}{dt} = f(U)$
+$\displaystyle \frac{dU}{dt} = f(U)$
 
 where $U$ is a vector that can represent a $n$-dimensional problem state
 (_i.e_ solution).
