@@ -20,6 +20,8 @@ dedalus/scripts
 *.png
 scripts/*.pdf
 scripts/*/*.pdf
+scripts/config_*.yaml
+scripts/runAll.sh
 scratch.py
 launch_scripts/*.sh
 env
