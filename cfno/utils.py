@@ -270,3 +270,40 @@ def activation_selection(choice):
         return F.mish
     else:
         raise ValueError('Unknown activation function')
+
+def print_rank0(message):
+    """
+    If distributed training is initiliazed, print only on rank 0
+    """
+    if torch.distributed.is_initialized():
+        if torch.distributed.get_rank() == 0:
+            print(message, flush=True)
+    else:
+        print(message, flush=True)
+
+
+def format_complexTensor(weight):
+    """
+    Convert torch.cfloat to torch.floa32
+    for torch DDP with NCCL 
+  
+    """
+    if weight.dtype == torch.complex64:
+        R = torch.view_as_real(weight)
+    else:
+        R  = weight
+    return R
+
+
+def deformat_complexTensor(weight):  
+    """
+    Convert torch.float to torch.cfloat
+    for computation
+  
+    """
+    if weight.dtype != torch.complex64:
+        R = torch.view_as_complex(weight)
+    else:
+        R  = weight
+    return R
+
