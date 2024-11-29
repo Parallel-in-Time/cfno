@@ -1,0 +1,50 @@
+sample:
+  inSize: 1
+  outStep: 10
+  inStep: 500
+
+data:
+  outType: update
+  outScaling: 100
+  dataFile: dataset_dt1e-2_update.h5
+  trainRatio: 0.8
+  seed: null
+  batchSize: 20
+  xStep: 1
+  yStep: 1
+
+model:
+  da: 4
+  du: 4
+  dv: 16
+  kX: 12
+  kY: 12
+  nLayers: 2
+  forceFFT: false
+  bias: false
+
+optim:
+  name: adam
+  lr: 0.0001
+  weight_decay: 1.0e-5
+  absLoss: false
+
+lr_scheduler:
+  scheduler: StepLR
+  step_size: 100.0
+  gamma: 0.98
+
+train:
+  trainDir: training_dt1e-2_update
+  nEpochs: 2001
+  checkpoint: model.pt
+  lossesFile: losses.txt
+  saveEvery: 100
+  savePermanent: false
+  noTensorboard: false
+  logPrint: false
+
+eval:
+  iSimu: 8
+  imgExt: png
+  evalDir: evalDir
