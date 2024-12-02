@@ -29,6 +29,8 @@ GPUS_PER_NODE=4
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 export OMP_NUM_THREADS=4
 export BASE_REPO="neural_operators"
+export NCCL_SOCKET_IFNAME=ib0
+# export TORCH_USE_CUDA_DSA=1
 
 source "$BASE_REPO"/utils/setup.sh
 echo "START TIME: $(date)"

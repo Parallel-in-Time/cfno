@@ -29,32 +29,34 @@ class Communicator:
                     flush=True,
                 )
         else:
+            env_dict = {
+                'MASTER_ADDR': os.getenv('MASTER_ADDR'),
+                'MASTER_PORT': os.getenv('MASTER_PORT'),
+                'WORLD_SIZE': int(os.getenv('WORLD_SIZE')),
+                }
+
             if rank == 0:
-                print("> initializing torch distributed ...", flush=True)
+                print(f"> initializing torch distributed with\n{env_dict}...", flush=True)
             # Manually set the device ids.
             if device_count > 0:
-                self.local_rank = int(os.getenv('LOCAL_RANK', '0'))
-                torch.cuda.set_device(self.local_rank)
-                self.device_id = torch.device(f'cuda:{self.local_rank}')
+                self.backend = "nccl"
             else:
-                self.device_id = None
+                self.backend = "gloo"
 
             # Call the init process
-            init_process_group_kwargs = {
-                'backend' : "nccl",
-                'world_size': device_count,
-                'rank': rank,
-            }
-
-            dist.init_process_group(**init_process_group_kwargs)
+            dist.init_process_group(self.backend)
             
-        self.world_size = dist.get_world_size()
-        self.rank = dist.get_rank()
+        
+        self.world_size = get_world_size()
+        self.rank = get_rank()
+        self.local_rank = get_local_rank()
+        self.device = torch.device('cuda', self.local_rank)
+        torch.cuda.set_device(self.device)
         # self.dp_group = list(range(self.world_size))
         self.local_process_group_size = gpus_per_node
         
         torch.cuda.empty_cache()
-        print(f"[{os.getpid()}, {self.device_id}] world_size = {self.world_size}, "
+        print(f"[{os.getpid()}] world_size = {self.world_size},"
         + f"rank = {self.rank}, backend={dist.get_backend()}"
         )
             
@@ -73,12 +75,12 @@ class Communicator:
             async_op (bool, optional): to make async operation
             op : torch collective operation
         """
-        return dist.all_reduce(tensor, async_op=async_op)
+        return dist.all_reduce(tensor, op, async_op=async_op)
         
 
-def get_local_rank():
+def get_rank():
     """
-    Function to get local_rank of process group
+    Function to get rank of process group
     """
     if not dist.is_initialized():
         return 0
@@ -93,3 +95,10 @@ def get_world_size():
         return 1
     else:
         return dist.get_world_size()
+
+    
+def get_local_rank():
+    """
+    Function to get local rank within a process
+    """
+    return int(os.getenv('LOCAL_RANK', '0'))

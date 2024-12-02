@@ -42,8 +42,9 @@ class FourierNeuralOp:
             if self.DDP_enabled: 
                 self.communicator = Communicator(gpus_per_node, self.rank)
                 assert self.communicator.world_size > 1, 'More than 1 GPU required for ditributed training'
-                self.device = self.communicator.device_id
+                self.device = self.communicator.device
                 self.rank = self.communicator.rank
+                self.local_rank = self.communicator.local_rank
          
         # Inference-only mode
         if data is None and model is None and optim is None and lr_scheduler is None:
@@ -101,7 +102,7 @@ class FourierNeuralOp:
         self.model = CFNO2D(**model).to(self.device)
         self.modelConfig = {**self.model.config}
         if self.DDP_enabled:
-            self.model = DDP(self.model, device_ids=[self.device])
+            self.model = DDP(self.model, device_ids=[self.local_rank])
         th.cuda.empty_cache()   # in case another model was setup before ...
 
     def setupOptimizer(self, optim=None):
@@ -230,13 +231,12 @@ class FourierNeuralOp:
         self.gradientNormEpoch = gradsEpoch
         
         if self.DDP_enabled:
-            dist.barrier()
-            train_loss = th.Tensor([avgLoss]).to(self.rank)
-            self.communicator.allreduce(train_loss)
-            train_loss = train_loss.item()/self.communicator.world_size
+            # Obtain the global average loss.
+            ddp_loss = th.Tensor([avgLoss]).to(self.device).clone()
+            self.communicator.allreduce(ddp_loss,op=dist.ReduceOp.AVG)
+            train_loss = ddp_loss.item()
         else:
             train_loss = avgLoss
-        
         print_rank0(f"Training: \n Avg loss: {train_loss:>8f} (id: {idLoss:>7f})\n")
         self.losses["model"]["train"] = train_loss
 
@@ -259,10 +259,10 @@ class FourierNeuralOp:
         avgLoss /= nBatches
         
         if self.DDP_enabled:
-            dist.barrier()
-            val_loss = th.Tensor([avgLoss]).to(self.rank)
-            self.communicator.allreduce(val_loss)
-            val_loss = val_loss.item()/self.communicator.world_size
+            # Obtain the global average loss.
+            ddp_loss = th.Tensor([avgLoss]).to(self.device).clone()
+            self.communicator.allreduce(ddp_loss,op=dist.ReduceOp.AVG)
+            val_loss = ddp_loss.item()
         else:
             val_loss = avgLoss
             

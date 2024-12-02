@@ -10,7 +10,7 @@ from cfno.utils import UnitGaussianNormalizer
 
 from torch.utils.data import Dataset, DataLoader, random_split, Subset, DistributedSampler
 from cfno.simulation.post import OutputFiles
-from cfno.communication import get_local_rank, get_world_size
+from cfno.communication import get_rank, get_world_size
 
 class FNOData():
     """
@@ -253,8 +253,8 @@ def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None, use_distri
     # Reconfigure DataLoaders to use a DistributedSampler for
     # distributed data parallel mode
     if use_distributed_sampler:
-        train_sampler = DistributedSampler(trainSet, num_replicas=get_world_size(), rank=get_local_rank(), shuffle=True)
-        val_sampler = DistributedSampler(valSet, num_replicas=get_world_size(), rank=get_local_rank(), shuffle=False)
+        train_sampler = DistributedSampler(trainSet, num_replicas=get_world_size(), rank=get_rank(), shuffle=True)
+        val_sampler = DistributedSampler(valSet, num_replicas=get_world_size(), rank=get_rank(), shuffle=False)
     else:
         train_sampler = None
         val_sampler = None
