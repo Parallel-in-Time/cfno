@@ -3,7 +3,7 @@
 #SBATCH --account=exalab  
 #SBATCH --partition=dc-gpu-devel          # change partition
 #SBATCH --cpus-per-task=48
-#SBATCH --nodes=1
+#SBATCH --nodes=2
 #SBATCH --gres=gpu:4
 #SBATCH --ntasks-per-node=1
 #SBATCH --threads-per-core=1    
@@ -12,22 +12,6 @@
 #SBATCH --error=%x_%j.err
 
 export SRUN_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK}
-ROOT_DIR=/p/project1/cexalab/john2/NeuralOperators
-
-if [[ "$SYSTEMNAME" = "juwelsbooster" || "$SYSTEMNAME" = "jusuf" ]]; then
-    echo "********* Using $SYSTEMNAME *********"
-    source "$ROOT_DIR"/py_venv/bin/activate   
-elif [[ "$SYSTEMNAME" = "jurecadc" ]]; then 
-    echo "********* Using $SYSTEMNAME *********"
-    source "$ROOT_DIR"/no_jureca_env/bin/activate
-else
-    echo "Currently only JURECA-DC, JUSUF and JUWELS Booster are supported"
-fi
-
-
-source "$ROOT_DIR"/modules.sh
-source "$ROOT_DIR"/RayleighBernardConvection/variables.sh
-export PYTHONPATH="$ROOT_DIR"/no_jureca_env/lib/python3.11/site-packages:${PYTHONPATH}
 # Enable logging
 set -euo pipefail
 set -x
@@ -42,7 +26,7 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3
 export NCCL_SOCKET_IFNAME=ib0
 
 echo "START TIME: $(date)"
-cd $ROOT_DIR/neural_operators
+cd neural_operators
 ### To run evaluation without DDP
 # srun  python ./scripts/04_eval.py --config=./scripts/config.yaml
 
