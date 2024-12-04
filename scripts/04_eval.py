@@ -5,7 +5,7 @@ import sys
 import argparse
 sys.path.insert(2, os.getcwd())
 import matplotlib.pyplot as plt
-
+import torch
 from cfno.utils import readConfig
 from cfno.data.preprocessing import HDF5Dataset
 from cfno.training.pySDC import FourierNeuralOp
@@ -112,3 +112,6 @@ if get_local_rank() == 0:
     plt.xlim(left=50)
     plt.ylim(top=1e-5)
     plt.savefig(f"{evalDir}/spectrum_HF.{imgExt}")
+
+if torch.distributed.is_initialized():
+    torch.distributed.destroy_process_group()
