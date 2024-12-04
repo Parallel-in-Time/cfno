@@ -1,9 +1,7 @@
 import math
 import numpy as np
-
 import torch as th
 import torch.nn as nn
-import torch.distributed as dist
 import pandas as pd
 from torch_dct import dct, idct
 

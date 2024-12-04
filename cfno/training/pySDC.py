@@ -1,12 +1,11 @@
 import os
 import time
 from pathlib import Path
-
 import torch as th
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
-
+from torch.utils.data import DataLoader, DistributedSampler
 from cfno.data.preprocessing import getDataLoaders
 from cfno.models.cfno2d import CFNO2D
 from cfno.losses import VectormNormLoss
@@ -35,13 +34,15 @@ class FourierNeuralOp:
         self.device = th.device('cuda:0' if th.cuda.is_available() else 'cpu')
         self.DDP_enabled = False
         self.rank = int(os.getenv('RANK', '0'))
+        self.world_size = int(os.getenv('WORLD_SIZE', '1'))
     
         if parallel_strategy is not None:
             gpus_per_node = parallel_strategy.pop("gpus_per_node", 4)
             self.DDP_enabled = parallel_strategy.pop("ddp", True)
             if self.DDP_enabled: 
                 self.communicator = Communicator(gpus_per_node, self.rank)
-                assert self.communicator.world_size > 1, 'More than 1 GPU required for ditributed training'
+                self.world_size = self.communicator.world_size
+                assert  self.world_size > 1, 'More than 1 GPU required for ditributed training'
                 self.device = self.communicator.device
                 self.rank = self.communicator.rank
                 self.local_rank = self.communicator.local_rank
@@ -240,7 +241,6 @@ class FourierNeuralOp:
         print_rank0(f"Training: \n Avg loss: {train_loss:>8f} (id: {idLoss:>7f})\n")
         self.losses["model"]["train"] = train_loss
 
-
     def valid(self):
         """Validate the model for one epoch"""
         nBatches = len(self.valLoader)
@@ -369,7 +369,7 @@ class FourierNeuralOp:
             self.setupOptimizer({"name": optim})
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             
-        # waiting for al ranks to load checkpoint
+        # waiting for all ranks to load checkpoint
         if self.DDP_enabled:
             dist.barrier()
 
@@ -380,20 +380,51 @@ class FourierNeuralOp:
         model = self.model
         multi = len(u0.shape) == 4
         if not multi: u0 = u0[None, ...]
-
-        inpt = th.tensor(u0, device=self.device, dtype=th.get_default_dtype())
-
+        
+        nsamples = len(u0)
+        full_outp = th.zeros_like(th.tensor(u0)).to(self.device)
+        if self.DDP_enabled:
+            # make nsamples divisible by world_size with drop_last=True
+            sampler = DistributedSampler(u0, num_replicas=self.world_size, rank=self.rank, shuffle=False, drop_last=True)
+            batch_size = len(sampler)  # currently only one pass through data loader 
+            nsamples = batch_size * self.world_size
+            full_outp = full_outp[:nsamples]
+        else:
+            sampler = None
+            batch_size = nsamples
+        ddpLoader = DataLoader(u0, batch_size=batch_size, sampler=sampler, shuffle=False, pin_memory=True, num_workers=4)
+        print_rank0(f"Data of size {nsamples} distributed across {self.world_size} in batches of {batch_size}")
+        print_rank0(f'Perfoming {nEval} evaluations....')
         model.eval()
         with th.no_grad():
             for i in range(nEval):
-                outp = model(inpt)
-                if self.outType == "update":
-                    outp /= self.outScaling
-                    outp += inpt
-                inpt = outp
+                if i == 0:
+                    for data in ddpLoader:
+                        inpt = data.to(self.device)
+                        outp = model(inpt)
+                        if self.outType == "update":
+                            outp /= self.outScaling
+                            outp += inpt
+                else:
+                    inpt = outp
+                    outp = model(inpt)
+                    if self.outType == "update":
+                        outp /= self.outScaling
+                        outp += inpt
+            
+                if i == (nEval-1):
+                    if self.DDP_enabled:
+                        dist.barrier()
+                        outp = outp.contiguous()
+                        # gather all outputs of size batchsize 
+                        # into one tensor of size input
+                        self.communicator.allgather(full_outp, outp)
+                    else:
+                        full_outp = outp  
+                        
 
         if not multi:
-            outp = outp[0]
+            full_outp = full_outp[0]
 
-        u1 = outp.cpu().detach().numpy()
+        u1 = full_outp.cpu().detach().numpy()
         return u1
