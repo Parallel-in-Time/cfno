@@ -340,10 +340,11 @@ class FourierNeuralOp:
     def load(self, filePath, modelOnly=False):
         fullPath = self.fullPath(filePath)
         if self.DDP_enabled:
-            map_location = {f'cuda:0': f'cuda:{self.communicator.rank}'}
+            map_location = {f'cuda:0': f'{self.device}'}
         else:
             map_location = self.device
         checkpoint = th.load(fullPath, weights_only=True, map_location=map_location)
+      
         # Load model state (eventually config before)
         if 'model' in checkpoint:
             if 'nonLinearity' in checkpoint['model']:
@@ -367,7 +368,10 @@ class FourierNeuralOp:
             optim = checkpoint['optim']
             self.setupOptimizer({"name": optim})
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-
+            
+        # waiting for al ranks to load checkpoint
+        if self.DDP_enabled:
+            dist.barrier()
 
     # -------------------------------------------------------------------------
     # Inference method
