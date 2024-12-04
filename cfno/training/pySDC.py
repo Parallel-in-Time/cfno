@@ -1,6 +1,7 @@
 import os
 import time
 from pathlib import Path
+from collections import OrderedDict
 import torch as th
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -354,7 +355,27 @@ class FourierNeuralOp:
                 print_rank0("WARNING : different model settings in config file,"
                       " overwriting with config from checkpoint ...")
             self.setupModel(checkpoint['model'])
-        self.model.load_state_dict(checkpoint['model_state_dict'])
+            
+        state_dict = checkpoint['model_state_dict']
+        # creating new OrderedDict for model trained without DDP but used now with DDP 
+        # or model trained using DPP but used now without DDP
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            if self.DDP_enabled:
+                if k[:7] == 'module.':
+                    name = k
+                else:
+                    name = 'module.'+ k
+            else:
+                if k[:7] == 'module.':
+                    name = k[7:]
+                else:
+                    name = k    
+            if v.dtype == th.complex64:
+                new_state_dict[name] = th.view_as_real(v)
+            else:
+                new_state_dict[name] = v
+        self.model.load_state_dict(new_state_dict)
         self.outType = checkpoint["outType"]
         self.outScaling = checkpoint["outScaling"]
         # Learning status

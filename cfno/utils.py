@@ -242,13 +242,13 @@ def print_rank0(message):
 
 def format_complexTensor(weight):
     """
-    Convert torch.cfloat to torch.floa32
-    for torch DDP with NCCL 
+    Convert torch.cfloat to torch.float32
+    for torch DDP with NCCL communication
   
     """
-    if dist.is_initialized():
-        if weight.dtype == torch.complex64:
-            R = torch.view_as_real(weight)
+  
+    if weight.dtype == torch.complex64:
+        R = torch.view_as_real(weight)
     else:
         R  = weight
     return R
@@ -256,13 +256,13 @@ def format_complexTensor(weight):
 
 def deformat_complexTensor(weight):  
     """
-    Convert torch.float to torch.cfloat
+    Convert torch.float32 to torch.cfloat
     for computation
   
     """
-    if dist.is_initialized():
-        if weight.dtype != torch.complex64:
-            R = torch.view_as_complex(weight)
+
+    if weight.dtype != torch.complex64:
+        R = torch.view_as_complex(weight)
     else:
         R  = weight
     return R

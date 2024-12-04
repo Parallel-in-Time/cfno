@@ -57,7 +57,8 @@ evalDir = args.evalDir
 # -----------------------------------------------------------------------------
 dataset = HDF5Dataset(dataFile)
 nSamples = dataset.infos["nSamples"][()]
-print(f'nSamples: {nSamples}')
+if get_local_rank() == 0:
+    print(f'nSamples: {nSamples}')
 nSimu = dataset.infos["nSimu"][()]
 assert iSimu < nSimu, f"cannot evaluate with iSimu={iSimu} with only {nSimu} simu"
 
@@ -66,7 +67,8 @@ if args.ddp:
     world_size = int(os.getenv("WORLD_SIZE",1))
     if nSamples % world_size != 0:
         nSamples = nSamples - (nSamples % world_size)
-        print(f'New nSamples for DDP evaluation: {nSamples}')
+        if get_local_rank() == 0:
+            print(f'New nSamples for DDP evaluation: {nSamples}')
 else:
     parallel_strategy = None
     
@@ -80,7 +82,7 @@ if dataset.outType == "update":
     uRefValues /= dataset.outScaling
     uRefValues += u0Values
 uPredValues = model(u0Values, nEval=2)   # evaluate model on all inputs
-print(f"{get_local_rank()}, output: {uPredValues}")
+# print(f"{get_local_rank()}, output: {uPredValues}")
 
 
 # -----------------------------------------------------------------------------
