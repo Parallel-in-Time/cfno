@@ -107,8 +107,9 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
 
     if writeSpaceDistr:
         print(f"Rank {MPI_RANK}/{MPI_SIZE} :\n"
-              f"\tx: {x.shape}, [{x.min(initial=-1)}, {x.max(initial=-1)}]\n"
-              f"\tz: {z.shape}, [{z.min(initial=-1)}, {z.max(initial=-1)}]")
+              f"\tx: {x.shape}, [{x.min(initial=np.inf)}, {x.max(initial=-np.inf)}]\n"
+              f"\tz: {z.shape}, [{z.min(initial=np.inf)}, {z.max(initial=-np.inf)}]\n"
+              f"cpu: {os.sched_getaffinity(0)}")
 
     # Problem
     # First-order form: "div(f)" becomes "trace(grad_f)"
