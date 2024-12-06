@@ -15,6 +15,43 @@
 - [SHT for torch](https://github.com/NVIDIA/torch-harmonics)
 - [reference code](https://github.com/neuraloperator/neuraloperator.git)
 
+# Distributed Data Parallel (DDP)
+
+Model training and inference can be deployed with distributed data parallel for faster processing of samples. Distributed Data Parallel (DDP) has been implemented using [PyTorch DDP](https://pytorch.org/docs/stable/notes/ddp.html#distributed-data-parallel) where the model is replicated and trained on different samples followed by synchronisation of weights.
+To enable DDP set the following parameters in the `config.yaml` used:
+```
+parallel_strategy:
+  ddp: True              # enable Distributed Data Parallel
+  gpus_per_node: 4
+```
+DDP job on GPUs is launched using `torchrun`  with SLURM as:
+```
+##### Network parameters #####
+MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
+MASTER_PORT=6000
+GPUS_PER_NODE=4
+
+srun python -u -m torch.distributed.run  \
+    --nproc_per_node $GPUS_PER_NODE \
+    --nnodes $SLURM_JOB_NUM_NODES \
+    --node_rank $SLURM_PROCID \
+    --rdzv_endpoint $MASTER_ADDR:$MASTER_PORT \
+    --rdzv_backend c10d \
+    --rdzv_conf=is_host=$(if ((SLURM_NODEID)); then echo False; else echo True; fi) \
+    --max_restarts 0 \
+    --tee 3 \
+    $python_file.py \
+    --config config.yaml
+```
+For training `$python_file.py` is [03_train.py](../scripts/03_train.py) and for inference it is [04_eval.py](../scripts/04_eval.py).
+
+Example submission scripts for JSC systems can be found in [launch_scripts](../utils/launch_scripts/) folder.
+
+For inference, the initial input to DDP model setting is given through DataLoader with DistributedSampler such that `nSamples` are divided equally among the participating GPUs and the batch_size is set as `nSamples/nGPUs` so that there is only single pass through the DataLoader. This is done since the current models are very small and would be efficient to process as many samples at once as possible.
+
+For performing `nEval` > 1 , the input to the DDP model is the output of the DDP model at previous iteration. Once the evaluation is completed the output of the DDP models are concatenated using `allgather` to form the complete output.
+
+
 ## Code for the original approach (old documentation)
 
 ### Model Training
@@ -57,3 +94,4 @@ vx1, vy1, b1, p1 = u1
 # Time-step of the model can be retrieved like this :
 dt = model.dt 	# -> can be either an attribute or a property
 ```
+
