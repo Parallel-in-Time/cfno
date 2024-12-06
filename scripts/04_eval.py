@@ -5,13 +5,12 @@ import sys
 import argparse
 sys.path.insert(2, os.getcwd())
 import matplotlib.pyplot as plt
-
+import torch
 from cfno.utils import readConfig
 from cfno.data.preprocessing import HDF5Dataset
 from cfno.training.pySDC import FourierNeuralOp
 from cfno.simulation.post import computeMeanSpectrum, getModes
-
-
+from cfno.communication import get_local_rank
 # -----------------------------------------------------------------------------
 # Script parameters
 # -----------------------------------------------------------------------------
@@ -42,6 +41,10 @@ if args.config is not None:
         args.checkpoint = config.train.checkpoint
         if "trainDir" in config.train:
             FourierNeuralOp.TRAIN_DIR = config.train.trainDir
+    if "parallel_strategy" in config:
+        args.__dict__.update(**config["parallel_strategy"])
+    else:
+        args.ddp = False
 
 dataFile = args.dataFile
 checkpoint = args.checkpoint
@@ -53,44 +56,62 @@ evalDir = args.evalDir
 # Script execution
 # -----------------------------------------------------------------------------
 dataset = HDF5Dataset(dataFile)
-model = FourierNeuralOp(checkpoint=checkpoint)
-os.makedirs(evalDir, exist_ok=True)
-
 nSamples = dataset.infos["nSamples"][()]
-print(f'nSamples: {nSamples}')
+if get_local_rank() == 0:
+    print(f'nSamples: {nSamples}')
 nSimu = dataset.infos["nSimu"][()]
 assert iSimu < nSimu, f"cannot evaluate with iSimu={iSimu} with only {nSimu} simu"
-indices = slice(iSimu*nSamples, (iSimu+1)*nSamples)
 
+if args.ddp:
+    parallel_strategy={"ddp": args.ddp, "gpus_per_node": args.gpus_per_node}
+    world_size = int(os.getenv("WORLD_SIZE",1))
+    if nSamples % world_size != 0:
+        nSamples = nSamples - (nSamples % world_size)
+        if get_local_rank() == 0:
+            print(f'New nSamples for DDP evaluation: {nSamples}')
+else:
+    parallel_strategy = None
+    
+model = FourierNeuralOp(checkpoint=checkpoint, parallel_strategy=parallel_strategy)
+os.makedirs(evalDir, exist_ok=True)
+
+indices = slice(iSimu*nSamples, (iSimu+1)*nSamples)
 u0Values = dataset.inputs[indices]
 uRefValues = dataset.outputs[indices].copy()
 if dataset.outType == "update":
     uRefValues /= dataset.outScaling
     uRefValues += u0Values
-uPredValues = model(u0Values)   # evaluate model on all inputs
+uPredValues = model(u0Values, nEval=2)   # evaluate model on all inputs
+# print(f"{get_local_rank()}, output: {uPredValues}")
+
 
 # -----------------------------------------------------------------------------
 # -- Spectrum computation
 # -----------------------------------------------------------------------------
-sxRef, szRef = computeMeanSpectrum(uRefValues)
-sxPred, szPred = computeMeanSpectrum(uPredValues)
-k = getModes(dataset.grid[0])
 
-plt.figure()
-p = plt.loglog(k, sxRef.mean(axis=0), '--', label="sx (ref)")
-plt.loglog(k, sxPred.mean(axis=0), c=p[0].get_color(), label="sx (model)")
+if get_local_rank() == 0:
+    sxRef, szRef = computeMeanSpectrum(uRefValues)
+    sxPred, szPred = computeMeanSpectrum(uPredValues)
+    k = getModes(dataset.grid[0])
 
-p = plt.loglog(k, szRef.mean(axis=0), '--', label="sz (ref)")
-plt.loglog(k, szPred.mean(axis=0), c=p[0].get_color(), label="sz (model)")
+    plt.figure()
+    p = plt.loglog(k, sxRef.mean(axis=0), '--', label="sx (ref)")
+    plt.loglog(k, sxPred.mean(axis=0), c=p[0].get_color(), label="sx (model)")
 
-plt.legend()
-plt.grid()
-plt.ylabel("spectrum")
-plt.xlabel("wavenumber")
-plt.ylim(bottom=1e-10)
-plt.tight_layout()
-plt.savefig(f"{evalDir}/spectrum.{imgExt}")
+    p = plt.loglog(k, szRef.mean(axis=0), '--', label="sz (ref)")
+    plt.loglog(k, szPred.mean(axis=0), c=p[0].get_color(), label="sz (model)")
 
-plt.xlim(left=50)
-plt.ylim(top=1e-5)
-plt.savefig(f"{evalDir}/spectrum_HF.{imgExt}")
+    plt.legend()
+    plt.grid()
+    plt.ylabel("spectrum")
+    plt.xlabel("wavenumber")
+    plt.ylim(bottom=1e-10)
+    plt.tight_layout()
+    plt.savefig(f"{evalDir}/spectrum.{imgExt}")
+
+    plt.xlim(left=50)
+    plt.ylim(top=1e-5)
+    plt.savefig(f"{evalDir}/spectrum_HF.{imgExt}")
+
+if torch.distributed.is_initialized():
+    torch.distributed.destroy_process_group()

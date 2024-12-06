@@ -8,8 +8,9 @@ import glob
 import numpy as np
 from cfno.utils import UnitGaussianNormalizer
 
-from torch.utils.data import Dataset, DataLoader, random_split, Subset
+from torch.utils.data import Dataset, DataLoader, random_split, Subset, DistributedSampler
 from cfno.simulation.post import OutputFiles
+from cfno.communication import get_rank, get_world_size
 
 class FNOData():
     """
@@ -233,7 +234,7 @@ def createDataset(
     print(" -- done !")
     
 
-def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None):
+def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None, use_distributed_sampler=False):
     dataset = HDF5Dataset(dataFile)
     nBatches = len(dataset)
     trainSize = int(trainRatio*nBatches)
@@ -248,8 +249,17 @@ def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None):
         generator = torch.Generator().manual_seed(seed)
         trainSet, valSet = random_split(
             dataset, [trainSize, valSize], generator=generator)
+        
+    # Reconfigure DataLoaders to use a DistributedSampler for
+    # distributed data parallel mode
+    if use_distributed_sampler:
+        train_sampler = DistributedSampler(trainSet, num_replicas=get_world_size(), rank=get_rank(), shuffle=True)
+        val_sampler = DistributedSampler(valSet, num_replicas=get_world_size(), rank=get_rank(), shuffle=False)
+    else:
+        train_sampler = None
+        val_sampler = None
 
-    trainLoader = DataLoader(trainSet, batch_size=batchSize, shuffle=True)
-    valLoader = DataLoader(valSet, batch_size=batchSize, shuffle=False)
+    trainLoader = DataLoader(trainSet, batch_size=batchSize, sampler=train_sampler, shuffle=(train_sampler is None), pin_memory=True, num_workers=4)
+    valLoader = DataLoader(valSet, batch_size=batchSize, sampler=val_sampler, shuffle=False, pin_memory=True, num_workers=4)
 
     return trainLoader, valLoader, dataset

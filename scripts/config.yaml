@@ -41,6 +41,10 @@ lr_scheduler:
   step_size: 100.0
   gamma: 0.98
 
+parallel_strategy:
+  ddp: True      # Distributed Data Parallel
+  gpus_per_node: 4
+
 train:
   trainDir: training_dt1e-3_bias
   nEpochs: 1500

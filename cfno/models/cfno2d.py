@@ -1,12 +1,11 @@
 import math
 import numpy as np
-
 import torch as th
 import torch.nn as nn
 import pandas as pd
 from torch_dct import dct, idct
 
-from cfno.utils import CudaMemoryDebugger, format_tensor_size, activation_selection
+from cfno.utils import CudaMemoryDebugger, format_tensor_size, format_complexTensor, deformat_complexTensor
 
 class CF2DConv(nn.Module):
     """2D Neural Convolution, FFT in X, DCT in Y (can force FFT in Y for comparison)"""
@@ -20,9 +19,10 @@ class CF2DConv(nn.Module):
         self.kY = kY
         self.forceFFT = forceFFT
         self.reorder = reorder
-
-        self.R = nn.Parameter(
-            th.rand(dv, dv, kX*(2 if forceFFT else 1), kY, dtype=th.cfloat))
+        # complexfloat module parameter not compatible with NCCL
+        operator_weights = th.rand(dv, dv, kX*(2 if forceFFT else 1), kY, dtype=th.cfloat) 
+        self.R = nn.Parameter(format_complexTensor(operator_weights))
+        
 
         if forceFFT:
             if reorder:
@@ -110,9 +110,10 @@ class CF2DConv(nn.Module):
         Tx, Ty = self.T(self.kX, fX, x.device, sym=self.forceFFT), self.T(self.kY, fY, x.device)
         # -- Tx[kX, fX], Ty[kY, fY]
         x = th.einsum("ax,by,eixy->eiab", Tx, Ty, x)
-
+        
         # Apply R[dv, dv, kX, kY] -> [nBatch, dv, kX, kY]
-        x = th.einsum("ijab,ejab->eiab", self.R, x)
+        R = deformat_complexTensor(self.R)
+        x = th.einsum("ijab,ejab->eiab", R, x)
 
         # Padding on high frequency modes -> [nBatch, dv, fX, fY]
         x = th.einsum("xa,yb,eiab->eixy", Tx.T, Ty.T, x)
