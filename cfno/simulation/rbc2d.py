@@ -13,7 +13,7 @@ MPI_RANK = COMM_WORLD.Get_rank()
 def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
     tBeg=0, tEnd=150, dtWrite=0.1, useSDC=False,
     writeVort=False, writeFull=False, initFields=None,
-    writeSpaceDistr=False):
+    writeSpaceDistr=False, logEvery=100):
     """
     Run RBC simulation in a given folder.
 
@@ -176,7 +176,7 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         t0 = MPI.Wtime()
         for _ in range(nSteps+1): # need to do one more step to write last solution ...
             solver.step(timestep)
-            if (solver.iteration-1) % 100 == 0:
+            if (solver.iteration-1) % logEvery == 0:
                 log(f'Iteration={solver.iteration}, Time={solver.sim_time}, dt={timestep}')
         t1 = MPI.Wtime()
         infos = {
