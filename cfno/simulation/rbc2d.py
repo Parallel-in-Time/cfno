@@ -13,7 +13,7 @@ MPI_RANK = COMM_WORLD.Get_rank()
 def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
     tBeg=0, tEnd=150, dtWrite=0.1, useSDC=False,
     writeVort=False, writeFull=False, initFields=None,
-    writeSpaceDistr=False, logEvery=100):
+    writeSpaceDistr=False, logEvery=100, distrMesh=None):
     """
     Run RBC simulation in a given folder.
 
@@ -81,7 +81,7 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
 
     # Bases
     coords = d3.CartesianCoordinates('x', 'z')
-    dist = d3.Distributor(coords, dtype=dtype)
+    dist = d3.Distributor(coords, dtype=dtype, mesh=distrMesh)
     xbasis = d3.RealFourier(coords['x'], size=Nx, bounds=(0, Lx), dealias=dealias)
     zbasis = d3.ChebyshevT(coords['z'], size=Nz, bounds=(0, Lz), dealias=dealias)
 
