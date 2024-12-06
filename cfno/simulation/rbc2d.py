@@ -12,7 +12,8 @@ MPI_RANK = COMM_WORLD.Get_rank()
 
 def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
     tBeg=0, tEnd=150, dtWrite=0.1, useSDC=False,
-    writeVort=False, writeFull=False, initFields=None):
+    writeVort=False, writeFull=False, initFields=None,
+    writeSpaceDistr=False):
     """
     Run RBC simulation in a given folder.
 
@@ -42,7 +43,8 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         Write Tau variables to snapshot
     initFields: dictionary, optional
         Initial conditions
-
+    writeSpaceDistr: bool, optional
+        Write into a file the space parallel distribution from dedalus
     """
     if os.path.isfile(f"{dirName}/01_finalized.txt"):
         if MPI_RANK == 0:
@@ -103,6 +105,11 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
     grad_u = d3.grad(u) + ez*lift(tau_u1) # First-order reduction
     grad_b = d3.grad(b) + ez*lift(tau_b1) # First-order reduction
 
+    if writeSpaceDistr:
+        print(f"Rank {MPI_RANK}/{MPI_SIZE} :\n"
+              f"\tx: {x.shape}, [{x.min()}, {x.max()}]\n"
+              f"\tz: {z.shape}, [{z.min()}, {z.max()}]")
+
     # Problem
     # First-order form: "div(f)" becomes "trace(grad_f)"
     # First-order form: "lap(f)" becomes "div(grad_f)"
@@ -157,17 +164,26 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         snapshots.add_task(-d3.div(d3.skew(u)), name='vorticity')
 
     # Main loop
-    nSteps = tEnd/timestep
+    nSteps = (tEnd-tBeg)/timestep
     if int(nSteps) != round(nSteps, ndigits=3):
         raise ValueError(
             f"tEnd ({tEnd}) is not divisible by timestep ({timestep})")
     nSteps = int(nSteps)
+    if nSteps == 0:
+        return
     try:
         log('Starting main loop')
+        t0 = MPI.Wtime()
         for _ in range(nSteps+1): # need to do one more step to write last solution ...
             solver.step(timestep)
             if (solver.iteration-1) % 100 == 0:
                 log(f'Iteration={solver.iteration}, Time={solver.sim_time}, dt={timestep}')
+        t1 = MPI.Wtime()
+        infos = {
+            "tComp": t1-t0,
+            "nSteps": nSteps+1,
+            "nDOF": Nx*Nz
+        }
         if MPI_RANK == 0:
             with open(f"{dirName}/01_finalized.txt", "w") as f:
                 f.write("Done !")
@@ -176,3 +192,5 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         raise
     finally:
         solver.log_stats()
+    
+    return infos
