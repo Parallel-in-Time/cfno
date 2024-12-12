@@ -113,9 +113,7 @@ sdcBaseFields = sdcBaseFile.file(0)['tasks']
 # SDC-FNO solution ------------------------------------------------------------
 assert MPI_SIZE == 1, "cannot run FNO in space parallel (yet ...)"
 SpectralDeferredCorrectionIMEX.setupNN(
-    "FNOP-2", checkpoint=checkpoint, nEval=nEvalFNO)
-SpectralDeferredCorrectionIMEX.setParameters(
-    implSweep="MIN-SR-FLEX", explSweep="PIC", nSweeps=nSweeps)
+    "FNOP-2", checkpoint=checkpoint, nEval=nEvalFNO, initSweep="NN")
 
 dirName = f"{runDir}/run_sdc_fno"
 print(f" -- running SDC-FNO simulation with dt={dtFNO:1.1e} in {dirName}")
@@ -123,6 +121,34 @@ infos, _ = runSim(dirName, Rayleigh, resFactor=1, baseDt=dtFNO, useSDC=True,
        tEnd=tEnd, dtWrite=dtWrite, initFields=initFields)
 sdcFNOFiles = OutputFiles(dirName)
 sdcFNOFields = sdcFNOFiles.file(0)['tasks']
+
+
+# SDC-FNO COPY solution ----------------------------------------------------
+SpectralDeferredCorrectionIMEX.setupNN(
+    "FNOP-2", checkpoint=checkpoint, nEval=nEvalFNO, initSweep="NN",
+    modelIsCopy=True)
+
+dirName = f"{runDir}/run_sdc_fnoCopy"
+print(f" -- running SDC-FNO Copy simulation with dt={dtFNO:1.1e} in {dirName}")
+runSim(dirName, Rayleigh, resFactor=1, baseDt=dtFNO, useSDC=True,
+       tEnd=tEnd, dtWrite=dtWrite, initFields=initFields)
+sdcFNOCopyFiles = OutputFiles(dirName)
+sdcFNOCopyFields = sdcFNOCopyFiles.file(0)['tasks']
+
+
+# SDC-FNO inter. solution ----------------------------------------------------
+SpectralDeferredCorrectionIMEX.setupNN(
+    "FNOP-2", checkpoint=checkpoint, nEval=nEvalFNO, initSweep="NNI")
+SpectralDeferredCorrectionIMEX.setParameters(
+    implSweep="BE", explSweep="FE", nSweeps=nSweeps)
+
+dirName = f"{runDir}/run_sdc_fnoInter"
+print(f" -- running SDC-FNO Inter simulation with dt={dtFNO:1.1e} in {dirName}")
+runSim(dirName, Rayleigh, resFactor=1, baseDt=dtFNO, useSDC=True,
+       tEnd=tEnd, dtWrite=dtWrite, initFields=initFields)
+sdcFNOInterFiles = OutputFiles(dirName)
+sdcFNOInterFields = sdcFNOInterFiles.file(0)['tasks']
+
 
 # FNO-only solution ------------------------------------------------------------
 print(f" -- evaluating FNO only with dt={dtFNO:1.1e}")
@@ -135,7 +161,6 @@ for i in range(nSteps):
     uNext = model(uNext)
     if (i+1) % int(round(dtWrite/dtFNO, ndigits=3)) == 0:
         uFNO_only.append(uNext)
-uFNO_only = np.array(uFNO_only).swapaxes(0, 1)
 
 
 # Error computation -----------------------------------------------------------
@@ -144,6 +169,9 @@ uRef = extractU(refFields, idx)
 uRK = extractU(rkBaseFields, idx)
 uSDC = extractU(sdcBaseFields, idx)
 uFNO = extractU(sdcFNOFields, idx)
+uFNO_copy = extractU(sdcFNOCopyFields, idx)
+uFNO_only = np.array(uFNO_only).swapaxes(0, 1)
+uFNO_inter = extractU(sdcFNOInterFields, idx)
 uCopy = extractU(initFields, slice(-1, None))
 
 def error(uRef, uNum):
@@ -154,22 +182,29 @@ def error(uRef, uNum):
 errRK = error(uRef, uRK)
 errSDC = error(uRef, uSDC)
 errFNO = error(uRef, uFNO)
+errFNO_copy = error(uRef, uFNO_copy)
+errFNO_inter = error(uRef, uFNO_copy)
 errFNO_only = error(uRef, uFNO_only)
 errCopy = error(uRef, uCopy)
 
-xValues = range(1, errRK.shape[-1]+1)
+xValues = np.arange(1, errRK.shape[-1]+1)*dtWrite
 for iVar, var in enumerate(["vx", "vz", "b", "p"]):
     plt.figure(f"Error for {var}")
-    for err, name in [
-            (errRK, "RK443"), (errSDC, "SDC-base"), (errFNO, "SDC-FNO"),
-            (errFNO_only, "FNO-only"), (errCopy, "copy"),
+    for err, name, style in [
+            (errRK, "RK443", 's-'), (errSDC, "SDC-base", '^-'),
+            (errFNO, "SDC-FNO", 'o-'),
+            (errFNO_copy, "SDC-FNO-copy", 'o--'),
+            (errFNO_inter, "SDC-FNO-inter", '^--'),
+            (errFNO_only, "FNO-only", 'p-'), (errCopy, "copy", '*--'),
             ]:
-        plt.semilogy(xValues, err[iVar], label=name)
+        plt.semilogy(
+            xValues, err[iVar], style, label=name)
     plt.legend()
-    plt.xlabel("time-step")
+    plt.xlabel("time")
+    plt.ylabel("error")
     plt.tight_layout()
     plt.grid(True)
-    plt.savefig(f"{runDir}/error_{var}_{idx}.pdf")
+    plt.savefig(f"{runDir}/error_{var}.pdf")
 
 # xGrid, yGrid = sdcBaseFile.x, sdcBaseFile.y
 # for iVar, var in enumerate(["vx", "vz", "b", "p"]):
