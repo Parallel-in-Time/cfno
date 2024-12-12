@@ -56,7 +56,7 @@ uRef = extractU(refFields)
 
 # SDC runs
 SpectralDeferredCorrectionIMEX.setParameters(
-    nSweeps=1,
+    nSweeps=4,
     nNodes=4,
     implSweep="MIN-SR-FLEX",
     explSweep="PIC")
@@ -95,3 +95,5 @@ plt.loglog(dtSizes, errors, 'o-', label="RK443")
 plt.xlabel(r"$\Delta{t}$")
 plt.ylabel("L2 mean error")
 plt.legend()
+plt.tight_layout()
+plt.savefig("timeConv.pdf")

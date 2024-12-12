@@ -8,6 +8,7 @@ dedalus/run*
 dedalus/frames*
 dedalus/scripts
 dedalus/perfo/*.pdf
+dedalus/*.pdf
 events*
 *.pt
 *.txt
