@@ -28,6 +28,17 @@ nX, nZ, nSteps = 512, 128, 1/(1e-2/4)
 tComp = np.array([456.6, 269.1, 132.3, 70.97, 42.08, 29.43, 20.64, 18])
 nProc = np.array([1, 2, 4, 8, 16, 32, 64, 128])
 
+# # pySDC
+# nX, nZ, nSteps = 256, 64, 1/(1e-2/2)
+# tComp = np.array([198, 113, 69.7, 47.0, 38.4, 37.4, 40.9])
+# nProc = np.array([1, 2, 4, 8, 16, 32, 64])
+
+# # dedalus-SDC
+# nX, nZ, nSteps = 256, 64, 1/(1e-2/2)+1
+# tComp = np.array([68.3, 40.0, 22.4, 13.8, 10.1, 8.7, 8.6])
+# nProc = np.array([1, 2, 4, 8, 16, 32, 64])
+
+
 tScaled = tComp/(nSteps)
 speedup = tComp[0]/nProc[0]/tComp
 efficiency = speedup/nProc
