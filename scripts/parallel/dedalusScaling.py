@@ -1,9 +1,9 @@
 from cfno.simulation.rbc2d import runSim, MPI_RANK, MPI_SIZE
 
-tEnd = 10
+tEnd = 1
 
-infos = runSim(
-    f"scaling_{MPI_SIZE}", 
+infos, solver, b = runSim(
+    f"scaling_{MPI_SIZE}",
     tEnd=tEnd, dtWrite=2*tEnd, writeSpaceDistr=True, logEvery=10000,
     distrMesh=None)
 if MPI_RANK == 0:

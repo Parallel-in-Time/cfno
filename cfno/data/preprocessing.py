@@ -6,7 +6,6 @@ import h5py
 import torch
 import glob
 import numpy as np
-from cfno.utils import UnitGaussianNormalizer
 
 from torch.utils.data import Dataset, DataLoader, random_split, Subset
 from cfno.simulation.post import OutputFiles
@@ -35,7 +34,7 @@ class FNOData():
         Args:
             nx (int): size of nx
             ny (int): size of ny
-            dt (float): delta timestep 
+            dt (float): delta timestep
             dim (str): FNO2D or FNO3D strategy
             start_time (float): start time
             stop_time (float): stop time
@@ -60,7 +59,7 @@ class FNOData():
         self.stop_time = stop_time
         self.timestep = timestep
         self.nx_state = 4*self.nx  # stacking [velx,velz,buoyancy,pressure]
-  
+
     def get_concat_data(self, task:str, nsamples:int, reader, multistep:bool=True):
         """
         Data for FNO model
@@ -74,19 +73,19 @@ class FNOData():
         Returns:
             inputs (torch.tensor): input for FNO
             outputs (torch.tensor): output for FNO
-            
+
         """
-      
-      
+
+
         print(f'{task} data: {reader[task].shape}')
         # [samples, nx_state, ny, time]
         self.start_time_index = 0
         self.stop_time_index = reader[task].shape[-1]
-     
+
         inputs = torch.tensor(reader[task][:nsamples, ::self.xStep, ::self.yStep, \
                                         self.start_time_index: self.start_time_index + (self.T_in*self.tStep): self.tStep], \
                                         dtype=torch.float)
-        
+
         outputs = torch.tensor(reader[task][:nsamples, ::self.xStep, ::self.yStep, \
                                             self.start_time_index + (self.T_in*self.tStep): self.start_time_index + \
                                             (self.T_in + self.T)*self.tStep: self.tStep],\
@@ -96,16 +95,16 @@ class FNOData():
         assert (self.nx_state == outputs.shape[-3])
         assert (self.ny == outputs.shape[-2])
         assert (self.T ==outputs.shape[-1])
-        
+
         if self.dim == 'FNO3D':
             # input_normalizer = UnitGaussianNormalizer(inputs)
             # inputs = input_normalizer.encode(inputs)
             # output_normalizer = UnitGaussianNormalizer(outputs)
             # outputs = output_normalizer.encode(outputs)
-            
+
             inputs = inputs.reshape(nsamples, self.nx_state, self.ny, 1, self.T_in).repeat([1,1,1,self.T,1])
             print(f"Input data after reshaping for {task}:{inputs.shape}")
-        
+
         print(f'Total {task} data: {inputs.shape[0]}')
         return inputs, outputs
 
@@ -185,13 +184,13 @@ def createDataset(
     dtInput = dtData*outStep  # noqa: F841 (used lated by an eval call)
     dtSample = dtData*inStep  # noqa: F841 (used lated by an eval call)
     xGrid, yGrid = outFiles.x, outFiles.y  # noqa: F841 (used lated by an eval call)
-    
+
     iBeg = int(kwargs.get("iBeg", 0))
     iEnd = int(kwargs.get("iEnd", sum(outFiles.nFields)))
     sRange = range(iBeg, iEnd-inSize-outStep+1, inStep)
     nSamples = len(sRange)
     print(f'selector: {sRange},  outStep: {outStep}, inStep: {inStep}, iBeg: {iBeg}, iEnd: {iEnd}')
-    
+
     infoParams = [
         "inSize", "outStep", "inStep", "outType", "outScaling", "iBeg", "iEnd",
         "dtData", "dtInput", "xGrid", "yGrid", "nSimu", "nSamples", "dtSample",
@@ -231,7 +230,7 @@ def createDataset(
             outputs[iSim*nSamples + iSample] = outp
     dataset.close()
     print(" -- done !")
-    
+
 
 def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None):
     dataset = HDF5Dataset(dataFile)
