@@ -1,5 +1,14 @@
 import torch
 
+# Store all loss classes in a dictionary using the register decorator 
+LOSSES_CLASSES = {}
+
+def register(cls):
+    assert hasattr(cls, '__call__') and callable(cls), "loss class must implement the __call__ method"
+    LOSSES_CLASSES[cls.__name__] = cls
+    return cls
+
+@register
 class LpLoss(object):
     """
     Model loss
@@ -54,11 +63,12 @@ class LpLoss(object):
 
         return diff_norms/y_norms
 
-    def __call__(self, x, y):
-        return self.rel(x, y)
+    def __call__(self, pred, ref, inp=None):
+        return self.rel(pred, ref)
 
 
-class VectormNormLoss(object):
+@register
+class VectorNormLoss(object):
     """
     Vector norm model loss
     Args:
@@ -66,25 +76,26 @@ class VectormNormLoss(object):
         out: model prediction of shape [nBatch,nVar,nX,nZ]
         ref: data reference of shape [nBatch,nVar,nX,nZ]
     """
-    ABSOLUTE = False
     def __init__(self, 
                  p:int=2,
+                 absolute=False,
     ):
         super().__init__()
-        # Lp-norm type is postive
+        # Lp-norm type is positive
         assert p > 0
         self.p = p
-        if self.ABSOLUTE:
+        if absolute:
             self.__class__.__call__ = self.__class__.__call__ABS
+        self.absolute = absolute
 
     def vectorNorm(self, x, dim=(-2,-1)):
         return torch.linalg.vector_norm(x, ord=self.p, dim=dim)
     
-    def __call__(self, out, ref):
+    def __call__(self, pred, ref, inp=None):
         refNorms = self.vectorNorm(ref)
-        diffNorms = self.vectorNorm(out-ref)
+        diffNorms = self.vectorNorm(pred-ref)
         return torch.mean(diffNorms/refNorms)
 
-    def __call__ABS(self, out, ref):
-        return torch.mean(self.vectorNorm(out-ref))
+    def __call__ABS(self, pred, ref, inp=None):
+        return torch.mean(self.vectorNorm(pred-ref))
 

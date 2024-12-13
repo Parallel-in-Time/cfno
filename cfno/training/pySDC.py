@@ -7,7 +7,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from cfno.data.preprocessing import getDataLoaders
 from cfno.models.cfno2d import CFNO2D
-from cfno.losses import VectormNormLoss
+from cfno.losses import LOSSES_CLASSES
 
 
 class FourierNeuralOp:
@@ -26,13 +26,14 @@ class FourierNeuralOp:
     LOG_PRINT = False
 
 
-    def __init__(self, data:dict=None, model:dict=None, optim:dict=None, lr_scheduler:dict=None, checkpoint=None):
+    def __init__(self, 
+                 data:dict=None, model:dict=None, loss:dict=None, 
+                 optim:dict=None, lr_scheduler:dict=None, checkpoint=None):
 
-        self.device = th.device('cuda:0' if th.cuda.is_available() else 'cpu')
-        # self.device = 'cpu'
+        self.device = th.device('cuda' if th.cuda.is_available() else 'cpu')
 
         # Inference-only mode
-        if data is None and model is None and optim is None and lr_scheduler is None:
+        if data is None and model is None and optim is None:
             assert checkpoint is not None, "need a checkpoint in inference-only evaluation"
             self.load(checkpoint, modelOnly=True)
             return
@@ -45,10 +46,22 @@ class FourierNeuralOp:
         # sample : [batchSize, 4, nX, nY]
         self.outType = self.dataset.outType
         self.outScaling = self.dataset.outScaling
-        if optim is not None:
-            print("setting relativeLoss param")
-            VectormNormLoss.ABSOLUTE = optim.pop("absLoss", VectormNormLoss.ABSOLUTE)
-        self.lossFunction = VectormNormLoss()
+        
+        if loss is None:    # Use default settings
+            loss = {
+                "name": "VectorNormLoss",
+                "absolute": False,
+            }
+        assert "name" in loss, "loss section in config must contain the 'name' parameter"
+        name = loss.pop("name")
+        try:
+            LossClass = LOSSES_CLASSES[name]
+        except KeyError:
+            raise NotImplementedError(f"{name} loss not implemented, available are {list(LOSSES_CLASSES.keys())}")
+        if "grids" in loss:
+            loss["grids"] = self.dataset.grid
+        self.lossFunction = LossClass(**loss)
+        self.lossConfig = loss
         self.losses = {
             "model": {
                 "avg_valid": -1,
@@ -61,6 +74,11 @@ class FourierNeuralOp:
                 "train": self.idLoss("train"),
                 }
             }
+        
+        # For backward compatibility, remove any "absLoss" in optim section and raise a warning if any
+        old = optim.pop("absLoss", None)
+        if old is not None: 
+            print("WARNING : absLoss should be now specified with 'absolute' in the loss section for VectorNormLoss")
 
         # Set model
         self.setupModel(model)
@@ -77,6 +95,9 @@ class FourierNeuralOp:
         self.gradientNormEpoch = 0.0
         if self.USE_TENSORBOARD:
             self.writer = SummaryWriter(self.fullPath("tboard"))
+        
+        # Print settings summary
+        self.printInfos()
 
 
     # -------------------------------------------------------------------------
@@ -92,17 +113,16 @@ class FourierNeuralOp:
         if optim is None: optim = {"name": "adam", "lr" : 0.0001, "weight_decay": 1.0e-5}
         name = optim.pop("name", "adam")
         if name == "adam":
-            self.optimizer = th.optim.Adam(self.model.parameters(), **optim)
+            OptimClass = th.optim.Adam
         elif name == "adamw":
-            self.optimizer = th.optim.AdamW(self.model.parameters(), **optim)
+            OptimClass = th.optim.AdamW
         elif name == "lbfgs":
-            baseParams = {
-                "line_search_fn": "strong_wolfe"
-                }
-            params = {**baseParams, **optim}
-            self.optimizer = th.optim.LBFGS(self.model.parameters(), **params)
+            optim = {"line_search_fn": "strong_wolfe", **optim}
+            OptimClass = th.optim.LBFGS
         else:
             raise ValueError(f"optim {name} not implemented yet")
+        self.optimizer = OptimClass(self.model.parameters(), **optim)
+        self.optimConfig = optim
         self.optim = name
         th.cuda.empty_cache()   # in case another optimizer was setup before ...
 
@@ -117,7 +137,6 @@ class FourierNeuralOp:
         else:
             raise ValueError(f"LR scheduler {scheduler} not implemented yet")
 
-    # ToDo: what is this for?
     def setOptimizerParam(self, **params):
         """
         Allows to change the optimizer parameter(s) dynamically during training
@@ -126,6 +145,24 @@ class FourierNeuralOp:
         for g in self.optimizer.param_groups:
             for name, val in params.items():
                 g[name] = val
+
+    def printInfos(self):
+        print("-"*80)
+        print("Model settings")
+        print(f" -- class: {self.model}")
+        for key, val in self.modelConfig.items():
+            print(f" -- {key}: {val}")
+        print(f"Loss settings")
+        print(f" -- name : {self.lossFunction.__class__.__name__}")
+        for key, val in self.lossConfig.items():
+            print(f" -- {key}: {val}")
+        print("Optim settings")
+        print(f" -- name : {self.optim}")
+        for key, val in self.optimConfig.items():
+            print(f" -- {key}: {val}")
+        # TODO: add more details here ...
+        print("-"*80)
+        
 
     def idLoss(self, dataset="valid"):
         if dataset == "valid":
@@ -141,9 +178,9 @@ class FourierNeuralOp:
         with th.no_grad():
             for inputs, outputs in loader:
                 if outType == "solution":
-                    avgLoss += self.lossFunction(inputs, outputs).item()
+                    avgLoss += self.lossFunction(inputs, outputs, inputs).item()
                 elif outType == "update":
-                    avgLoss += self.lossFunction(0*inputs, outputs).item()
+                    avgLoss += self.lossFunction(0*inputs, outputs, inputs).item()
                 else:
                     raise ValueError(f"outType = {outType}")
         avgLoss /= nBatches
@@ -175,11 +212,11 @@ class FourierNeuralOp:
 
         model.train()
         for iBatch, data in enumerate(self.trainLoader):
-            inputs = data[0][..., ::self.xStep, ::self.yStep].to(self.device)
-            outputs = data[1][..., ::self.xStep, ::self.yStep].to(self.device)
+            inp = data[0][..., ::self.xStep, ::self.yStep].to(self.device)
+            ref = data[1][..., ::self.xStep, ::self.yStep].to(self.device)
 
-            pred = model(inputs)
-            loss = self.lossFunction(pred, outputs)
+            pred = model(inp)
+            loss = self.lossFunction(pred, ref, inp)
             optimizer.zero_grad()
             loss.backward()
 
@@ -192,8 +229,8 @@ class FourierNeuralOp:
             elif self.optim == "lbfgs":
                 def closure():
                     optimizer.zero_grad()
-                    pred = model(inputs)
-                    loss = self.lossFunction(pred, outputs)
+                    pred = model(inp)
+                    loss = self.lossFunction(pred, ref, inp)
                     loss.backward()
                     return loss
                 optimizer.step(closure)
@@ -204,7 +241,7 @@ class FourierNeuralOp:
                 self.writer.add_histogram("Gradients/GradientNormBatch", gradsNorm, iBatch)
             gradsEpoch += gradsNorm
 
-            loss, current = loss.item(), iBatch*batchSize + len(inputs)
+            loss, current = loss.item(), iBatch*batchSize + len(inp)
             if self.LOG_PRINT:
                 print(f" At [{current}/{nSamples:>5d}] loss: {loss:>7f} (id: {idLoss:>7f}) -- lr: {optimizer.param_groups[0]['lr']}")
             avgLoss += loss
@@ -228,10 +265,10 @@ class FourierNeuralOp:
         model.eval()
         with th.no_grad():
             for data in self.valLoader:
-                inputs = data[0].to(self.device)
-                outputs = data[1].to(self.device)
-                pred = model(inputs)
-                avgLoss += self.lossFunction(pred, outputs).item()
+                inp = data[0].to(self.device)
+                ref = data[1].to(self.device)
+                pred = model(inp)
+                avgLoss += self.lossFunction(pred, ref, inp).item()
 
         avgLoss /= nBatches
 

@@ -30,11 +30,15 @@ model:
   forceFFT: true
   bias: false
 
+loss:
+  name: IntegralLoss
+  grids: démerde toi
+  L: [4, 1]
+
 optim:
   name: adam
   lr: 0.0001
   weight_decay: 1.0e-5
-  absLoss: false
 
 lr_scheduler:
   scheduler: StepLR
@@ -42,7 +46,7 @@ lr_scheduler:
   gamma: 0.98
 
 train:
-  trainDir: training_dt1e-3_fft
+  trainDir: training
   nEpochs: 1500
   checkpoint: model.pt
   lossesFile: losses.txt

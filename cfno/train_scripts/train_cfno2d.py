@@ -21,7 +21,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from cfno.utils import _set_signal_handler, CudaMemoryDebugger, activation_selection
 from cfno.models.cfno2d import CFNO2D
-from cfno.losses.data_loss import LpLoss, VectormNormLoss
+from cfno.losses.data_loss import LpLoss, VectorNormLoss
 from cfno.training.origin import Trainer
 
 _GLOBAL_SIGNAL_HANDLER = None
@@ -100,7 +100,7 @@ def main(config_file:str):
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=opt_config.T_max)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=opt_config.scheduler_step, gamma=opt_config.scheduler_gamma)
 
-    loss = VectormNormLoss()
+    loss = VectorNormLoss()
 
     if config.verbose:
         with open(f'{cfno_path}/info.txt', 'a') as file:

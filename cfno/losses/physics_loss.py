@@ -8,8 +8,16 @@ from qmat.lagrange import LagrangeApproximation
 ### 2. for training requires autodiff of the qmat stuff? needs to be tested
 ### 3. implementation is for 2d, needs to be generalized
 
+# Store all loss classes in a dictionary using the register decorator 
+LOSSES_CLASSES = {}
+
+def register(cls):
+    assert hasattr(cls, '__call__') and callable(cls), "loss class must implement the __call__ method"
+    LOSSES_CLASSES[cls.__name__] = cls
+    return cls
 
 
+@register
 class LpOmegaNorm(object):
     """
     Compute Lp norm of a single function by integrating in space
@@ -24,7 +32,7 @@ class LpOmegaNorm(object):
         super().__init__()
         # p has to be >= 1 for the norm to make sense
         assert p >= 1
-        # Dimension is postive
+        # Dimension is positive
         assert d > 0
         assert len(grids) == d
         self.p = p
@@ -48,9 +56,8 @@ class LpOmegaNorm(object):
  
     def __call__(self,f):
         return self.integrate(f)**(1/self.p)
-    
-    
-    
+
+
 class PhysicsLoss(object): # todo: generalize to 3d
     """
     Base class for the physics based losses. 
@@ -64,7 +71,7 @@ class PhysicsLoss(object): # todo: generalize to 3d
                   d:int=2, # space dimension == len(grids), we don't really need this
                   ):
          super().__init__()
-         # Dimension is postive
+         # Dimension is positive
          assert d > 0
          assert len(grids) == d
          self.grids = grids
@@ -123,7 +130,7 @@ class PhysicsLoss(object): # todo: generalize to 3d
         return u_t, u_x, u_z, u_xx, u_zz
     
 
-
+@register
 class BuoyancyEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
     """
     Compute residual for the buoyancy equation
@@ -154,7 +161,7 @@ class BuoyancyEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
          return self.lpnorm(self.computeResidual(u).T)
          
 
-
+@register
 class BuoyancyUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
     """
     Compute equation residual for the update of buoyancy 
@@ -195,8 +202,7 @@ class BuoyancyUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
          return self.lpnorm(self.computeResidual(u).T)
 
 
-
-
+@register
 class DivergenceLoss(PhysicsLoss):
     """
     Measures how much the L2-norm of the divergence of a field differs from zero.
@@ -221,8 +227,7 @@ class DivergenceLoss(PhysicsLoss):
         return self.lpnorm((vx_x + vz_z).T)
       
 
-
-
+@register
 class IntegralLoss(PhysicsLoss):
     """
     Measures how much the spatial integral of a function (specified by varName) deviates from a given value
@@ -233,7 +238,7 @@ class IntegralLoss(PhysicsLoss):
                  u0,      # initial value of time step
                  dt:float=0.1, # time step size
                  d:int=2, # space dimension == len(grids), we don't really need this
-                 varName:str = "p",
+                 varName:str="p",
                  value:float=0.0,
                  ):
          super().__init__(grids, L, u0, dt, d)
@@ -253,9 +258,6 @@ class IntegralLoss(PhysicsLoss):
          # in x and potentially y direction we have equidistant grids with spacing dx, dy        
          return intZ.sum() * self.dx * self.dy   # sum everything (along x- and in 3d y-axis) 
                                                  # and scale with grid widths
-  
-        
+
     def __call__(self, u): 
          return np.abs(self.integrate(u) - self.value)
-     
-            

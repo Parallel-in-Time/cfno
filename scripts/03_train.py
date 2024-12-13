@@ -44,7 +44,8 @@ if "train" in config:
 sections = ["data", "model", "optim", "lr_scheduler"]
 for name in sections:
     assert name in config, f"config file needs a {name} section"
-configs = {name: config[name] for name in sections}  # trainer class configs
+# trainer class configs, "loss" parameter uses default if not specified
+configs = {name: config.get(name) for name in (sections + ["loss"])}
 
 nEpochs = args.nEpochs
 saveEvery = args.saveEvery
