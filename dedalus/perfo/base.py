@@ -24,19 +24,19 @@ plt.rcParams['mathtext.rm'] = 'serif'
 plt.rcParams['figure.max_open_warning'] = 100
 
 # Data (parallel SDC, MIN-SR-FLEX, K=4, M=4, LEGENDRE/RADAU-RIGHT, COPY, LASTNODE)
-nX, nZ, nSteps = 512, 128, 1/(1e-2/4)
-tComp = np.array([456.6, 269.1, 132.3, 70.97, 42.08, 29.43, 20.64, 18])
-nProc = np.array([1, 2, 4, 8, 16, 32, 64, 128])
+# nX, nZ, nSteps = 512, 128, 1/(1e-2/4)
+# tComp = np.array([456.6, 269.1, 132.3, 70.97, 42.08, 29.43, 20.64, 18])
+# nProc = np.array([1, 2, 4, 8, 16, 32, 64, 128])
 
-# # pySDC
-# nX, nZ, nSteps = 256, 64, 1/(1e-2/2)
-# tComp = np.array([198, 113, 69.7, 47.0, 38.4, 37.4, 40.9])
+# -- pySDC
+# nX, nZ, nSteps = 256, 64, 200
+# tComp = np.array([145.12, 82.77, 51.23, 33.83, 26.73, 26.08, 29.04])
 # nProc = np.array([1, 2, 4, 8, 16, 32, 64])
 
-# # dedalus-SDC
-# nX, nZ, nSteps = 256, 64, 1/(1e-2/2)+1
-# tComp = np.array([68.3, 40.0, 22.4, 13.8, 10.1, 8.7, 8.6])
-# nProc = np.array([1, 2, 4, 8, 16, 32, 64])
+# -- dedalus-SDC
+nX, nZ, nSteps = 256, 64, 201
+tComp = np.array([49.7, 29.9, 17.1, 11.0, 8.8, 7.9, 8.4])
+nProc = np.array([1, 2, 4, 8, 16, 32, 64])
 
 
 tScaled = tComp/(nSteps)
@@ -46,7 +46,7 @@ efficiency = speedup/nProc
 plt.figure("tScaled")
 plt.loglog(nProc, tScaled, 'o-')
 plt.loglog(nProc, tScaled[0]/nProc[0]/nProc, '--', c='gray')
-plt.text(1.1, 7e-2, f"Max. speedup : {speedup.max():1.2f}")
+# plt.text(1.1, 7e-2, f"Max. speedup : {speedup.max():1.2f}")
 plt.ylabel("Scaled runtime $t_{wall}/N_{steps}$")
 
 plt.figure("speedup")
