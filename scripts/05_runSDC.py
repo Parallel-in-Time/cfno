@@ -114,6 +114,8 @@ sdcBaseFields = sdcBaseFile.file(0)['tasks']
 assert MPI_SIZE == 1, "cannot run FNO in space parallel (yet ...)"
 SpectralDeferredCorrectionIMEX.setupNN(
     "FNOP-2", checkpoint=checkpoint, nEval=nEvalFNO, initSweep="NN")
+SpectralDeferredCorrectionIMEX.setParameters(
+    implSweep="MIN-SR-FLEX", explSweep="PIC", nSweeps=nSweeps)
 
 dirName = f"{runDir}/run_sdc_fno"
 print(f" -- running SDC-FNO simulation with dt={dtFNO:1.1e} in {dirName}")
@@ -139,8 +141,6 @@ sdcFNOCopyFields = sdcFNOCopyFiles.file(0)['tasks']
 # SDC-FNO inter. solution ----------------------------------------------------
 SpectralDeferredCorrectionIMEX.setupNN(
     "FNOP-2", checkpoint=checkpoint, nEval=nEvalFNO, initSweep="NNI")
-SpectralDeferredCorrectionIMEX.setParameters(
-    implSweep="BE", explSweep="FE", nSweeps=nSweeps)
 
 dirName = f"{runDir}/run_sdc_fnoInter"
 print(f" -- running SDC-FNO Inter simulation with dt={dtFNO:1.1e} in {dirName}")
@@ -183,7 +183,7 @@ errRK = error(uRef, uRK)
 errSDC = error(uRef, uSDC)
 errFNO = error(uRef, uFNO)
 errFNO_copy = error(uRef, uFNO_copy)
-errFNO_inter = error(uRef, uFNO_copy)
+errFNO_inter = error(uRef, uFNO_inter)
 errFNO_only = error(uRef, uFNO_only)
 errCopy = error(uRef, uCopy)
 

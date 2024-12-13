@@ -34,9 +34,14 @@ plt.rcParams['figure.max_open_warning'] = 100
 # nProc = np.array([1, 2, 4, 8, 16, 32, 64])
 
 # -- dedalus-SDC
+# nX, nZ, nSteps = 256, 64, 201
+# tComp = np.array([49.7, 29.9, 17.1, 11.0, 8.8, 7.9, 8.4, 9.7])
+# nProc = np.array([1, 2, 4, 8, 16, 32, 64, 128])
+
+# -- dedalus-RK443
 nX, nZ, nSteps = 256, 64, 201
-tComp = np.array([49.7, 29.9, 17.1, 11.0, 8.8, 7.9, 8.4])
-nProc = np.array([1, 2, 4, 8, 16, 32, 64])
+tComp = np.array([17.6, 11.1, 7.1, 5.2, 4.6, 4.8, 5.5, 6.3])
+nProc = np.array([1, 2, 4, 8, 16, 32, 64, 128])
 
 
 tScaled = tComp/(nSteps)
