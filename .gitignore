@@ -23,6 +23,7 @@ scripts/*.pdf
 scripts/*/*.pdf
 scripts/config_*.yaml
 scripts/runAll.sh
+scripts/sdcRun*
 scratch.py
 launch_scripts/*.sh
 env

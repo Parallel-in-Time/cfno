@@ -26,9 +26,9 @@ parser.add_argument(
 parser.add_argument(
     "--tEnd", default=1, type=float, help="simulation time interval")
 parser.add_argument(
-    "--dtSDC", default=1e-3, type=float, help="time-step of the base SDC solver")
+    "--dtSDC", default=1e-2, type=float, help="time-step of the base SDC solver")
 parser.add_argument(
-    "--dtFNO", default=1e-3, type=float, help="time-step of the SDC-FNO solver")
+    "--dtFNO", default=1e-2, type=float, help="time-step of the SDC-FNO solver")
 parser.add_argument(
     "--nEvalFNO", default=1, type=float, help="number of FNO evaluation for one prediction")
 parser.add_argument(
