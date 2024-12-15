@@ -197,8 +197,80 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     return infos, solver
 
 
+
+def transposeForParallel(uLoc:np.ndarray, uGlob:np.ndarray):
+    uLoc = uLoc.swapaxes(0, 1).copy()
+    if MPI_RANK == 0:
+        uGlob = uGlob.swapaxes(0, 1).copy()
+    return uLoc, uGlob
+
+
+def writePySDCSolution(path:str, uLoc:np.ndarray, globShape:tuple):
+    nVar, nX, nZ = globShape
+    nVarLoc, nXLoc, nZLoc = uLoc.shape
+    assert nVar == nVarLoc, f"rank {MPI_RANK} has inconsistent local nVar"
+    assert nZ == nZLoc, f"rank {MPI_RANK} has inconsistent local nZ"
+
+    if MPI_RANK == 0:
+        uGlob = np.empty((nVar, nX, nZ), dtype=uLoc.dtype)
+    else:
+        uGlob = None
+
+    msgSize = np.array(COMM_WORLD.allgather(nXLoc), dtype=int)
+    msgSize *= nVar*nZ
+    offsets = np.zeros(MPI_SIZE, dtype=int)
+    offsets[1:] = np.cumsum(msgSize[:-1])
+
+    if MPI_SIZE > 1:
+        uLoc = uLoc.swapaxes(0, 1).copy()
+        if MPI_RANK == 0:
+            uGlob = uGlob.swapaxes(0, 1).copy()
+        COMM_WORLD.Gatherv(
+            uLoc,
+            [uGlob, msgSize, offsets, MPI.DOUBLE],
+            root=0)
+        if MPI_RANK == 0:
+            uGlob = uGlob.swapaxes(0, 1)
+    else:
+        uGlob = uLoc
+    if MPI_RANK == 0:
+        print(f" -- saving solution in {path}")
+        np.save(path, uGlob)
+
+
+def readPySDCSolution(path:str, uLoc:np.ndarray):
+    nVar, nX, nZ = 0, 0, 0
+    if MPI_RANK == 0:
+        print(f" -- reading solution from {path}")
+        uGlob = np.load(path)
+        nVar, nX, nZ = uGlob.shape
+    else:
+        uGlob = None
+    nVar, nX, nZ = COMM_WORLD.bcast((nVar, nX, nZ), root=0)
+    nVarLoc, nXLoc, nZLoc = uLoc.shape
+    assert nVar == nVarLoc, f"rank {MPI_RANK} has inconsistent local nVar"
+    assert nZ == nZLoc, f"rank {MPI_RANK} has inconsistent local nZ"
+
+    msgSize = np.array([nXLoc*nZ*nVar]*MPI_SIZE)
+    offsets = np.zeros(MPI_SIZE, dtype=int)
+    offsets[1:] = np.cumsum(msgSize[:-1])
+
+    assert uLoc.shape == (nVar, nXLoc, nZ)
+    if MPI_SIZE > 1:
+        uLocTmp = uLoc.swapaxes(0, 1).copy()
+        if MPI_RANK == 0:
+            uGlob = uGlob.swapaxes(0, 1).copy()
+        COMM_WORLD.Scatterv(
+            [uGlob, msgSize, offsets, MPI.DOUBLE],
+            uLocTmp,
+            root=0)
+        np.copyto(uLoc, uLocTmp.swapaxes(0, 1))
+    else:
+        np.copyto(uLoc, uGlob)
+
+
 def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
-    tBeg=0, tEnd=10, dtWrite=0.1, initFields=None):
+    tBeg=0, tEnd=10, dtWrite=0.1, restartFile=None):
 
     from pySDC.implementations.controller_classes.controller_nonMPI import controller_nonMPI
     from pySDC.implementations.problem_classes.RayleighBenard import RayleighBenard
@@ -219,10 +291,6 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
         "nSteps": nSteps,
         "nDOF": Nx*Nz
     }
-    if os.path.isfile(f"{dirName}/01_finalized.txt"):
-        if MPI_RANK == 0:
-            print(" -- simulation already finalized, skipping !")
-        return infos, None
 
     def log(msg):
         if MPI_RANK == 0:
@@ -280,35 +348,47 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
         raise ValueError(
             f"dtWrite ({dtWrite}) is not divisible by timestep ({timestep}) : {iterWrite}")
     iterWrite = int(iterWrite)
-    tWrite = np.linspace(0, tEnd, nSteps//iterWrite+1)
+    tWrite = np.linspace(tBeg, tEnd, nSteps//iterWrite+1)
 
     controller = controller_nonMPI(
-        num_procs=1, controller_params={'logger_level': 20},
+        num_procs=1, controller_params={'logger_level': 20 if MPI_RANK == 0 else 50},
         description=description)
 
     prob = controller.MS[0].levels[0].prob
+
+    if os.path.isfile(f"{dirName}/01_finalized.txt"):
+        if MPI_RANK == 0:
+            print(" -- simulation already finalized, skipping !")
+        return infos, controller, prob
 
     u0 = prob.u_exact(t=0, seed=seed, noise_level=1e-3)
 
     uTmp = prob.itransform(u0)
     uTmp[:] = 0.0
-    if initFields is None:
-        np.random.seed(seed)
+    if restartFile is None:
+        rng = np.random.default_rng(seed=seed)
         b = uTmp[2]
         z = prob.Z + 1
-        b[:] = np.random.normal(scale=1e-3, size=b.shape)
+        b[:] = rng.normal(scale=1e-3, size=b.shape)
         b *= z * (2 - z) # Damp noise at walls
         b += 2 - z # Add linear background
     else:
-        np.copyto(uTmp, initFields)
+        readPySDCSolution(restartFile, uTmp)
     uTmp = prob.transform(uTmp)
     np.copyto(u0, uTmp)
 
-    np.save(f"{dirName}/sol_{0:05.1f}sec", prob.itransform(u0))
+    writePySDCSolution(
+        f"{dirName}/sol_{0:05.1f}sec", prob.itransform(u0), prob.global_shape
+        )
     for t0, t1 in zip(tWrite[:-1], tWrite[1:]):
         u, _ = controller.run(u0=u0, t0=t0, Tend=t1)
-        u = prob.itransform(u)
-        np.save(f"{dirName}/sol_{t1:05.1f}sec", u)
-        np.copyto(u0, prob.transform(u))
+        writePySDCSolution(
+            f"{dirName}/sol_{t1:05.1f}sec", prob.itransform(u), prob.global_shape
+            )
+        np.copyto(u0, u)
+    
+    if MPI_RANK == 0:
+        with open(f"{dirName}/01_finalized.txt", "w") as f:
+            f.write("Done !")
 
     return infos, controller, prob

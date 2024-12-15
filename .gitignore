@@ -13,6 +13,7 @@ events*
 *.pt
 *.txt
 *.h5
+*.npy
 results/
 dedalus/plots/
 dedalus/scripts
