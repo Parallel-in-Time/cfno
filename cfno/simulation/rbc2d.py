@@ -10,7 +10,7 @@ COMM_WORLD = MPI.COMM_WORLD
 MPI_SIZE = COMM_WORLD.Get_size()
 MPI_RANK = COMM_WORLD.Get_rank()
 
-def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
+def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     tBeg=0, tEnd=150, dtWrite=0.1, useSDC=False,
     writeVort=False, writeFull=False, initFields=None,
     writeSpaceDistr=False, logEvery=100, distrMesh=None):
@@ -195,3 +195,120 @@ def runSim(dirName, Rayleigh=1e6, resFactor=1, baseDt=1e-2/2, seed=999,
         solver.log_stats()
 
     return infos, solver
+
+
+def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
+    tBeg=0, tEnd=10, dtWrite=0.1, initFields=None):
+
+    from pySDC.implementations.controller_classes.controller_nonMPI import controller_nonMPI
+    from pySDC.implementations.problem_classes.RayleighBenard import RayleighBenard
+    from pySDC.implementations.sweeper_classes.imex_1st_order import imex_1st_order
+    from pySDC.implementations.problem_classes.generic_spectral import compute_residual_DAE
+
+    imex_1st_order.compute_residual = compute_residual_DAE
+
+    Nx, Nz = 256*resFactor, 64*resFactor
+    timestep = baseDt/resFactor
+
+    nSteps = round(float(tEnd-tBeg)/timestep, ndigits=3)
+    if float(tEnd-tBeg) != round(nSteps*timestep, ndigits=3):
+        raise ValueError(
+            f"tEnd ({tEnd}) is not divisible by timestep ({timestep}) (nSteps={nSteps})")
+    nSteps = int(nSteps)
+    infos = {
+        "nSteps": nSteps,
+        "nDOF": Nx*Nz
+    }
+    if os.path.isfile(f"{dirName}/01_finalized.txt"):
+        if MPI_RANK == 0:
+            print(" -- simulation already finalized, skipping !")
+        return infos, None
+
+    def log(msg):
+        if MPI_RANK == 0:
+            with open(f"{dirName}/simu.log", "a") as f:
+                f.write(f"{dirName} -- ")
+                f.write(datetime.now().strftime("%d/%m/%Y  %H:%M:%S"))
+                f.write(f", MPI rank {MPI_RANK} ({MPI_SIZE})")
+                f.write(f" : {msg}\n")
+
+    os.makedirs(dirName, exist_ok=True)
+    with open(f"{dirName}/00_infoSimu.txt", "w") as f:
+        f.write(f"Rayleigh : {Rayleigh:1.2e}\n")
+        f.write(f"seed : {seed}\n")
+        f.write(f"Nx, Nz : {int(Nx)}, {int(Nz)}\n")
+        f.write(f"dt : {timestep:1.2e}\n")
+        f.write(f"tEnd : {tEnd}\n")
+        f.write(f"dtWrite : {dtWrite}\n")
+
+    description = {
+        # Sweeper and its parameters
+        "sweeper_class": imex_1st_order,
+        "sweeper_params": {
+            "quad_type": "RADAU-RIGHT",
+            "num_nodes": 4,
+            "node_type": "LEGENDRE",
+            "initial_guess": "copy",
+            "do_coll_update": False,
+            "QI": "MIN-SR-FLEX",
+            "QE": "PIC",
+            'skip_residual_computation':
+                ('IT_CHECK', 'IT_DOWN', 'IT_UP', 'IT_FINE', 'IT_COARSE'),
+        },
+        # Step parameters
+        "step_params": {
+            "maxiter": 1,
+        },
+        # Level parameters
+        "level_params": {
+            "restol": -1,
+            "nsweeps": 4,
+            "dt": timestep,
+        },
+        # problem parameters
+        "problem_class": RayleighBenard,
+        "problem_params": {
+            "Rayleigh": Rayleigh/2**3,
+            "nx": Nx,
+            "nz": Nz,
+            "dealiasing": 3/2
+            }
+    }
+
+    iterWrite = dtWrite/timestep
+    if int(iterWrite) != round(iterWrite, ndigits=3):
+        raise ValueError(
+            f"dtWrite ({dtWrite}) is not divisible by timestep ({timestep}) : {iterWrite}")
+    iterWrite = int(iterWrite)
+    tWrite = np.linspace(0, tEnd, nSteps//iterWrite+1)
+
+    controller = controller_nonMPI(
+        num_procs=1, controller_params={'logger_level': 20},
+        description=description)
+
+    prob = controller.MS[0].levels[0].prob
+
+    u0 = prob.u_exact(t=0, seed=seed, noise_level=1e-3)
+
+    uTmp = prob.itransform(u0)
+    uTmp[:] = 0.0
+    if initFields is None:
+        np.random.seed(seed)
+        b = uTmp[2]
+        z = prob.Z + 1
+        b[:] = np.random.normal(scale=1e-3, size=b.shape)
+        b *= z * (2 - z) # Damp noise at walls
+        b += 2 - z # Add linear background
+    else:
+        np.copyto(uTmp, initFields)
+    uTmp = prob.transform(uTmp)
+    np.copyto(u0, uTmp)
+
+    np.save(f"{dirName}/sol_{0:05.1f}sec", prob.itransform(u0))
+    for t0, t1 in zip(tWrite[:-1], tWrite[1:]):
+        u, _ = controller.run(u0=u0, t0=t0, Tend=t1)
+        u = prob.itransform(u)
+        np.save(f"{dirName}/sol_{t1:05.1f}sec", u)
+        np.copyto(u0, prob.transform(u))
+
+    return infos, controller, prob

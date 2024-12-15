@@ -206,10 +206,11 @@ for iVar, var in enumerate(["vx", "vz", "b", "p"]):
     plt.grid(True)
     plt.savefig(f"{runDir}/error_{var}.pdf")
 
-# xGrid, yGrid = sdcBaseFile.x, sdcBaseFile.y
-# for iVar, var in enumerate(["vx", "vz", "b", "p"]):
-#     contourPlot(
-#         uFNO[iVar].T, xGrid, yGrid, title=f"SDC-FNO for {var} after {tEnd} sec.",
-#         refField=uRef[iVar].T, refTitle="SDC reference",
-#         saveFig=f"{runDir}/comparison_{var}_{idx}.png", closeFig=True, error=False)
-#     print(f" -- saved {var} contour comparison for idx={idx}")
+xGrid, yGrid = sdcBaseFile.x, sdcBaseFile.y
+for iVar, var in enumerate(["vx", "vz", "b", "p"]):
+    contourPlot(
+        uFNO[iVar, -1].T, xGrid, yGrid, title=f"SDC-FNO for {var} after {tEnd} sec.",
+        refField=uRef[iVar, -1].T, refTitle="SDC reference",
+        saveFig=f"{runDir}/comparison_{var}_1sec.png", closeFig=True, error=False,
+        refScales=True)
+    print(f" -- saved {var} contour comparison after 1sec")

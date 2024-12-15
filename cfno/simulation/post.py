@@ -128,7 +128,7 @@ class OutputFiles():
         return self.times(iFile).size
 
     def getMeanProfiles(self, iFile:int, buoyancy=False, pressure=False):
-        """_summary_
+        """
 
         Args:
             iFile (int): file index
