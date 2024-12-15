@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from cfno.simulation.rbc2d import runSimPySDC, MPI_RANK
 from cfno.simulation.post import OutputFiles
 
-runDir = "pysdcRun_corr"
+runDir = "pysdcRun_corr2"
 infos, controller, prob = runSimPySDC(f"{runDir}/run_init", tEnd=100, dtWrite=1)
 if MPI_RANK != 0:
     exit()

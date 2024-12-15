@@ -336,7 +336,7 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
         # problem parameters
         "problem_class": RayleighBenard,
         "problem_params": {
-            "Rayleigh": Rayleigh/2**3,
+            "Rayleigh": Rayleigh/2**4,
             "nx": Nx,
             "nz": Nz,
             "dealiasing": 3/2
@@ -386,7 +386,7 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
             f"{dirName}/sol_{t1:05.1f}sec", prob.itransform(u), prob.global_shape
             )
         np.copyto(u0, u)
-    
+
     if MPI_RANK == 0:
         with open(f"{dirName}/01_finalized.txt", "w") as f:
             f.write("Done !")
