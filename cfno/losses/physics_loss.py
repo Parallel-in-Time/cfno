@@ -6,7 +6,8 @@ from qmat.lagrange import LagrangeApproximation
 ### TODOs:
 ### 1. needs to be adapted to deal with (mini-)batches -> einsum, compare to Fourier layer and adapt
 ### 2. for training requires autodiff of the qmat stuff? needs to be tested
-### 3. implementation is for 2d, needs to be generalized
+### 3. the switching between numpy and torch is stupid. Do everything in torch
+### 4. implementation is for 2d, needs to be generalized
 
 # Store all loss classes in a dictionary using the register decorator 
 LOSSES_CLASSES = {}
@@ -20,7 +21,7 @@ def register(cls):
 @register
 class LpOmegaNorm(object):
     """
-    Compute Lp norm of a single function by integrating in space
+    Compute Lp norm of a minibatch of grid functions by integrating in space
     """
     
     def __init__(self,
@@ -42,20 +43,32 @@ class LpOmegaNorm(object):
             self.dy = L[1] / (grids[1].size-1.0)
         approx = LagrangeApproximation(grids[-1])
         self.I = approx.getIntegrationMatrix([(0, L[-1])])  # spectral integration along z
+        self.I = torch.from_numpy(self.I).type(torch.float)
         
     def integrate(self,f):
         """
-        integrates the grid function abs(f)**p in space
+        integrates the grid functions abs(f)**p in space
+        shape of f is [nbatch, nx, ny, nz] in 3d. [nbatch, nx, nz] in 2d
         """
         fp = np.abs(f)**self.p
-        # integrate in z with qmat
-        intZ = self.I @ fp.T
+        fp = torch.from_numpy(fp)
+
+        
+        intZ = torch.einsum('ij,bkj->bki', self.I, fp)
         # in x and potentially y direction we have equidistant grids with spacing dx, dy        
-        return intZ.sum() * self.dx * self.dy   # sum everything (along x- and in 3d y-axis) 
+        return torch.sum(intZ, dim=-2) * self.dx * self.dy   # sum everything (along x- and in 3d y-axis) 
+                                                # and scale with grid widths
+
+#        # integrate in z with qmat
+#        intZ = self.I @ fp.T
+#        # in x and potentially y direction we have equidistant grids with spacing dx, dy        
+#        return intZ.sum() * self.dx * self.dy   # sum everything (along x- and in 3d y-axis) 
                                                 # and scale with grid widths to have an actual discrete Lp norm 
  
     def __call__(self,f):
         return self.integrate(f)**(1/self.p)
+
+
 
 
 class PhysicsLoss(object): # todo: generalize to 3d
@@ -63,6 +76,7 @@ class PhysicsLoss(object): # todo: generalize to 3d
     Base class for the physics based losses. 
     Mainly implements calculating the required derivatives.
     """
+    # u0 and u have shape [nbatches, 4, nx, nz]
     def __init__(self,
                   grids,   # tuple of grids (x,y,z) or (x,z) depending on d
                   L,       # tuple of domain sizes fitting to grids
@@ -82,42 +96,50 @@ class PhysicsLoss(object): # todo: generalize to 3d
          self.dx = self.Lx/(self.nx-1)
          self.approx = LagrangeApproximation(self.grids[-1])
          self.D = self.approx.getDerivationMatrix() # spectral differentiation along z
+         self.D = torch.from_numpy(self.D).type(torch.float)
          self.varChoices = ["vx", "vz", "b", "p"]
         
     def calculateTimeDerivative(self, u, varName):
-        fInit = self.u0[self.varChoices.index(varName)].T.copy()
-        f = u[self.varChoices.index(varName)].T.copy()
+        fInit = self.u0[:,self.varChoices.index(varName)].copy()  # why should we transpose here?
+        f = u[:,self.varChoices.index(varName)].copy()
         f_t = (f-fInit)/self.dt
         
         return f_t
          
     def calculateFirstSpatialDerivatives(self, u, varName):
-        f = u[self.varChoices.index(varName)].T.copy()
+        f = u[:,self.varChoices.index(varName)].copy()
+        f = torch.from_numpy(f)  
 
         # spectral differentiation in z -- this works, but can torch autodiff this?
-        f_z = self.D@f
+        #f_z = self.D@f
+        f_z = torch.einsum('ij,bkj->bki', self.D, f)
+        f_z = f_z.numpy()
         
-        # FDM ([nz,nx]) -- this works
-        f_x = np.zeros_like(f)
-        f = torch.from_numpy(f)  
-        # the switching between torch and numpy is stupid; ideally all should be torch tensors
-        f_x = (torch.roll(f, -1, dims=-1) - torch.roll(f, 1, dims=-1))/(2.0*self.dx)
+        # FDM ([nbatch,nx, nz]) -- this works, but is rather inaccurate
+        f_x = torch.zeros_like(f)
+        f_x = (torch.roll(f, -1, dims=-2) - torch.roll(f, 1, dims=-2))/(2.0*self.dx)
+
         # fix boundary
-        f_x[:,0] = (f[:,1] - f[:,0])/self.dx
-        f_x[:,-1] = (f[:,-1] - f[:,-2])/self.dx
+        f_x[...,0,:] = (f[...,1,:] - f[...,0,:])/self.dx    
+        f_x[...,-1,:] = (f[...,-1,:] - f[...,-2,:])/self.dx
         f_x = f_x.numpy()
         
         return f_x, f_z
 
     def calculateSecondSpatialDerivatives(self, u, varName):
-        f = u[self.varChoices.index(varName)].T.copy()
+        f = u[:,self.varChoices.index(varName)].copy()
+        f = torch.from_numpy(f)  
 
-        f_zz = self.D@(self.D@f)
-        f_xx = np.zeros_like(f)
-        f_xx = ( torch.roll(f, -1, dims=-1) - 2 * f + torch.roll(f, 1, dims=-1) ) / self.dx**2
+        f_z = torch.einsum('ij,bkj->bki', self.D, f)
+        f_zz = torch.einsum('ij,bkj->bki', self.D, f_z)
+        f_zz = f_zz.numpy()
+
+        #f_zz = self.D@(self.D@f)
+        f_xx = torch.zeros_like(f)
+        f_xx = ( torch.roll(f, -1, dims=-2) - 2 * f + torch.roll(f, 1, dims=-2) ) / self.dx**2
         # fix boundary
-        f_xx[:, 0] = (f[:, 2] - 2 * f[:, 1] + f[:, 0]) / self.dx**2
-        f_xx[:, -1] = (f[:, -1] - 2 * f[:, -2] + f[:, -3]) / self.dx**2
+        f_xx[..., 0,:] = (f[..., 2,:] - 2 * f[..., 1,:] + f[..., 0,:]) / self.dx**2
+        f_xx[..., -1,:] = (f[..., -1,:] - 2 * f[..., -2,:] + f[..., -3,:]) / self.dx**2
         f_xx = f_xx.numpy()
         
         return f_xx, f_zz
@@ -152,13 +174,13 @@ class BuoyancyEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
          bt, bx, bz, bxx, bzz = self.calculateDerivatives(u, "b")
 
          ## residual
-         vx = u[self.varChoices.index("vx")].T.copy()
-         vz = u[self.varChoices.index("vz")].T.copy()
-
+         vx = u[:,self.varChoices.index("vx")].copy()
+         vz = u[:,self.varChoices.index("vz")].copy()
+         
          return bt-self.kappa*(bxx+bzz) + vx*bx + vz*bz
      
     def __call__(self, u):
-         return self.lpnorm(self.computeResidual(u).T)
+         return self.lpnorm(self.computeResidual(u))
          
 
 @register
@@ -184,22 +206,22 @@ class BuoyancyUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
          
          # db_t (for the update) is calculated wrong in calculateDerivatives, 
          # so re-calculate it here using that the update at t0 is zero
-         db_t = du[self.varChoices.index("b")].T.copy() / self.dt
+         db_t = du[:,self.varChoices.index("b")].copy() / self.dt
          
          # additionally we need b_x, b_z
          b_x, b_z  = self.calculateFirstSpatialDerivatives(self.u0, "b")
 
          ## residual
-         dvx = du[self.varChoices.index("vx")].T.copy()
-         dvz = du[self.varChoices.index("vz")].T.copy()
-         vx = self.u0[self.varChoices.index("vx")].T.copy()
-         vz = self.u0[self.varChoices.index("vz")].T.copy()
+         dvx = du[:,self.varChoices.index("vx")].copy()
+         dvz = du[:,self.varChoices.index("vz")].copy()
+         vx = self.u0[:,self.varChoices.index("vx")].copy()
+         vz = self.u0[:,self.varChoices.index("vz")].copy()
          
 
          return db_t-self.kappa*(db_xx+db_zz) + (vx+dvx)*db_x + (vz+dvz)*db_z + dvx*b_x + dvz*b_z
      
     def __call__(self, u):
-         return self.lpnorm(self.computeResidual(u).T)
+         return self.lpnorm(self.computeResidual(u))
 
 
 @register
@@ -224,7 +246,7 @@ class DivergenceLoss(PhysicsLoss):
     def __call__(self, u):
         vx_x, _ = self.calculateFirstSpatialDerivatives(u, self.varNames[0])
         _, vz_z = self.calculateFirstSpatialDerivatives(u, self.varNames[1])
-        return self.lpnorm((vx_x + vz_z).T)
+        return self.lpnorm((vx_x + vz_z))
       
 
 @register
@@ -247,16 +269,19 @@ class IntegralLoss(PhysicsLoss):
          if d > 2:
              self.dy = L[1] / (grids[1].size-1.0)
          approx = LagrangeApproximation(grids[-1])
-         self.I = approx.getIntegrationMatrix([(0, L[-1])])  # spectral integration along z       
+         self.I = approx.getIntegrationMatrix([(0, L[-1])])  # spectral integration along z    
+         self.I = torch.from_numpy(self.I)
          self.varName = varName
          self.value = value
             
     def integrate(self, u):
          # cannot directly use the LpOmegaNorm class, as there for p=1 abs(f) is integrated, not f
-         f = u[self.varChoices.index(self.varName)].T.copy()
-         intZ = self.I @ f
+         f = u[:,self.varChoices.index(self.varName)].copy()
+         f = torch.from_numpy(f)  
+         
+         intZ = torch.einsum('ij,bkj->bki', self.I, f)
          # in x and potentially y direction we have equidistant grids with spacing dx, dy        
-         return intZ.sum() * self.dx * self.dy   # sum everything (along x- and in 3d y-axis) 
+         return torch.sum(intZ, dim=-2) * self.dx * self.dy   # sum everything (along x- and in 3d y-axis) 
                                                  # and scale with grid widths
 
     def __call__(self, u): 
