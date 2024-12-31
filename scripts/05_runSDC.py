@@ -189,19 +189,21 @@ errCopy = error(uRef, uCopy)
 
 xValues = np.arange(1, errRK.shape[-1]+1)*dtWrite
 for iVar, var in enumerate(["vx", "vz", "b", "p"]):
-    plt.figure(f"Error for {var}")
+    if var != "b": continue
+    plt.figure(f"Error for {var} (dedalus)")
     for err, name, style in [
-            (errRK, "RK443", 's-'), (errSDC, "SDC-base", '^-'),
-            (errFNO, "SDC-FNO", 'o-'),
-            (errFNO_copy, "SDC-FNO-copy", 'o--'),
-            (errFNO_inter, "SDC-FNO-inter", '^--'),
-            (errFNO_only, "FNO-only", 'p-'), (errCopy, "copy", '*--'),
+            (errSDC, "SDC", '^-'), (errRK, "RK443", 's-'), (errCopy, "copy", '*--'),
+            (errFNO_only, "FNO-only", 'p-'),
+            # (errFNO, "SDC-FNO", 'o-'),
+            # (errFNO_copy, "SDC-FNO-copy", 'o--'),
+            # (errFNO_inter, "SDC-FNO-inter", '^--'),
             ]:
         plt.semilogy(
             xValues, err[iVar], style, label=name)
     plt.legend()
     plt.xlabel("time")
     plt.ylabel("error")
+    plt.ylim(1e-10, 1)
     plt.tight_layout()
     plt.grid(True)
     plt.savefig(f"{runDir}/error_{var}.pdf")

@@ -270,14 +270,19 @@ def readPySDCSolution(path:str, uLoc:np.ndarray):
 
 
 def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
-    tBeg=0, tEnd=10, dtWrite=0.1, restartFile=None):
+    tBeg=0, tEnd=10, dtWrite=0.1, restartFile=None, useFNO=None,
+    QI="MIN-SR-FLEX", QE="PIC", nSweeps=4, useRK=False):
 
-    from pySDC.implementations.controller_classes.controller_nonMPI import controller_nonMPI
     from pySDC.implementations.problem_classes.RayleighBenard import RayleighBenard
     from pySDC.implementations.sweeper_classes.imex_1st_order import imex_1st_order
+    from pySDC.implementations.sweeper_classes.Runge_Kutta import ARK3
     from pySDC.implementations.problem_classes.generic_spectral import compute_residual_DAE
 
+    from cfno.simulation.sweeper import FNO_IMEX, StepperController
+
     imex_1st_order.compute_residual = compute_residual_DAE
+
+    nNodes = 4
 
     Nx, Nz = 256*resFactor, 64*resFactor
     timestep = baseDt/resFactor
@@ -310,19 +315,6 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
         f.write(f"dtWrite : {dtWrite}\n")
 
     description = {
-        # Sweeper and its parameters
-        "sweeper_class": imex_1st_order,
-        "sweeper_params": {
-            "quad_type": "RADAU-RIGHT",
-            "num_nodes": 4,
-            "node_type": "LEGENDRE",
-            "initial_guess": "copy",
-            "do_coll_update": False,
-            "QI": "MIN-SR-FLEX",
-            "QE": "PIC",
-            'skip_residual_computation':
-                ('IT_CHECK', 'IT_DOWN', 'IT_UP', 'IT_FINE', 'IT_COARSE'),
-        },
         # Step parameters
         "step_params": {
             "maxiter": 1,
@@ -330,18 +322,45 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
         # Level parameters
         "level_params": {
             "restol": -1,
-            "nsweeps": 4,
+            "nsweeps": nSweeps,
             "dt": timestep,
         },
         # problem parameters
         "problem_class": RayleighBenard,
         "problem_params": {
-            "Rayleigh": Rayleigh/2**4,
+            "Rayleigh": Rayleigh,
             "nx": Nx,
             "nz": Nz,
-            "dealiasing": 3/2
+            "dealiasing": 3/2,
+            "max_cached_factorizations": nNodes*nSweeps
             }
     }
+
+    # Sweeper and its parameters
+    if useRK:
+        description.update({
+            "sweeper_class": ARK3,
+            "sweeper_params": {},
+        })
+        description["level_params"]["nsweeps"] = 1
+    else:
+        description.update({
+        "sweeper_class": imex_1st_order,
+        "sweeper_params": {
+            "quad_type": "RADAU-RIGHT",
+            "num_nodes": nNodes,
+            "node_type": "LEGENDRE",
+            "initial_guess": "copy",
+            "do_coll_update": False,
+            "QI": QI,
+            "QE": QE,
+            # 'skip_residual_computation': ('IT_CHECK', 'IT_DOWN', 'IT_UP', 'IT_FINE', 'IT_COARSE'),
+            },
+        })
+        if useFNO is not None:
+            description["sweeper_class"] = FNO_IMEX
+            description["sweeper_params"]["FNO"] = useFNO
+
 
     iterWrite = dtWrite/timestep
     if int(iterWrite) != round(iterWrite, ndigits=3):
@@ -350,7 +369,7 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
     iterWrite = int(iterWrite)
     tWrite = np.linspace(tBeg, tEnd, nSteps//iterWrite+1)
 
-    controller = controller_nonMPI(
+    controller = StepperController(
         num_procs=1, controller_params={'logger_level': 20 if MPI_RANK == 0 else 50},
         description=description)
 
@@ -381,7 +400,7 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
         f"{dirName}/sol_{0:05.1f}sec", prob.itransform(u0), prob.global_shape
         )
     for t0, t1 in zip(tWrite[:-1], tWrite[1:]):
-        u, _ = controller.run(u0=u0, t0=t0, Tend=t1)
+        u, _ = controller.run(u0=u0, t0=t0, Tend=t1, nSteps=iterWrite)
         writePySDCSolution(
             f"{dirName}/sol_{t1:05.1f}sec", prob.itransform(u), prob.global_shape
             )
