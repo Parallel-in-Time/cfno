@@ -4,7 +4,7 @@ from datetime import datetime
 
 import dedalus.public as d3
 from mpi4py import MPI
-from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX
+from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX, SDCIMEX_MPI, initSpaceTimeMPI
 
 COMM_WORLD = MPI.COMM_WORLD
 MPI_SIZE = COMM_WORLD.Get_size()
@@ -13,7 +13,8 @@ MPI_RANK = COMM_WORLD.Get_rank()
 def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     tBeg=0, tEnd=150, dtWrite=0.1, useSDC=False,
     writeVort=False, writeFull=False, initFields=None,
-    writeSpaceDistr=False, logEvery=100, distrMesh=None):
+    writeSpaceDistr=False, logEvery=100, distrMesh=None,
+    timeParallel=False, groupTimeProcs=False):
     """
     Run RBC simulation in a given folder.
 
@@ -79,6 +80,13 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     timestepper = SpectralDeferredCorrectionIMEX if useSDC else d3.RK443
     dtype = np.float64
 
+    if timeParallel:
+        assert useSDC, "cannot use time-parallel without SDC"
+        _, sComm, _ = SDCIMEX_MPI.initSpaceTimeComms()
+        timestepper = SDCIMEX_MPI
+    else:
+        sComm = COMM_WORLD
+
     os.makedirs(dirName, exist_ok=True)
     with open(f"{dirName}/00_infoSimu.txt", "w") as f:
         f.write(f"Rayleigh : {Rayleigh:1.2e}\n")
@@ -90,25 +98,25 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
 
     # Bases
     coords = d3.CartesianCoordinates('x', 'z')
-    dist = d3.Distributor(coords, dtype=dtype, mesh=distrMesh)
+    distr = d3.Distributor(coords, dtype=dtype, mesh=distrMesh, comm=sComm)
     xbasis = d3.RealFourier(coords['x'], size=Nx, bounds=(0, Lx), dealias=dealias)
     zbasis = d3.ChebyshevT(coords['z'], size=Nz, bounds=(0, Lz), dealias=dealias)
 
     # Fields
-    p = dist.Field(name='p', bases=(xbasis,zbasis))
-    b = dist.Field(name='b', bases=(xbasis,zbasis))
-    u = dist.VectorField(coords, name='u', bases=(xbasis,zbasis))
-    tau_p = dist.Field(name='tau_p')
-    tau_b1 = dist.Field(name='tau_b1', bases=xbasis)
-    tau_b2 = dist.Field(name='tau_b2', bases=xbasis)
-    tau_u1 = dist.VectorField(coords, name='tau_u1', bases=xbasis)
-    tau_u2 = dist.VectorField(coords, name='tau_u2', bases=xbasis)
+    p = distr.Field(name='p', bases=(xbasis,zbasis))
+    b = distr.Field(name='b', bases=(xbasis,zbasis))
+    u = distr.VectorField(coords, name='u', bases=(xbasis,zbasis))
+    tau_p = distr.Field(name='tau_p')
+    tau_b1 = distr.Field(name='tau_b1', bases=xbasis)
+    tau_b2 = distr.Field(name='tau_b2', bases=xbasis)
+    tau_u1 = distr.VectorField(coords, name='tau_u1', bases=xbasis)
+    tau_u2 = distr.VectorField(coords, name='tau_u2', bases=xbasis)
 
     # Substitutions
     kappa = (Rayleigh * Prandtl)**(-1/2)
     nu = (Rayleigh / Prandtl)**(-1/2)
-    x, z = dist.local_grids(xbasis, zbasis)
-    ex, ez = coords.unit_vector_fields(dist)
+    x, z = distr.local_grids(xbasis, zbasis)
+    ex, ez = coords.unit_vector_fields(distr)
     lift_basis = zbasis.derivative_basis(1)
     lift = lambda A: d3.Lift(A, lift_basis, -1)
     grad_u = d3.grad(u) + ez*lift(tau_u1) # First-order reduction
@@ -150,7 +158,7 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
             ]
         for field, name in fields:
             localSlices = (slice(None),) * len(field.tensorsig) \
-                + dist.grid_layout.slices(field.domain, field.scales)
+                + distr.grid_layout.slices(field.domain, field.scales)
             field['g'] = initFields[name][-1][localSlices]
 
     # Analysis
