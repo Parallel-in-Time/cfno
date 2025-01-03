@@ -4,7 +4,7 @@ from datetime import datetime
 
 import dedalus.public as d3
 from mpi4py import MPI
-from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX, SDCIMEX_MPI
+from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX, SDCIMEX_MPI, SDCIMEX_MPI2
 
 COMM_WORLD = MPI.COMM_WORLD
 MPI_SIZE = COMM_WORLD.Get_size()
@@ -14,7 +14,7 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     tBeg=0, tEnd=150, dtWrite=0.1, useSDC=False,
     writeVort=False, writeFull=False, initFields=None,
     writeSpaceDistr=False, logEvery=100, distrMesh=None,
-    timeParallel=False, groupTimeProcs=False):
+    timeParallel=False, groupTimeProcs=False, useTimePar2=False):
     """
     Run RBC simulation in a given folder.
 
@@ -83,7 +83,9 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     if timeParallel:
         assert useSDC, "cannot use time-parallel without SDC"
         _, sComm, _ = SDCIMEX_MPI.initSpaceTimeComms(groupTime=groupTimeProcs)
-        timestepper = SDCIMEX_MPI
+        timestepper = SDCIMEX_MPI2 if useTimePar2 else SDCIMEX_MPI
+        if MPI_RANK == 0:
+            print(" -- using timeParallel implementation" + " 2" if useTimePar2 else "")
     else:
         sComm = COMM_WORLD
 

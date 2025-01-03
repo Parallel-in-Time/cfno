@@ -17,6 +17,7 @@ comm = MPI.COMM_WORLD
 nX, nZ = 256, 64
 resFactor = 1
 timeParallel = True
+tPar2 = True
 
 baseDir = f"run_sdc_M{resFactor}"
 if timeParallel:
@@ -76,7 +77,8 @@ for i, dt in enumerate(dtSizes):
     if MPI_RANK == 0:
         print(f" -- running SDC simulation with dt={dt:1.1e} in {dirName}")
     runSim(dirName, Rayleigh, resFactor, baseDt=dt, useSDC=True,
-           tEnd=tEnd, dtWrite=tEnd, initFields=initFields, timeParallel=timeParallel)
+           tEnd=tEnd, dtWrite=tEnd, initFields=initFields, 
+           timeParallel=timeParallel, useTimePar2=tPar2)
     outFiles = OutputFiles(dirName)
     numFields = outFiles.file(0)['tasks']
     uNum = extractU(numFields)
