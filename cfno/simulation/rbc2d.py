@@ -4,7 +4,7 @@ from datetime import datetime
 
 import dedalus.public as d3
 from mpi4py import MPI
-from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX, SDCIMEX_MPI, initSpaceTimeMPI
+from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX, SDCIMEX_MPI
 
 COMM_WORLD = MPI.COMM_WORLD
 MPI_SIZE = COMM_WORLD.Get_size()
@@ -82,7 +82,7 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
 
     if timeParallel:
         assert useSDC, "cannot use time-parallel without SDC"
-        _, sComm, _ = SDCIMEX_MPI.initSpaceTimeComms()
+        _, sComm, _ = SDCIMEX_MPI.initSpaceTimeComms(groupTime=groupTimeProcs)
         timestepper = SDCIMEX_MPI
     else:
         sComm = COMM_WORLD
