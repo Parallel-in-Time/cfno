@@ -46,6 +46,12 @@ tComp = np.array([42.1, 16.1, 10.5, 6.8, 5.3, 5.0, 5.8])
 nProc = np.array([1, 4, 8, 16, 32, 64, 128])
 label, sym = "SDC (tPar)", ">"
 
+# -- dedalus-SDC, MPI time-parallel #2
+# nX, nZ, nSteps = 256, 64, 201
+# tComp = np.array([42.1, 15.6, 10.2, 6.9, 5.3, 5.0, 5.6])
+# nProc = np.array([1, 4, 8, 16, 32, 64, 128])
+# label, sym = "SDC (tPar2)", "p"
+
 # -- dedalus-SDC, MPI time-parallel, time-grouped
 # nX, nZ, nSteps = 256, 64, 201
 # tComp = np.array([42.1, 16.1, 10.3, 7.2, 5.8, 5.5, 6.3])

@@ -39,7 +39,7 @@ initFields = initFiles.file(0)['tasks']
 
 tEnd = 1
 dtRef = 1e-6
-dtBase = 0.05
+dtBase = 0.2
 dtSizes = [dtBase/2**i for i in range(5)]
 
 
