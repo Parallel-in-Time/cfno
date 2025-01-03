@@ -24,7 +24,7 @@ SpectralDeferredCorrectionIMEX.setParameters(
     nNodes=4, implSweep="MIN-SR-FLEX", explSweep="PIC", initSweep="COPY"
 )
 
-infos, solver, b = runSim(
+infos, solver = runSim(
     f"scaling_{dirID}",
     tEnd=tEnd, dtWrite=2*tEnd, writeSpaceDistr=True, logEvery=10000,
     useSDC=useSDC, timeParallel=timeParallel)
