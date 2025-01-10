@@ -4,10 +4,10 @@ import numpy as np
 from qmat.lagrange import LagrangeApproximation
 
 ### TODOs:
-### 1. needs to be adapted to deal with (mini-)batches -> einsum, compare to Fourier layer and adapt
+### 1. adjust call routines and constructors to the required signatures
 ### 2. for training requires autodiff of the qmat stuff? needs to be tested
 ### 3. the switching between numpy and torch is stupid. Do everything in torch
-### 4. implementation is for 2d, needs to be generalized
+### 4. implementation is for 2d, needs to be generalized to handle 3d as well
 
 # Store all loss classes in a dictionary using the register decorator 
 LOSSES_CLASSES = {}
@@ -80,7 +80,6 @@ class PhysicsLoss(object): # todo: generalize to 3d
     def __init__(self,
                   grids,   # tuple of grids (x,y,z) or (x,z) depending on d
                   L,       # tuple of domain sizes fitting to grids
-                  u0,      # initial value of time step
                   dt:float=0.1, # time step size
                   d:int=2, # space dimension == len(grids), we don't really need this
                   ):
@@ -89,7 +88,6 @@ class PhysicsLoss(object): # todo: generalize to 3d
          assert d > 0
          assert len(grids) == d
          self.grids = grids
-         self.u0 = u0
          self.dt = dt
          self.nx = grids[0].size
          self.Lx = L[0]
@@ -99,8 +97,8 @@ class PhysicsLoss(object): # todo: generalize to 3d
          self.D = torch.from_numpy(self.D).type(torch.float)
          self.varChoices = ["vx", "vz", "b", "p"]
         
-    def calculateTimeDerivative(self, u, varName):
-        fInit = self.u0[:,self.varChoices.index(varName)].copy()  # why should we transpose here?
+    def calculateTimeDerivative(self, u, u0, varName):
+        fInit = u0[:,self.varChoices.index(varName)].copy()  # why should we transpose here?
         f = u[:,self.varChoices.index(varName)].copy()
         f_t = (f-fInit)/self.dt
         
@@ -144,8 +142,8 @@ class PhysicsLoss(object): # todo: generalize to 3d
         
         return f_xx, f_zz
         
-    def calculateDerivatives(self, u, varName): # convenience...
-        u_t = self.calculateTimeDerivative(u, varName)
+    def calculateDerivatives(self, u, u0, varName): # convenience...
+        u_t = self.calculateTimeDerivative(u, u0, varName)
         u_x, u_z = self.calculateFirstSpatialDerivatives(u, varName)
         u_xx, u_zz = self.calculateSecondSpatialDerivatives(u, varName)
         
@@ -160,18 +158,17 @@ class BuoyancyEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
     def __init__(self,
                   grids,   # tuple of grids (x,y,z) or (x,z) depending on d
                   L,       # tuple of domain sizes fitting to grids
-                  u0,      # initial value of time step
                   dt:float=0.1, # time step size
                   d:int=2, # space dimension == len(grids), we don't really need this
                   kappa:float=1.0,
                   ):
-         super().__init__(grids, L, u0, dt, d)
+         super().__init__(grids, L, dt, d)
 
          self.kappa = kappa
          self.lpnorm = LpOmegaNorm(grids, L, d, 2)
          
-    def computeResidual(self, u):
-         bt, bx, bz, bxx, bzz = self.calculateDerivatives(u, "b")
+    def computeResidual(self, u, u0):
+         bt, bx, bz, bxx, bzz = self.calculateDerivatives(u, u0, "b")
 
          ## residual
          vx = u[:,self.varChoices.index("vx")].copy()
@@ -179,8 +176,8 @@ class BuoyancyEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
          
          return bt-self.kappa*(bxx+bzz) + vx*bx + vz*bz
      
-    def __call__(self, u):
-         return self.lpnorm(self.computeResidual(u))
+    def __call__(self, pred, ref, inp):
+         return self.lpnorm(self.computeResidual(pred, inp))
          
 
 @register
@@ -191,37 +188,37 @@ class BuoyancyUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
     def __init__(self,
                   grids,   # tuple of grids (x,y,z) or (x,z) depending on d
                   L,       # tuple of domain sizes fitting to grids
-                  u0,      # initial value of time step
                   dt:float=0.1, # time step size
                   d:int=2, # space dimension == len(grids), we don't really need this
                   kappa:float=1.0,
                   ):
-         super().__init__(grids, L, u0, dt, d)
+         super().__init__(grids, L, dt, d)
 
          self.kappa = kappa
          self.lpnorm = LpOmegaNorm(grids, L, d, 2)
          
-    def computeResidual(self, du):
-         _, db_x, db_z, db_xx, db_zz = self.calculateDerivatives(du, "b")
+    def computeResidual(self, du, u0):
+         db_x, db_z = self.calculateFirstSpatialDerivatives(du, "b")
+         db_xx, db_zz = self.calculateSecondSpatialDerivatives(du, "b")
          
          # db_t (for the update) is calculated wrong in calculateDerivatives, 
          # so re-calculate it here using that the update at t0 is zero
          db_t = du[:,self.varChoices.index("b")].copy() / self.dt
          
          # additionally we need b_x, b_z
-         b_x, b_z  = self.calculateFirstSpatialDerivatives(self.u0, "b")
+         b_x, b_z  = self.calculateFirstSpatialDerivatives(u0, "b")
 
          ## residual
          dvx = du[:,self.varChoices.index("vx")].copy()
          dvz = du[:,self.varChoices.index("vz")].copy()
-         vx = self.u0[:,self.varChoices.index("vx")].copy()
-         vz = self.u0[:,self.varChoices.index("vz")].copy()
+         vx = u0[:,self.varChoices.index("vx")].copy()
+         vz = u0[:,self.varChoices.index("vz")].copy()
          
 
          return db_t-self.kappa*(db_xx+db_zz) + (vx+dvx)*db_x + (vz+dvz)*db_z + dvx*b_x + dvz*b_z
      
-    def __call__(self, u):
-         return self.lpnorm(self.computeResidual(u))
+    def __call__(self, pred, ref, inp):
+         return self.lpnorm(self.computeResidual(pred, inp))
 
 
 @register
@@ -233,19 +230,18 @@ class DivergenceLoss(PhysicsLoss):
     def __init__(self,
                  grids,   # tuple of grids (x,y,z) or (x,z) depending on d
                  L,       # tuple of domain sizes fitting to grids
-                 u0,      # initial value of time step
                  dt:float=0.1, # time step size
                  d:int=2, # space dimension == len(grids), we don't really need this
                  varNames:list = ["vx", "vz"]
                  ):
-        super().__init__(grids, L, u0, dt, d)
+        super().__init__(grids, L, dt, d)
         self.varNames = varNames
         self.lpnorm = LpOmegaNorm(grids, L, d, 2)
 
 
-    def __call__(self, u):
-        vx_x, _ = self.calculateFirstSpatialDerivatives(u, self.varNames[0])
-        _, vz_z = self.calculateFirstSpatialDerivatives(u, self.varNames[1])
+    def __call__(self, pred, ref=None, inp=None):
+        vx_x, _ = self.calculateFirstSpatialDerivatives(pred, self.varNames[0])
+        _, vz_z = self.calculateFirstSpatialDerivatives(pred, self.varNames[1])
         return self.lpnorm((vx_x + vz_z))
       
 
@@ -257,13 +253,12 @@ class IntegralLoss(PhysicsLoss):
     def __init__(self,
                  grids,   # tuple of grids (x,y,z) or (x,z) depending on d
                  L,       # tuple of domain sizes fitting to grids
-                 u0,      # initial value of time step
                  dt:float=0.1, # time step size
                  d:int=2, # space dimension == len(grids), we don't really need this
                  varName:str="p",
                  value:float=0.0,
                  ):
-         super().__init__(grids, L, u0, dt, d)
+         super().__init__(grids, L, dt, d)
          self.dx = L[0] / (grids[0].size-1.0)
          self.dy = 1 # in case of 2d this stays at 1 to not influence the result
          if d > 2:
@@ -284,5 +279,5 @@ class IntegralLoss(PhysicsLoss):
          return torch.sum(intZ, dim=-2) * self.dx * self.dy   # sum everything (along x- and in 3d y-axis) 
                                                  # and scale with grid widths
 
-    def __call__(self, u): 
-         return np.abs(self.integrate(u) - self.value)
+    def __call__(self, pred, ref, inp): 
+         return np.abs(self.integrate(pred) - self.value)
