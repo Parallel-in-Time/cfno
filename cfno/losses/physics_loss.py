@@ -58,7 +58,7 @@ class LpOmegaNorm(object):
 
 
     def __call__(self,f):
-        return self.integrate(f)**(1/self.p)
+        return torch.mean(self.integrate(f)**(1/self.p))
 
 
 
@@ -158,7 +158,7 @@ class BuoyancyEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
          return bt-self.kappa*(bxx+bzz) + vx*bx + vz*bz
      
     def __call__(self, pred, ref, inp):
-         return self.lpnorm(self.computeResidual(pred, inp))
+         return torch.mean(self.lpnorm(self.computeResidual(pred, inp)))
          
 
 @register
@@ -199,7 +199,7 @@ class BuoyancyUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
          return db_t-self.kappa*(db_xx+db_zz) + (vx+dvx)*db_x + (vz+dvz)*db_z + dvx*b_x + dvz*b_z
      
     def __call__(self, pred, ref, inp):
-         return self.lpnorm(self.computeResidual(pred, inp))
+         return torch.mean(self.lpnorm(self.computeResidual(pred, inp)))
 
 
 @register
@@ -223,7 +223,7 @@ class DivergenceLoss(PhysicsLoss):
     def __call__(self, pred, ref=None, inp=None):
         vx_x, _ = self.calculateFirstSpatialDerivatives(pred, self.varNames[0])
         _, vz_z = self.calculateFirstSpatialDerivatives(pred, self.varNames[1])
-        return self.lpnorm((vx_x + vz_z))
+        return torch.mean(self.lpnorm((vx_x + vz_z)))
       
 
 @register
@@ -260,4 +260,4 @@ class IntegralLoss(PhysicsLoss):
                                                  # and scale with grid widths
 
     def __call__(self, pred, ref, inp): 
-         return torch.abs(self.integrate(pred) - self.value)
+         return torch.mean(torch.abs(self.integrate(pred) - self.value))
