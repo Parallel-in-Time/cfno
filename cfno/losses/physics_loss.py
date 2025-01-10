@@ -265,7 +265,7 @@ class IntegralLoss(PhysicsLoss):
              self.dy = L[1] / (grids[1].size-1.0)
          approx = LagrangeApproximation(grids[-1])
          self.I = approx.getIntegrationMatrix([(0, L[-1])])  # spectral integration along z    
-         self.I = torch.from_numpy(self.I)
+         self.I = torch.from_numpy(self.I).type(torch.float)
          self.varName = varName
          self.value = value
             
