@@ -4,10 +4,8 @@ import numpy as np
 from qmat.lagrange import LagrangeApproximation
 
 ### TODOs:
-### 1. adjust call routines and constructors to the required signatures
-### 2. for training requires autodiff of the qmat stuff? needs to be tested
-### 3. the switching between numpy and torch is stupid. Do everything in torch
-### 4. implementation is for 2d, needs to be generalized to handle 3d as well
+### 1. for training requires autodiff of the qmat stuff? needs to be tested
+### 2. implementation is for 2d, needs to be generalized to handle 3d as well
 
 # Store all loss classes in a dictionary using the register decorator 
 LOSSES_CLASSES = {}
@@ -50,8 +48,7 @@ class LpOmegaNorm(object):
         integrates the grid functions abs(f)**p in space
         shape of f is [nbatch, nx, ny, nz] in 3d. [nbatch, nx, nz] in 2d
         """
-        fp = np.abs(f)**self.p
-        fp = torch.from_numpy(fp)
+        fp = torch.abs(f)**self.p
 
         
         intZ = torch.einsum('ij,bkj->bki', self.I, fp)
@@ -59,12 +56,7 @@ class LpOmegaNorm(object):
         return torch.sum(intZ, dim=-2) * self.dx * self.dy   # sum everything (along x- and in 3d y-axis) 
                                                 # and scale with grid widths
 
-#        # integrate in z with qmat
-#        intZ = self.I @ fp.T
-#        # in x and potentially y direction we have equidistant grids with spacing dx, dy        
-#        return intZ.sum() * self.dx * self.dy   # sum everything (along x- and in 3d y-axis) 
-                                                # and scale with grid widths to have an actual discrete Lp norm 
- 
+
     def __call__(self,f):
         return self.integrate(f)**(1/self.p)
 
@@ -97,21 +89,15 @@ class PhysicsLoss(object): # todo: generalize to 3d
          self.D = torch.from_numpy(self.D).type(torch.float)
          self.varChoices = ["vx", "vz", "b", "p"]
         
-    def calculateTimeDerivative(self, u, u0, varName):
-        fInit = u0[:,self.varChoices.index(varName)].copy()  # why should we transpose here?
-        f = u[:,self.varChoices.index(varName)].copy()
-        f_t = (f-fInit)/self.dt
+    def calculateTimeDerivative(self, u, u0, varName):        
+        return (u0[:,self.varChoices.index(varName)] - u[:,self.varChoices.index(varName)]) / self.dt
         
-        return f_t
          
     def calculateFirstSpatialDerivatives(self, u, varName):
-        f = u[:,self.varChoices.index(varName)].copy()
-        f = torch.from_numpy(f)  
-
+        f = u[:,self.varChoices.index(varName)]
+        
         # spectral differentiation in z -- this works, but can torch autodiff this?
-        #f_z = self.D@f
         f_z = torch.einsum('ij,bkj->bki', self.D, f)
-        f_z = f_z.numpy()
         
         # FDM ([nbatch,nx, nz]) -- this works, but is rather inaccurate
         f_x = torch.zeros_like(f)
@@ -120,25 +106,20 @@ class PhysicsLoss(object): # todo: generalize to 3d
         # fix boundary
         f_x[...,0,:] = (f[...,1,:] - f[...,0,:])/self.dx    
         f_x[...,-1,:] = (f[...,-1,:] - f[...,-2,:])/self.dx
-        f_x = f_x.numpy()
         
         return f_x, f_z
 
     def calculateSecondSpatialDerivatives(self, u, varName):
-        f = u[:,self.varChoices.index(varName)].copy()
-        f = torch.from_numpy(f)  
+        f = u[:,self.varChoices.index(varName)]
 
         f_z = torch.einsum('ij,bkj->bki', self.D, f)
         f_zz = torch.einsum('ij,bkj->bki', self.D, f_z)
-        f_zz = f_zz.numpy()
 
-        #f_zz = self.D@(self.D@f)
         f_xx = torch.zeros_like(f)
         f_xx = ( torch.roll(f, -1, dims=-2) - 2 * f + torch.roll(f, 1, dims=-2) ) / self.dx**2
         # fix boundary
         f_xx[..., 0,:] = (f[..., 2,:] - 2 * f[..., 1,:] + f[..., 0,:]) / self.dx**2
         f_xx[..., -1,:] = (f[..., -1,:] - 2 * f[..., -2,:] + f[..., -3,:]) / self.dx**2
-        f_xx = f_xx.numpy()
         
         return f_xx, f_zz
         
@@ -171,8 +152,8 @@ class BuoyancyEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
          bt, bx, bz, bxx, bzz = self.calculateDerivatives(u, u0, "b")
 
          ## residual
-         vx = u[:,self.varChoices.index("vx")].copy()
-         vz = u[:,self.varChoices.index("vz")].copy()
+         vx = u[:,self.varChoices.index("vx")]
+         vz = u[:,self.varChoices.index("vz")]
          
          return bt-self.kappa*(bxx+bzz) + vx*bx + vz*bz
      
@@ -203,16 +184,16 @@ class BuoyancyUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
          
          # db_t (for the update) is calculated wrong in calculateDerivatives, 
          # so re-calculate it here using that the update at t0 is zero
-         db_t = du[:,self.varChoices.index("b")].copy() / self.dt
+         db_t = du[:,self.varChoices.index("b")] / self.dt
          
          # additionally we need b_x, b_z
          b_x, b_z  = self.calculateFirstSpatialDerivatives(u0, "b")
 
          ## residual
-         dvx = du[:,self.varChoices.index("vx")].copy()
-         dvz = du[:,self.varChoices.index("vz")].copy()
-         vx = u0[:,self.varChoices.index("vx")].copy()
-         vz = u0[:,self.varChoices.index("vz")].copy()
+         dvx = du[:,self.varChoices.index("vx")]
+         dvz = du[:,self.varChoices.index("vz")]
+         vx = u0[:,self.varChoices.index("vx")]
+         vz = u0[:,self.varChoices.index("vz")]
          
 
          return db_t-self.kappa*(db_xx+db_zz) + (vx+dvx)*db_x + (vz+dvz)*db_z + dvx*b_x + dvz*b_z
@@ -271,8 +252,7 @@ class IntegralLoss(PhysicsLoss):
             
     def integrate(self, u):
          # cannot directly use the LpOmegaNorm class, as there for p=1 abs(f) is integrated, not f
-         f = u[:,self.varChoices.index(self.varName)].copy()
-         f = torch.from_numpy(f)  
+         f = u[:,self.varChoices.index(self.varName)]
          
          intZ = torch.einsum('ij,bkj->bki', self.I, f)
          # in x and potentially y direction we have equidistant grids with spacing dx, dy        
@@ -280,4 +260,4 @@ class IntegralLoss(PhysicsLoss):
                                                  # and scale with grid widths
 
     def __call__(self, pred, ref, inp): 
-         return np.abs(self.integrate(pred) - self.value)
+         return torch.abs(self.integrate(pred) - self.value)
