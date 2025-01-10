@@ -143,12 +143,13 @@ class BuoyancyEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
                   L,       # tuple of domain sizes fitting to grids
                   dt:float=0.1, # time step size
                   d:int=2, # space dimension == len(grids), we don't really need this
-                  kappa:float=1.0,                      
+                  Rayleigh:float=1.0,                      
+                  Prantl:float=1.0,
                   device=None
                   ):
          super().__init__(grids, L, dt, d, device)
 
-         self.kappa = kappa
+         self.kappa = (Rayleigh * Prantl)**(-1/2)
          self.lpnorm = LpOmegaNorm(grids, L, d, 2, device)
          
     def computeResidual(self, u, u0):
@@ -163,6 +164,40 @@ class BuoyancyEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
     def __call__(self, pred, ref, inp):
          return torch.mean(self.lpnorm(self.computeResidual(pred, inp)))
          
+@register
+class VelocityEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
+    """
+    Compute residual for the velocity equation
+    """
+    def __init__(self,
+                  grids,   # tuple of grids (x,y,z) or (x,z) depending on d
+                  L,       # tuple of domain sizes fitting to grids
+                  dt:float=0.1, # time step size
+                  d:int=2, # space dimension == len(grids), we don't really need this
+                  Rayleigh:float=1.0,                      
+                  Prantl:float=1.0,
+                  device=None
+                  ):
+         super().__init__(grids, L, dt, d, device)
+
+         self.nu = (Rayleigh / Prantl)**(-1/2)
+         self.lpnorm = LpOmegaNorm(grids, L, d, 2, device)
+         
+    def computeResidual(self, u, u0):
+         vx_t, vx_x, vx_z, vx_xx, vx_zz = self.calculateDerivatives(u, u0, "vx")
+         vz_t, vz_x, vz_z, vz_xx, vz_zz = self.calculateDerivatives(u, u0, "vz")
+
+         b = u[:,self.varChoices.index("b")].to(self.device)
+         vx = u[:,self.varChoices.index("vx")].to(self.device)
+         vz = u[:,self.varChoices.index("vz")].to(self.device)
+         p_x, p_z = self.calculateFirstSpatialDerivatives(u, "p")
+         
+         return vx_t - self.nu*(vx_xx+vx_zz) + p_x + vx*vx_x + vz*vz_x, vz_t - self.nu*(vz_xx+vz_zz) + p_z - b + vx*vx_z + vz*vz_z
+     
+    def __call__(self, pred, ref, inp):
+         res_vx, res_vz = self.computeResidual(pred, inp)
+         return torch.mean(self.lpnorm(res_vx)+self.lpnorm(res_vz))
+     
 
 @register
 class BuoyancyUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
@@ -174,12 +209,13 @@ class BuoyancyUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
                   L,       # tuple of domain sizes fitting to grids
                   dt:float=0.1, # time step size
                   d:int=2, # space dimension == len(grids), we don't really need this
-                  kappa:float=1.0,
+                  Rayleigh:float=1.0,                      
+                  Prantl:float=1.0,
                   device=None
                   ):
          super().__init__(grids, L, dt, d, device)
 
-         self.kappa = kappa
+         self.kappa = (Rayleigh * Prantl)**(-1/2)
          self.lpnorm = LpOmegaNorm(grids, L, d, 2)
          
     def computeResidual(self, du, u0):
@@ -194,10 +230,10 @@ class BuoyancyUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
          b_x, b_z  = self.calculateFirstSpatialDerivatives(u0, "b")
 
          ## residual
-         dvx = du[:,self.varChoices.index("vx")]
-         dvz = du[:,self.varChoices.index("vz")]
-         vx = u0[:,self.varChoices.index("vx")]
-         vz = u0[:,self.varChoices.index("vz")]
+         dvx = du[:,self.varChoices.index("vx")].to(self.device)
+         dvz = du[:,self.varChoices.index("vz")].to(self.device)
+         vx = u0[:,self.varChoices.index("vx")].to(self.device)
+         vz = u0[:,self.varChoices.index("vz")].to(self.device)
          
 
          return db_t-self.kappa*(db_xx+db_zz) + (vx+dvx)*db_x + (vz+dvz)*db_z + dvx*b_x + dvz*b_z
@@ -222,7 +258,7 @@ class DivergenceLoss(PhysicsLoss):
                  ):
         super().__init__(grids, L, dt, d, device)
         self.varNames = varNames
-        self.lpnorm = LpOmegaNorm(grids, L, d, 2)
+        self.lpnorm = LpOmegaNorm(grids, L, d, 2, device=device)
 
 
     def __call__(self, pred, ref=None, inp=None):
@@ -258,7 +294,7 @@ class IntegralLoss(PhysicsLoss):
             
     def integrate(self, u):
          # cannot directly use the LpOmegaNorm class, as there for p=1 abs(f) is integrated, not f
-         f = u[:,self.varChoices.index(self.varName)]
+         f = u[:,self.varChoices.index(self.varName)].to(self.device)
          
          intZ = torch.einsum('ij,bkj->bki', self.I, f)
          # in x and potentially y direction we have equidistant grids with spacing dx, dy        
@@ -279,13 +315,14 @@ class RBEqLoss(object):
                  L,       # tuple of domain sizes fitting to grids
                  dt:float=0.1, # time step size
                  d:int=2, # space dimension == len(grids), we don't really need this
-                 kappa:float=1.0,
+                 Rayleigh:float=1.0,
+                 Prantl:float=1.0,
                  device=None,
-                 weights=[1, 1]
+                 weights=[1, 1, 1, 1]
                  ):
         self.weights=weights
         self.device=device
-        self.losses = [BuoyancyEquationLoss2D(grids, L, dt, d, kappa, device), IntegralLoss(grids,L,dt,d,device=device)]
+        self.losses = [VelocityEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device), BuoyancyEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device), IntegralLoss(grids,L,dt,d,device=device), DivergenceLoss(grids,L,dt,d,device=device)]
         
     def __call__(self, pred, ref, inp):
         sum = 0.0

@@ -31,12 +31,13 @@ model:
   bias: false
 
 loss:
-  name: BuoyancyEquationLoss2D
+  name: RBEqLoss
   grids: démerde toi
   L: [4, 1]
   dt: 1.e-3
-  kappa: 1.0e-3
-
+  Rayleigh: 1.0e+7
+  Prantl: 1.0
+  
 optim:
   name: adam
   lr: 0.0001
