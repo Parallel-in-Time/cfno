@@ -22,7 +22,8 @@ class LpLoss(object):
                  d:int=2,
                  p:int=2,
                  size_average:bool=True, 
-                 reduction:bool=True
+                 reduction:bool=True,
+                 device=None
     ):
         super().__init__()
         # Dimension and Lp-norm type are postive
@@ -79,6 +80,7 @@ class VectorNormLoss(object):
     def __init__(self, 
                  p:int=2,
                  absolute=False,
+                 device=None
     ):
         super().__init__()
         # Lp-norm type is positive

@@ -1,10 +1,8 @@
 import torch
-import numpy as np
-
 from qmat.lagrange import LagrangeApproximation
 
 ### TODOs:
-### 1. for training requires autodiff of the qmat stuff? needs to be tested
+### 1. training requires autodiff of the qmat stuff? needs to be tested -> seems to be fine
 ### 2. implementation is for 2d, needs to be generalized to handle 3d as well
 
 # Store all loss classes in a dictionary using the register decorator 
@@ -23,10 +21,11 @@ class LpOmegaNorm(object):
     """
     
     def __init__(self,
-                 grids,   # tuple of grids (x,y,z) or (x,z) depending on d
-                 L,       # tuple of domain sizes fitting to grids
-                 d:int=2, # space dimension == len(grids), we don't really need this
-                 p:int=2  # order of the norm
+                 grids,      # tuple of grids (x,y,z) or (x,z) depending on d
+                 L,          # tuple of domain sizes fitting to grids
+                 d:int=2,    # space dimension == len(grids), we don't really need this
+                 p:int=2,    # order of the norm
+                 device=None # device where the tensors live (to move the integration matrix to the correct device)
                  ):
         super().__init__()
         # p has to be >= 1 for the norm to make sense
@@ -41,7 +40,8 @@ class LpOmegaNorm(object):
             self.dy = L[1] / (grids[1].size-1.0)
         approx = LagrangeApproximation(grids[-1])
         self.I = approx.getIntegrationMatrix([(0, L[-1])])  # spectral integration along z
-        self.I = torch.from_numpy(self.I).type(torch.float)
+        self.I = torch.from_numpy(self.I).type(torch.float).to(device)
+        self.device=device
         
     def integrate(self,f):
         """
@@ -74,6 +74,7 @@ class PhysicsLoss(object): # todo: generalize to 3d
                   L,       # tuple of domain sizes fitting to grids
                   dt:float=0.1, # time step size
                   d:int=2, # space dimension == len(grids), we don't really need this
+                  device=None # device where the tensors live (to move the differentiation matrix to the correct device)
                   ):
          super().__init__()
          # Dimension is positive
@@ -86,15 +87,16 @@ class PhysicsLoss(object): # todo: generalize to 3d
          self.dx = self.Lx/(self.nx-1)
          self.approx = LagrangeApproximation(self.grids[-1])
          self.D = self.approx.getDerivationMatrix() # spectral differentiation along z
-         self.D = torch.from_numpy(self.D).type(torch.float)
+         self.D = torch.from_numpy(self.D).type(torch.float).to(device)
          self.varChoices = ["vx", "vz", "b", "p"]
+         self.device=device
         
     def calculateTimeDerivative(self, u, u0, varName):        
-        return (u0[:,self.varChoices.index(varName)] - u[:,self.varChoices.index(varName)]) / self.dt
+        return ((u0[:,self.varChoices.index(varName)] - u[:,self.varChoices.index(varName)]) / self.dt).to(self.device)
         
          
     def calculateFirstSpatialDerivatives(self, u, varName):
-        f = u[:,self.varChoices.index(varName)]
+        f = u[:,self.varChoices.index(varName)].to(self.device)
         
         # spectral differentiation in z -- this works, but can torch autodiff this?
         f_z = torch.einsum('ij,bkj->bki', self.D, f)
@@ -110,7 +112,7 @@ class PhysicsLoss(object): # todo: generalize to 3d
         return f_x, f_z
 
     def calculateSecondSpatialDerivatives(self, u, varName):
-        f = u[:,self.varChoices.index(varName)]
+        f = u[:,self.varChoices.index(varName)].to(self.device)
 
         f_z = torch.einsum('ij,bkj->bki', self.D, f)
         f_zz = torch.einsum('ij,bkj->bki', self.D, f_z)
@@ -141,19 +143,20 @@ class BuoyancyEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
                   L,       # tuple of domain sizes fitting to grids
                   dt:float=0.1, # time step size
                   d:int=2, # space dimension == len(grids), we don't really need this
-                  kappa:float=1.0,
+                  kappa:float=1.0,                      
+                  device=None
                   ):
-         super().__init__(grids, L, dt, d)
+         super().__init__(grids, L, dt, d, device)
 
          self.kappa = kappa
-         self.lpnorm = LpOmegaNorm(grids, L, d, 2)
+         self.lpnorm = LpOmegaNorm(grids, L, d, 2, device)
          
     def computeResidual(self, u, u0):
          bt, bx, bz, bxx, bzz = self.calculateDerivatives(u, u0, "b")
 
          ## residual
-         vx = u[:,self.varChoices.index("vx")]
-         vz = u[:,self.varChoices.index("vz")]
+         vx = u[:,self.varChoices.index("vx")].to(self.device)
+         vz = u[:,self.varChoices.index("vz")].to(self.device)
          
          return bt-self.kappa*(bxx+bzz) + vx*bx + vz*bz
      
@@ -172,8 +175,9 @@ class BuoyancyUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
                   dt:float=0.1, # time step size
                   d:int=2, # space dimension == len(grids), we don't really need this
                   kappa:float=1.0,
+                  device=None
                   ):
-         super().__init__(grids, L, dt, d)
+         super().__init__(grids, L, dt, d, device)
 
          self.kappa = kappa
          self.lpnorm = LpOmegaNorm(grids, L, d, 2)
@@ -213,9 +217,10 @@ class DivergenceLoss(PhysicsLoss):
                  L,       # tuple of domain sizes fitting to grids
                  dt:float=0.1, # time step size
                  d:int=2, # space dimension == len(grids), we don't really need this
-                 varNames:list = ["vx", "vz"]
+                 varNames:list = ["vx", "vz"],
+                 device=None
                  ):
-        super().__init__(grids, L, dt, d)
+        super().__init__(grids, L, dt, d, device)
         self.varNames = varNames
         self.lpnorm = LpOmegaNorm(grids, L, d, 2)
 
@@ -238,15 +243,16 @@ class IntegralLoss(PhysicsLoss):
                  d:int=2, # space dimension == len(grids), we don't really need this
                  varName:str="p",
                  value:float=0.0,
+                 device=None
                  ):
-         super().__init__(grids, L, dt, d)
+         super().__init__(grids, L, dt, d, device)
          self.dx = L[0] / (grids[0].size-1.0)
          self.dy = 1 # in case of 2d this stays at 1 to not influence the result
          if d > 2:
              self.dy = L[1] / (grids[1].size-1.0)
          approx = LagrangeApproximation(grids[-1])
          self.I = approx.getIntegrationMatrix([(0, L[-1])])  # spectral integration along z    
-         self.I = torch.from_numpy(self.I).type(torch.float)
+         self.I = torch.from_numpy(self.I).type(torch.float).to(device)
          self.varName = varName
          self.value = value
             
@@ -261,3 +267,31 @@ class IntegralLoss(PhysicsLoss):
 
     def __call__(self, pred, ref, inp): 
          return torch.mean(torch.abs(self.integrate(pred) - self.value))
+
+
+@register
+class RBEqLoss(object):
+    """
+    Combines all the above defined physics losses (weighted) into one total loss for the Rayleigh Benard Equations
+    """
+    def __init__(self,
+                 grids,   # tuple of grids (x,y,z) or (x,z) depending on d
+                 L,       # tuple of domain sizes fitting to grids
+                 dt:float=0.1, # time step size
+                 d:int=2, # space dimension == len(grids), we don't really need this
+                 kappa:float=1.0,
+                 device=None,
+                 weights=[1, 1]
+                 ):
+        self.weights=weights
+        self.device=device
+        self.losses = [BuoyancyEquationLoss2D(grids, L, dt, d, kappa, device), IntegralLoss(grids,L,dt,d,device=device)]
+        
+    def __call__(self, pred, ref, inp):
+        sum = 0.0
+        for i, loss in enumerate(self.losses):
+            sum = sum + self.weights[i] * loss(pred, ref, inp)
+        return sum
+    
+    
+    

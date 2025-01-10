@@ -31,9 +31,11 @@ model:
   bias: false
 
 loss:
-  name: IntegralLoss
+  name: BuoyancyEquationLoss2D
   grids: démerde toi
   L: [4, 1]
+  dt: 1.e-3
+  kappa: 1.0e-3
 
 optim:
   name: adam

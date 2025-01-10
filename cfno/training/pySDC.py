@@ -60,7 +60,7 @@ class FourierNeuralOp:
             raise NotImplementedError(f"{name} loss not implemented, available are {list(LOSSES_CLASSES.keys())}")
         if "grids" in loss:
             loss["grids"] = self.dataset.grid
-        self.lossFunction = LossClass(**loss)
+        self.lossFunction = LossClass(**loss, device=self.device)
         self.lossConfig = loss
         self.losses = {
             "model": {
