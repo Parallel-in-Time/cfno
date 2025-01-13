@@ -16,7 +16,7 @@ from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX
 comm = MPI.COMM_WORLD
 nX, nZ = 256, 64
 resFactor = 1
-timeParallel = True
+timeParallel = False
 tPar2 = True
 
 baseDir = f"run_sdc_M{resFactor}"
@@ -37,10 +37,10 @@ initFiles = OutputFiles(dirName)
 initFields = initFiles.file(0)['tasks']
 
 
-tEnd = 1
+tEnd = 10
 dtRef = 1e-6
-dtBase = 0.2
-dtSizes = [dtBase/2**i for i in range(7)]
+dtBase = 0.04
+dtSizes = [dtBase/2**i for i in range(5)]
 
 
 def error(uNum, uRef):
@@ -52,7 +52,7 @@ def error(uNum, uRef):
 # Reference solution
 dirName = f"{baseDir}/run_ref"
 if MPI_RANK == 0:
-    print(f" -- running reference simulation with dt={dt:1.1e} in {dirName}")
+    print(f" -- running reference simulation with dt={dtRef:1.1e} in {dirName}")
 runSim(dirName, Rayleigh, resFactor, baseDt=dtRef, useSDC=False,
        tEnd=tEnd, dtWrite=tEnd/10, initFields=initFields)
 refFiles = OutputFiles(dirName)
@@ -77,7 +77,7 @@ for i, dt in enumerate(dtSizes):
     if MPI_RANK == 0:
         print(f" -- running SDC simulation with dt={dt:1.1e} in {dirName}")
     runSim(dirName, Rayleigh, resFactor, baseDt=dt, useSDC=True,
-           tEnd=tEnd, dtWrite=tEnd, initFields=initFields, 
+           tEnd=tEnd, dtWrite=tEnd, initFields=initFields,
            timeParallel=timeParallel, useTimePar2=tPar2)
     outFiles = OutputFiles(dirName)
     numFields = outFiles.file(0)['tasks']
@@ -108,6 +108,8 @@ if MPI_RANK == 0:
     plt.loglog(dtSizes, errors, 'o-', label="RK443")
     plt.xlabel(r"$\Delta{t}$")
     plt.ylabel("L2 mean error")
+    plt.ylim(1e-9, 1e-3)
+    plt.xticks(dtSizes, labels=[f'{dt:1.1g}' for dt in dtSizes])
     plt.legend()
     plt.tight_layout()
     plt.savefig(f"{baseDir}/timeConv.pdf")

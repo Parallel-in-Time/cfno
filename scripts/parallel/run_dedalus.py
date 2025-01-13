@@ -14,13 +14,18 @@ parser.add_argument(
     "--groupTime", action="store_true", help="group time-parallel processes")
 parser.add_argument(
     "--useTimePar2", action="store_true", help="use time-parallel implementation #2")
+parser.add_argument(
+    "--tEnd", type=float, default=1.0, help="final time of simulation")
+parser.add_argument(
+    "--dt", type=float, default=0.005, help="base time-step for the simulation")
 args = parser.parse_args()
 
-tEnd = 1
 useSDC = args.useSDC or args.timeParallel
 timeParallel = args.timeParallel
 groupTime = args.groupTime
 useTimePar2 = args.useTimePar2
+tEnd = args.tEnd
+dt = args.dt
 
 dirID = f"{MPI_SIZE:03d}"
 if useSDC: 
@@ -40,7 +45,8 @@ SpectralDeferredCorrectionIMEX.setParameters(
 
 infos, solver = runSim(
     f"scaling_{dirID}",
-    tEnd=tEnd, dtWrite=2*tEnd, writeSpaceDistr=True, logEvery=10000,
+    tEnd=tEnd, baseDt=dt, 
+    dtWrite=2*tEnd, writeSpaceDistr=True, logEvery=10000,
     useSDC=useSDC, timeParallel=timeParallel, groupTimeProcs=groupTime,
     useTimePar2=useTimePar2)
 if MPI_RANK == 0:
