@@ -5,7 +5,7 @@ import sys
 import argparse
 import numpy as np
 sys.path.insert(2, os.getcwd())
-from cfno.simulation.rbc2d import runSim, MPI_RANK
+from cfno.simulation.rbc2d import runSim, runSimPySDC, MPI_RANK
 from cfno.simulation.post import OutputFiles
 from cfno.utils import readConfig
 
@@ -34,6 +34,8 @@ parser.add_argument(
 parser.add_argument(
     "--seed", default=12345678, type=int, help="starting seed to generate all simulation seeds")
 parser.add_argument(
+    "--solver", default="dedalus", choices=["dedalus", "pySDC"], help="solver used to generate data")
+parser.add_argument(
     "--config", default=None, help="config file, overwriting all parameters specified in it")
 args = parser.parse_args()
 
@@ -50,6 +52,7 @@ nSimu = args.nSimu
 dtSimu = args.dtSimu
 dtData = args.dtData
 tEnd = args.tEnd
+solver = args.solver
 np.random.seed(args.seed)
 
 # -----------------------------------------------------------------------------
@@ -63,22 +66,39 @@ seeds = [int(s*1e6) for s in np.random.rand(nSimu)]
 
 for seed in seeds:
 
+    # Setup simulation folder names
     simDir = f"{dataDir}/simu_{seed}"
 
-    # Initial run to simulate up to the quasi-stationary regime
     initRunDir = f"{simDir}/run_init"
     dtInit = 1e-2/2
     os.makedirs(initRunDir, exist_ok=True)
-    log(f" -- running initial simulation with dt={dtInit:1.1e} in {initRunDir}")
-    runSim(initRunDir, Rayleigh, resFactor, baseDt=dtInit, useSDC=False, tEnd=tInit,
-           dtWrite=1, writeFull=True, tBeg=0,seed=seed)
-    # -- extract initial field
-    initFiles = OutputFiles(initRunDir)
-    initFields = initFiles.file(0)['tasks']
 
-    # Generate simulation data
     dataRunDir = f"{simDir}/run_data"
     os.makedirs(dataRunDir, exist_ok=True)
-    log(f" -- generating simulation data with dt={dtData:1.1e} (dtSimu={dtSimu:1.1e}) in {dataRunDir}")
-    runSim(dataRunDir, Rayleigh, 1, baseDt=dtSimu, useSDC=False,
-           tEnd=tEnd, dtWrite=dtData, initFields=initFields)
+    
+    if solver == "dedalus":
+        # -- run initial simulation
+        log(f" -- running initial dedalus simulation with dt={dtInit:1.1e} in {initRunDir}")
+        runSim(initRunDir, Rayleigh, resFactor, baseDt=dtInit, useSDC=False, tEnd=tInit,
+            dtWrite=tInit, writeFull=True, tBeg=0,seed=seed)
+        
+        # -- extract initial field for data generation
+        initFiles = OutputFiles(initRunDir)
+        initFields = initFiles.file(0)['tasks']
+
+        # -- generate simulation data
+        log(f" -- generating dedalus simulation data with dt={dtData:1.1e} (dtSimu={dtSimu:1.1e}) in {dataRunDir}")
+        runSim(dataRunDir, Rayleigh, resFactor, baseDt=dtSimu, useSDC=False,
+            tEnd=tEnd, dtWrite=dtData, initFields=initFields)
+        
+    elif solver == "pySDC":
+        # -- run initial simulation
+        log(f" -- running initial pySDC simulation with dt={dtInit:1.1e} in {initRunDir}")
+        runSimPySDC(initRunDir, Rayleigh, resFactor, baseDt=dtInit, tBeg=0, tEnd=tInit,
+            dtWrite=tInit, seed=seed)
+        initFile = f"{initRunDir}/sol_{tInit:05.3f}sec.npy"
+
+        # -- generate simulation data
+        log(f" -- generating pySDC simulation data with dt={dtData:1.1e} (dtSimu={dtSimu:1.1e}) in {dataRunDir}")
+        runSimPySDC(dataRunDir, Rayleigh, resFactor, baseDt=dtSimu, 
+            tEnd=tEnd, dtWrite=dtData, restartFile=initFile)

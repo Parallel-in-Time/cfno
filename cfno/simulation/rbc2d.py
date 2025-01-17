@@ -407,12 +407,12 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
     np.copyto(u0, uTmp)
 
     writePySDCSolution(
-        f"{dirName}/sol_{0:05.1f}sec", prob.itransform(u0), prob.global_shape
+        f"{dirName}/sol_{0:05.3f}sec", prob.itransform(u0), prob.global_shape
         )
     for t0, t1 in zip(tWrite[:-1], tWrite[1:]):
         u, _ = controller.run(u0=u0, t0=t0, Tend=t1, nSteps=iterWrite)
         writePySDCSolution(
-            f"{dirName}/sol_{t1:05.1f}sec", prob.itransform(u), prob.global_shape
+            f"{dirName}/sol_{t1:05.3f}sec", prob.itransform(u), prob.global_shape
             )
         np.copyto(u0, u)
 
