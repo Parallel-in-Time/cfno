@@ -238,7 +238,7 @@ class BuoyancyUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
          
          # db_t (for the update) is calculated wrong in calculateDerivatives, 
          # so re-calculate it here using that the update at t0 is zero
-         db_t = du[:,self.varChoices.index("b")] / self.dt
+         db_t = du[:,self.varChoices.index("b")].to(self.device) / self.dt
          
          # additionally we need b_x, b_z
          b_x, b_z  = self.calculateFirstSpatialDerivatives(u0, "b")
@@ -283,8 +283,8 @@ class VelocityUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
          dvx_xx, dvx_zz = self.calculateSecondSpatialDerivatives(du, "vx")
          dvz_xx, dvz_zz = self.calculateSecondSpatialDerivatives(du, "vz")
          
-         dvx_t = du[:,self.varChoices.index("vx")] / self.dt
-         dvz_t = du[:,self.varChoices.index("vz")] / self.dt
+         dvx_t = du[:,self.varChoices.index("vx")].to(self.device) / self.dt
+         dvz_t = du[:,self.varChoices.index("vz")].to(self.device) / self.dt
 
 
          db = du[:,self.varChoices.index("b")].to(self.device)
