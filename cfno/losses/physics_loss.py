@@ -1,4 +1,5 @@
 import torch
+from cfno.losses.data_loss import VectorNormLoss
 from qmat.lagrange import LagrangeApproximation
 
 ### TODOs:
@@ -61,7 +62,20 @@ class LpOmegaNorm(object):
         return torch.mean(self.integrate(f)**(1/self.p))
 
 
-
+# @register
+# class LpOmegaLoss(object):
+#     def __init__(self,
+#                  grids,      # tuple of grids (x,y,z) or (x,z) depending on d
+#                  L,          # tuple of domain sizes fitting to grids
+#                  d:int=2,    # space dimension == len(grids), we don't really need this
+#                  p:int=2,    # order of the norm
+#                  device=None # device where the tensors live (to move the integration matrix to the correct device)
+#                  ):
+#         super().__init__()
+#         self.lpNorm = LpOmegaNorm(grids, L, d, p, device)
+        
+#     def __call__(self, pred, ref, inp=None):
+#         return self.lpNorm(pred-ref) # this does not work, lpNorm only for a minibatch of a single function
 
 class PhysicsLoss(object): # todo: generalize to 3d
     """
@@ -243,6 +257,56 @@ class BuoyancyUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
 
 
 @register
+class VelocityUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
+    """
+    Compute residual for the velocity equation
+    """
+    def __init__(self,
+                  grids,   # tuple of grids (x,y,z) or (x,z) depending on d
+                  L,       # tuple of domain sizes fitting to grids
+                  dt:float=0.1, # time step size
+                  d:int=2, # space dimension == len(grids), we don't really need this
+                  Rayleigh:float=1.0,                      
+                  Prantl:float=1.0,
+                  device=None
+                  ):
+         super().__init__(grids, L, dt, d, device)
+
+         self.nu = (Rayleigh / Prantl)**(-1/2)
+         self.lpnorm = LpOmegaNorm(grids, L, d, 2, device)
+         
+    def computeResidual(self, du, u0):
+         dvx = du[:,self.varChoices.index("vx")].to(self.device)
+         dvz = du[:,self.varChoices.index("vz")].to(self.device)
+         dvx_x, dvx_z = self.calculateFirstSpatialDerivatives(du, "vx")
+         dvz_x, dvz_z = self.calculateFirstSpatialDerivatives(du, "vz")
+         dvx_xx, dvx_zz = self.calculateSecondSpatialDerivatives(du, "vx")
+         dvz_xx, dvz_zz = self.calculateSecondSpatialDerivatives(du, "vz")
+         
+         dvx_t = du[:,self.varChoices.index("vx")] / self.dt
+         dvz_t = du[:,self.varChoices.index("vz")] / self.dt
+
+
+         db = du[:,self.varChoices.index("b")].to(self.device)
+         
+         vx = u0[:,self.varChoices.index("vx")].to(self.device)
+         vz = u0[:,self.varChoices.index("vz")].to(self.device)
+         vx_x, vx_z = self.calculateFirstSpatialDerivatives(u0, "vx")
+         vz_x, vz_z = self.calculateFirstSpatialDerivatives(u0, "vz")
+
+         
+         dp_x, dp_z = self.calculateFirstSpatialDerivatives(du, "p")
+         
+         return dvx_t - self.nu*(dvx_xx+dvx_zz) + dp_x + dvx*vx_x + dvz*vz_x + (vx+dvx)*dvx_x + (vz+dvz)*dvx_z, \
+                dvz_t - self.nu*(dvz_xx+dvz_zz) + dp_z - db + dvx*vx_z + dvz*vz_z + (vx+dvx)*dvx_z + (vz+dvz)*dvz_z
+     
+    def __call__(self, pred, ref, inp):
+         res_dvx, res_dvz = self.computeResidual(pred, inp)
+         return torch.mean(self.lpnorm(res_dvx)+self.lpnorm(res_dvz))
+     
+
+
+@register
 class DivergenceLoss(PhysicsLoss):
     """
     Measures how much the L2-norm of the divergence of a field differs from zero.
@@ -305,6 +369,8 @@ class IntegralLoss(PhysicsLoss):
          return torch.mean(torch.abs(self.integrate(pred) - self.value))
 
 
+
+
 @register
 class RBEqLoss(object):
     """
@@ -318,11 +384,16 @@ class RBEqLoss(object):
                  Rayleigh:float=1.0,
                  Prantl:float=1.0,
                  device=None,
-                 weights=[1, 1, 1, 1]
+                 weights=[1, 1, 1, 1, 0]
                  ):
         self.weights=weights
         self.device=device
-        self.losses = [VelocityEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device), BuoyancyEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device), IntegralLoss(grids,L,dt,d,device=device), DivergenceLoss(grids,L,dt,d,device=device)]
+        self.losses = [VelocityEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device),\
+                       BuoyancyEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device),\
+                       IntegralLoss(grids,L,dt,d,device=device),\
+                       DivergenceLoss(grids,L,dt,d,device=device),\
+                       VectorNormLoss()]
+                       #LpOmegaLoss(grids,L,d,p=2,device=device)]
         
     def __call__(self, pred, ref, inp):
         sum = 0.0
@@ -330,5 +401,34 @@ class RBEqLoss(object):
             sum = sum + self.weights[i] * loss(pred, ref, inp)
         return sum
     
-    
-    
+@register
+class RBUpdateEqLoss(object):
+    """
+    Combines all the above defined physics losses (weighted) 
+    into one total loss for the Rayleigh Benard Equations for the update of the solution
+    instead of the solution itself
+    """
+    def __init__(self,
+                 grids,   # tuple of grids (x,y,z) or (x,z) depending on d
+                 L,       # tuple of domain sizes fitting to grids
+                 dt:float=0.1, # time step size
+                 d:int=2, # space dimension == len(grids), we don't really need this
+                 Rayleigh:float=1.0,
+                 Prantl:float=1.0,
+                 device=None,
+                 weights=[1, 1, 1, 1, 0]
+                 ):
+        self.weights=weights
+        self.device=device
+        self.losses = [VelocityUpdateEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device), \
+                       BuoyancyUpdateEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device), \
+                       IntegralLoss(grids,L,dt,d,device=device), \
+                       DivergenceLoss(grids,L,dt,d,device=device), \
+                       VectorNormLoss()]
+                       #LpOmegaLoss(grids,L,d,p=2,device=device)]
+        
+    def __call__(self, pred, ref, inp):
+        sum = 0.0
+        for i, loss in enumerate(self.losses):
+            sum = sum + self.weights[i] * loss(pred, ref, inp)
+        return sum
