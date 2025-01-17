@@ -402,11 +402,43 @@ class RBEqLoss(object):
         return sum
     
 @register
+class RBEqLossForUpdate(object):
+    """
+    When training for the update du we have u0+du satisfying the origninal RB Equation.
+    This differs from the derived equation for the update, which favors du=0.
+    """
+    def __init__(self,
+                 grids,   # tuple of grids (x,y,z) or (x,z) depending on d
+                 L,       # tuple of domain sizes fitting to grids
+                 dt:float=0.1, # time step size
+                 d:int=2, # space dimension == len(grids), we don't really need this
+                 Rayleigh:float=1.0,
+                 Prantl:float=1.0,
+                 device=None,
+                 weights=[1, 1, 1, 1, 0]
+                 ):
+        self.weights=weights
+        self.device=device
+        self.losses = [VelocityEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device),\
+                       BuoyancyEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device),\
+                       IntegralLoss(grids,L,dt,d,device=device),\
+                       DivergenceLoss(grids,L,dt,d,device=device),\
+                       VectorNormLoss()]
+                       #LpOmegaLoss(grids,L,d,p=2,device=device)]
+        
+    def __call__(self, pred, ref, inp):
+        sum = 0.0
+        for i, loss in enumerate(self.losses):
+            sum = sum + self.weights[i] * loss(inp+pred, inp+ref, inp)
+        return sum
+    
+@register
 class RBUpdateEqLoss(object):
     """
     Combines all the above defined physics losses (weighted) 
     into one total loss for the Rayleigh Benard Equations for the update of the solution
-    instead of the solution itself
+    instead of the solution itself.
+    TODO: debug, this favors du=0, which is not what we want.
     """
     def __init__(self,
                  grids,   # tuple of grids (x,y,z) or (x,z) depending on d
