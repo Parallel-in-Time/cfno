@@ -194,9 +194,9 @@ for iVar, var in enumerate(["vx", "vz", "b", "p"]):
     for err, name, style in [
             (errSDC, "SDC", '^-'), (errRK, "RK443", 's-'), (errCopy, "copy", '*--'),
             (errFNO_only, "FNO-only", 'p-'),
-            # (errFNO, "SDC-FNO", 'o-'),
-            # (errFNO_copy, "SDC-FNO-copy", 'o--'),
-            # (errFNO_inter, "SDC-FNO-inter", '^--'),
+            (errFNO, "SDC-FNO", 'o-'),
+            (errFNO_copy, "SDC-FNO-copy", 'o--'),
+            (errFNO_inter, "SDC-FNO-inter", '^--'),
             ]:
         plt.semilogy(
             xValues, err[iVar], style, label=name)

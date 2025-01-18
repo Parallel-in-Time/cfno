@@ -42,7 +42,7 @@ label, sym = "SDC", "s"
 
 # -- dedalus-SDC, MPI time-parallel
 nX, nZ, nSteps = 256, 64, 201
-tComp = np.array([42.1, 16.1, 10.5, 6.8, 5.3, 5.0, 5.8])
+tComp = np.array([42.1, 16.1, 10.5, 6.8, 5.3, 5.0, 5.8])/2
 nProc = np.array([1, 4, 8, 16, 32, 64, 128])
 label, sym = "SDC (tPar)", ">"
 
