@@ -15,7 +15,7 @@ def register(cls):
     return cls
 
 
-@register
+#@register
 class LpOmegaNorm(object):
     """
     Compute Lp norm of a minibatch of grid functions by integrating in space
@@ -60,6 +60,57 @@ class LpOmegaNorm(object):
 
     def __call__(self,f):
         return torch.mean(self.integrate(f)**(1/self.p))
+
+
+@register
+class LpOmegaLoss(object):
+    """
+    Compute (Lp norm)^p of a minibatch of grid functions by integrating in space
+    """
+    
+    def __init__(self,
+                 grids,      # tuple of grids (x,y,z) or (x,z) depending on d
+                 L,          # tuple of domain sizes fitting to grids
+                 d:int=2,    # space dimension == len(grids), we don't really need this
+                 p:int=2,    # order of the norm
+                 device=None # device where the tensors live (to move the integration matrix to the correct device)
+                 ):
+        super().__init__()
+        # p has to be >= 1 for the norm to make sense
+        assert p >= 1
+        # Dimension is positive
+        assert d > 0
+        assert len(grids) == d
+        self.p = p
+        self.dx = L[0] / (grids[0].size-1.0)
+        self.dy = 1 # in case of 2d this stays at 1 to not influence the result
+        if d > 2:
+            self.dy = L[1] / (grids[1].size-1.0)
+        approx = LagrangeApproximation(grids[-1])
+        self.I = approx.getIntegrationMatrix([(0, L[-1])])  # spectral integration along z
+        self.I = torch.from_numpy(self.I).type(torch.float).to(device)
+        self.device=device
+        self.varChoices = ["vx", "vz", "b", "p"]
+        
+    def integrate(self,f,var):
+        """
+        integrates the grid functions abs(f)**p in space
+        shape of f is [nbatch, nx, ny, nz] in 3d. [nbatch, nx, nz] in 2d
+        """
+        f = u[:,self.varChoices.index(varName)].to(self.device)
+        fp = torch.abs(f)**self.p
+
+        
+        intZ = torch.einsum('ij,bkj->bki', self.I, fp)
+        # in x and potentially y direction we have equidistant grids with spacing dx, dy        
+        return torch.sum(intZ, dim=-2) * self.dx * self.dy   # sum everything (along x- and in 3d y-axis) 
+                                                # and scale with grid widths
+
+
+    def __call__(self, pred, ref, inp):
+        return torch.mean(self.integrate(pred-ref,"b")) + torch.mean(self.integrate(pred-ref,"vx")) +\
+               torch.mean(self.integrate(pred-ref,"vz")) + torch.mean(self.integrate(pred-ref,"p")) 
+
 
 
 # @register
@@ -230,7 +281,7 @@ class BuoyancyUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
          super().__init__(grids, L, dt, d, device)
 
          self.kappa = (Rayleigh * Prantl)**(-1/2)
-         self.lpnorm = LpOmegaNorm(grids, L, d, 2)
+         self.lpnorm = LpOmegaNorm(grids, L, d, 2, device)
          
     def computeResidual(self, du, u0):
          db_x, db_z = self.calculateFirstSpatialDerivatives(du, "b")
@@ -423,8 +474,8 @@ class RBEqLossForUpdate(object):
                        BuoyancyEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device),\
                        IntegralLoss(grids,L,dt,d,device=device),\
                        DivergenceLoss(grids,L,dt,d,device=device),\
-                       VectorNormLoss()]
-                       #LpOmegaLoss(grids,L,d,p=2,device=device)]
+                       #VectorNormLoss()]
+                       LpOmegaLoss(grids,L,d,p=2,device=device)]
         
     def __call__(self, pred, ref, inp):
         sum = 0.0
