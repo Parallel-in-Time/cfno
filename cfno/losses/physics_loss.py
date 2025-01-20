@@ -92,7 +92,7 @@ class LpOmegaLoss(object):
         self.device=device
         self.varChoices = ["vx", "vz", "b", "p"]
         
-    def integrate(self,f,var):
+    def integrate(self,u,varName):
         """
         integrates the grid functions abs(f)**p in space
         shape of f is [nbatch, nx, ny, nz] in 3d. [nbatch, nx, nz] in 2d
