@@ -348,7 +348,7 @@ class VelocityUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
          
          dp_x, dp_z = self.calculateFirstSpatialDerivatives(du, "p")
          
-         return dvx_t - self.nu*(dvx_xx+dvx_zz) + dp_x + dvx*vx_x + dvz*vz_x + (vx+dvx)*dvx_x + (vz+dvz)*dvx_z, \
+         return dvx_t - self.nu*(dvx_xx+dvx_zz) + dp_x + dvx*vx_x + dvz*vz_x + (vx+dvx)*dvx_x + (vz+dvz)*dvz_x, \
                 dvz_t - self.nu*(dvz_xx+dvz_zz) + dp_z - db + dvx*vx_z + dvz*vz_z + (vx+dvx)*dvx_z + (vz+dvz)*dvz_z
      
     def __call__(self, pred, ref, inp):
