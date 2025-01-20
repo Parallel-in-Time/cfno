@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import glob
 import numpy as np
 import matplotlib.pyplot as plt
+
+from pySDC.helpers.fieldsIO import FieldsIO
 
 from cfno.simulation.rbc2d import runSimPySDC
 from cfno.training.pySDC import FourierNeuralOp
 
-runDir = "pysdcRun"
+runDir = "pysdcRun_test"
 dt = 1e-2
 dtWrite = 0.1
 dtFNO = dt
 
+FieldsIO.ALLOW_OVERWRITE = True
+
 def readSolutions(simDir):
-    files = glob.glob(f"{runDir}/{simDir}/*.npy")
-    files.sort()
-    u = np.array([np.load(f) for f in files[1:]])
+    outputs = FieldsIO.fromFile(f"{runDir}/{simDir}/outputs.pysdc")
+    u = np.array([outputs.readField(i)[-1] for i in range(outputs.nFields)])
     return u.swapaxes(0, 1)
 
 def error(uRef, uNum):
@@ -25,12 +27,12 @@ def error(uRef, uNum):
 
 # Initial run for 100 sec
 infos, controller, prob = runSimPySDC(
-    f"{runDir}/run_init", tEnd=100, dtWrite=1)
-initFile = f"{runDir}/run_init/sol_100.0sec.npy"
+    f"{runDir}/run_init", tEnd=1, dtWrite=1)
+initFile = f"{runDir}/run_init/outputs.pysdc"
 
 # Reference solution with very small time-step
 infos, controller, prob = runSimPySDC(
-    f"{runDir}/run_ref", tEnd=1, dtWrite=dtWrite, baseDt=dt/100,
+    f"{runDir}/run_ref", tEnd=1, dtWrite=dtWrite, baseDt=dt,
     restartFile=initFile)
 
 # Base solution using SDC

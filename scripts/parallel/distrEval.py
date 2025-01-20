@@ -15,7 +15,7 @@ var = "b"
 iSample = 1900
 saveFig = False
 refScales = True
-nDomains = 1
+nDomains = 2
 
 dataset = HDF5Dataset("../dataset_dt1e-3.h5")
 
@@ -28,11 +28,11 @@ uInit = u0[varChoices.index(var)].T
 uRef = uRef[varChoices.index(var)].T.copy()
 
 
-nZLoc = yGrid.size // nDomains
+nXLoc = xGrid.size // nDomains
 uPred = np.zeros_like(u0)
 for i in range(nDomains):
-    u0Loc = u0[:, :, i*nZLoc:(i+1)*nZLoc]
-    uPred[:, :, i*nZLoc:(i+1)*nZLoc] = model(u0Loc)
+    u0Loc = u0[:, i*nXLoc:(i+1)*nXLoc, :]
+    uPred[:, i*nXLoc:(i+1)*nXLoc, :] = model(u0Loc)
 uPred = uPred[varChoices.index(var)].T.copy()
 
 if dataset.outType == "update":
@@ -51,12 +51,12 @@ contourPlot(
     saveFig=saveFig, closeFig=False, refScales=refScales)
 
 
-uPredCoarse = model(u0[:, :, 1::2])[varChoices.index(var)].T.copy()
+uPredCoarse = model(u0[:, :, 0::2])[varChoices.index(var)].T.copy()
 if outType == "update":
-    uPredCoarse -= uInit[1::2]
-uRefCoarse = uRef[1::2]
+    uPredCoarse -= uInit[0::2]
+uRefCoarse = uRef[0::2]
 
 contourPlot(
-    uPredCoarse, xGrid, yGrid[1::2], title=f"Coarse model {outType} for {var} using sample {iSample}",
+    uPredCoarse, xGrid, yGrid[0::2], title=f"Coarse model {outType} for {var} using sample {iSample}",
     refField=uRefCoarse, refTitle=f"Dedalus reference (dt={dataset.infos['dtInput'][()]:1.2g}s)",
     saveFig=saveFig, closeFig=False, refScales=refScales)

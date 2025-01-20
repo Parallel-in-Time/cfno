@@ -75,13 +75,13 @@ for seed in seeds:
 
     dataRunDir = f"{simDir}/run_data"
     os.makedirs(dataRunDir, exist_ok=True)
-    
+
     if solver == "dedalus":
         # -- run initial simulation
         log(f" -- running initial dedalus simulation with dt={dtInit:1.1e} in {initRunDir}")
         runSim(initRunDir, Rayleigh, resFactor, baseDt=dtInit, useSDC=False, tEnd=tInit,
             dtWrite=tInit, writeFull=True, tBeg=0,seed=seed)
-        
+
         # -- extract initial field for data generation
         initFiles = OutputFiles(initRunDir)
         initFields = initFiles.file(0)['tasks']
@@ -90,15 +90,15 @@ for seed in seeds:
         log(f" -- generating dedalus simulation data with dt={dtData:1.1e} (dtSimu={dtSimu:1.1e}) in {dataRunDir}")
         runSim(dataRunDir, Rayleigh, resFactor, baseDt=dtSimu, useSDC=False,
             tEnd=tEnd, dtWrite=dtData, initFields=initFields)
-        
+
     elif solver == "pySDC":
         # -- run initial simulation
         log(f" -- running initial pySDC simulation with dt={dtInit:1.1e} in {initRunDir}")
         runSimPySDC(initRunDir, Rayleigh, resFactor, baseDt=dtInit, tBeg=0, tEnd=tInit,
             dtWrite=tInit, seed=seed)
-        initFile = f"{initRunDir}/sol_{tInit:05.3f}sec.npy"
+        initFile = f"{initRunDir}/outputs.pysdc"
 
         # -- generate simulation data
         log(f" -- generating pySDC simulation data with dt={dtData:1.1e} (dtSimu={dtSimu:1.1e}) in {dataRunDir}")
-        runSimPySDC(dataRunDir, Rayleigh, resFactor, baseDt=dtSimu, 
+        runSimPySDC(dataRunDir, Rayleigh, resFactor, baseDt=dtSimu,
             tEnd=tEnd, dtWrite=dtData, restartFile=initFile)
