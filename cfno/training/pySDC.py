@@ -130,13 +130,16 @@ class FourierNeuralOp:
     def setupLRScheduler(self, lr_scheduler=None):
         if lr_scheduler is None:
             lr_scheduler = {"scheduler": "StepLR", "step_size": 100.0, "gamma": 0.98}
+        self.scheduler_config = lr_scheduler
         scheduler = lr_scheduler.pop('scheduler')
+        self.scheduler_name = scheduler
         if scheduler == "StepLR":
             self.lr_scheduler = th.optim.lr_scheduler.StepLR(self.optimizer, **lr_scheduler)
         elif scheduler == "CosAnnealingLR":
             self.lr_scheduler = th.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, **lr_scheduler)
         else:
             raise ValueError(f"LR scheduler {scheduler} not implemented yet")
+        
 
     def setOptimizerParam(self, **params):
         """
@@ -160,6 +163,9 @@ class FourierNeuralOp:
         print("Optim settings")
         print(f" -- name : {self.optim}")
         for key, val in self.optimConfig.items():
+            print(f" -- {key}: {val}")
+        print(f"Scheduler: {self.scheduler_name}")
+        for key,val in self.scheduler_config.items():
             print(f" -- {key}: {val}")
         # TODO: add more details here ...
         print("-"*80)
@@ -251,7 +257,7 @@ class FourierNeuralOp:
         avgLoss /= nBatches
         gradsEpoch /= nBatches
 
-        print(f"Training: \n Avg loss: {avgLoss:>8f} (id: {idLoss:>7f})\n")
+        print(f"Training: \n Avg loss: {avgLoss:>8f} (id: {idLoss:>7f}) -- lr: {optimizer.param_groups[0]['lr']}\n")
         self.losses["model"]["train"] = avgLoss
         self.gradientNormEpoch = gradsEpoch
 
@@ -339,6 +345,7 @@ class FourierNeuralOp:
             # Optimizer config and state
             'optim': self.optim,
             'optimizer_state_dict': self.optimizer.state_dict(),
+            'lr_scheduler_state_dict': self.lr_scheduler.state_dict()
             })
         th.save(infos, fullPath)
 
@@ -368,6 +375,11 @@ class FourierNeuralOp:
             optim = checkpoint['optim']
             self.setupOptimizer({"name": optim})
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            try:
+                self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
+            except KeyError:
+                print("Learning rate scheduler is restarted!")
+
 
 
     # -------------------------------------------------------------------------
