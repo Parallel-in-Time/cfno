@@ -5,7 +5,9 @@ import torch as th
 import torch.nn as nn
 import pandas as pd
 from torch_dct import dct, idct
+import torch.nn.functional as F
 
+from cfno.layers.skip_connection import skip_connection
 from cfno.utils import CudaMemoryDebugger, format_tensor_size, activation_selection
 
 class CF2DConv(nn.Module):
@@ -13,16 +15,26 @@ class CF2DConv(nn.Module):
 
     USE_T_CACHE = False
 
-    def __init__(self, kX, kY, dv, forceFFT=False, reorder=False):
+    def __init__(self, kX, kY, dv, forceFFT=False, reorder=False, bias=False, order=2):
         super().__init__()
 
         self.kX = kX
         self.kY = kY
         self.forceFFT = forceFFT
         self.reorder = reorder
+        self.order = order
 
         self.R = nn.Parameter(
             th.rand(dv, dv, kX*(2 if forceFFT else 1), kY, dtype=th.cfloat))
+        
+        if bias:
+            self.init_std = (2 / (dv + dv))**0.5
+            self.bias = nn.Parameter(
+                self.init_std * th.randn(*(tuple([dv]) + (1,) * self.order))
+            )
+        else:
+            self.init_std = None
+            self.bias = None
 
         if forceFFT:
             if reorder:
@@ -119,6 +131,91 @@ class CF2DConv(nn.Module):
 
         # Transform back to Real space -> [nBatch, dv, nX, nY]
         x = self._toRealSpace(x)
+
+        if self.bias is not None:
+            x = x + self.bias
+
+        return x
+
+
+class ChannelMLP(nn.Module):
+    """ChannelMLP applies an arbitrary number of layers of 
+    1d convolution and nonlinearity to the channels of input
+    and is invariant to spatial resolution.
+
+    Parameters
+    ----------
+    in_channels : int
+    out_channels : int, default is None
+        if None, same is in_channels
+    hidden_channels : int, default is None
+        if None, same is in_channels
+    n_layers : int, default is 2
+        number of linear layers in the MLP
+    non_linearity : default is F.gelu
+    dropout : float, default is 0
+        if > 0, dropout probability
+    """
+
+    def __init__(
+        self,
+        in_channels,
+        out_channels=None,
+        hidden_channels=None,
+        n_layers=2,
+        n_dim=2,
+        non_linearity=F.gelu,
+        dropout=0.0,
+        **kwargs,
+    ):
+        super().__init__()
+        self.n_layers = n_layers
+        self.in_channels = in_channels
+        self.out_channels = in_channels if out_channels is None else out_channels
+        self.hidden_channels = (
+            in_channels if hidden_channels is None else hidden_channels
+        )
+        self.non_linearity = non_linearity
+        self.dropout = (
+            nn.ModuleList([nn.Dropout(dropout) for _ in range(n_layers)])
+            if dropout > 0.0
+            else None
+        )
+        
+        # we use nn.Conv1d for everything and roll data along the 1st data dim
+        self.fcs = nn.ModuleList()
+        for i in range(n_layers):
+            if i == 0 and i == (n_layers - 1):
+                self.fcs.append(nn.Conv1d(self.in_channels, self.out_channels, 1))
+            elif i == 0:
+                self.fcs.append(nn.Conv1d(self.in_channels, self.hidden_channels, 1))
+            elif i == (n_layers - 1):
+                self.fcs.append(nn.Conv1d(self.hidden_channels, self.out_channels, 1))
+            else:
+                self.fcs.append(nn.Conv1d(self.hidden_channels, self.hidden_channels, 1))
+
+    def forward(self, x):
+        reshaped = False
+        size = list(x.shape)
+        if x.ndim > 3:  
+            # batch, channels, x1, x2... extra dims
+            # .reshape() is preferable but .view()
+            # cannot be called on non-contiguous tensors
+            x = x.reshape((*size[:2], -1)) 
+            reshaped = True
+
+        for i, fc in enumerate(self.fcs):
+            x = fc(x)
+            if i < self.n_layers - 1:
+                x = self.non_linearity(x)
+            if self.dropout is not None:
+                x = self.dropout[i](x)
+
+        # if x was an N-d tensor reshaped into 1d, undo the reshaping
+        # same logic as above: .reshape() handles contiguous tensors as well
+        if reshaped:
+            x = x.reshape((size[0], self.out_channels, *size[2:]))
+
         return x
 
 
@@ -170,15 +267,24 @@ class Grid2DPartialPositiver(nn.Module):
 
 class CF2DLayer(nn.Module):
 
-    def __init__(self, kX, kY, dv, forceFFT=False, non_linearity='gelu', bias=True, reorder=False):
+    def __init__(self, kX, kY, dv, 
+                 forceFFT=False, 
+                 non_linearity='gelu',
+                 bias=False, reorder=False,
+                 use_fno_skip_connection=False, 
+                 fno_skip_type='linear'
+                 ):
         super().__init__()
 
-        self.conv = CF2DConv(kX, kY, dv, forceFFT, reorder)
+        self.conv = CF2DConv(kX, kY, dv, forceFFT, reorder, bias)
         if non_linearity == 'gelu':
             self.sigma = nn.functional.gelu
         else:
             self.sigma = nn.ReLU(inplace=True)
-        self.W = Grid2DLinear(dv, dv, bias)
+        if use_fno_skip_connection:
+            self.W = skip_connection(dv, dv, skip_type=fno_skip_type)
+        else:
+            self.W = Grid2DLinear(dv, dv, bias)
 
 
     def forward(self, x):
@@ -194,19 +300,61 @@ class CF2DLayer(nn.Module):
 
 class CFNO2D(nn.Module):
 
-    def __init__(self, da, dv, du, kX=4, kY=4, nLayers=1,
-                 forceFFT=False, non_linearity='gelu', bias=True, reorder=False):
+    def __init__(self, da, dv, du, kX=4, kY=4, 
+                 nLayers=1,
+                 forceFFT=False, 
+                 non_linearity='gelu',
+                 bias=True, 
+                 reorder=False, 
+                 use_prechannel_mlp=False,
+                 use_fno_skip_connection=False, 
+                 fno_skip_type='linear',
+                 use_postfnochannel_mlp=False,
+                 channel_mlp_skip_type='soft-gating',
+                 channel_mlp_expansion=4
+                 ):
+        
         super().__init__()
         self.config = {
             key: val for key, val in locals().items()
             if key != "self" and not key.startswith('__')}
+        
+        self.use_postfnochannel_mlp = use_postfnochannel_mlp
+        
+        if use_prechannel_mlp:
+            self.P = ChannelMLP(
+                in_channels=da,
+                out_channels=dv,
+                hidden_channels=dv*channel_mlp_expansion,
+                n_layers=4
+                )
+            self.Q =  ChannelMLP(
+                in_channels=dv,
+                out_channels=du,
+                hidden_channels=dv*channel_mlp_expansion,
+                n_layers=4
+                )
+        else:
+            self.P = Grid2DLinear(da, dv, bias)
+            self.Q = Grid2DLinear(dv, du, bias)
 
-        self.P = Grid2DLinear(da, dv, bias)
-        self.Q = Grid2DLinear(dv, du, bias)
         self.layers = nn.ModuleList(
-            [CF2DLayer(kX, kY, dv, forceFFT, non_linearity, bias, reorder)
+            [CF2DLayer(kX, kY, dv, forceFFT, non_linearity, bias, reorder,
+                       use_fno_skip_connection,
+                       fno_skip_type)
              for _ in range(nLayers)])
         # self.pos = Grid2DPartialPositiver([0, 0, 1, 1])
+
+        if self.use_postfnochannel_mlp:
+            postchannel_mlp_expansion = 0.5
+            self.channel_mlp = nn.ModuleList(
+            [ChannelMLP(in_channels=dv,
+                        hidden_channels=round(dv * postchannel_mlp_expansion))
+                for _ in range(nLayers)])
+            
+            self.channel_mlp_skips = nn.ModuleList(
+            [skip_connection(dv, dv, skip_type=channel_mlp_skip_type)
+                for _ in range(nLayers)])
 
         self.memory = CudaMemoryDebugger(print_mem=True)
 
@@ -215,8 +363,16 @@ class CFNO2D(nn.Module):
         # x = x.permute(0,3,1,2)
         x = self.P(x)
 
-        for layer in self.layers:
+        for index,layer in enumerate(self.layers):
+            if self.use_postfnochannel_mlp:
+                x_skip_channel_mlp = self.channel_mlp_skips[index](x)
+
             x = layer(x)
+
+            if self.use_postfnochannel_mlp:
+                 x = self.channel_mlp[index](x) + x_skip_channel_mlp
+                 if index < len(self.layers) - 1:
+                    x = nn.functional.gelu(x)
 
         x = self.Q(x)
         # x = self.pos(x)
