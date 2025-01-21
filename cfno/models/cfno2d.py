@@ -270,7 +270,7 @@ class CF2DLayer(nn.Module):
     def __init__(self, kX, kY, dv, 
                  forceFFT=False, 
                  non_linearity='gelu',
-                 bias=True, reorder=False,
+                 bias=False, reorder=False,
                  use_fno_skip_connection=False, 
                  fno_skip_type='linear'
                  ):
