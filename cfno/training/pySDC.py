@@ -8,6 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 from cfno.data.preprocessing import getDataLoaders
 from cfno.models.cfno2d import CFNO2D
 from cfno.losses import LOSSES_CLASSES
+from cfno.training.lbfgs import LBFGS
 
 
 class FourierNeuralOp:
@@ -118,7 +119,7 @@ class FourierNeuralOp:
             OptimClass = th.optim.AdamW
         elif name == "lbfgs":
             optim = {"line_search_fn": "strong_wolfe", **optim}
-            OptimClass = th.optim.LBFGS
+            OptimClass = LBFGS
         else:
             raise ValueError(f"optim {name} not implemented yet")
         self.optimizer = OptimClass(self.model.parameters(), **optim)
