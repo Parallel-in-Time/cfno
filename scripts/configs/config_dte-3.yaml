@@ -39,6 +39,12 @@ model:
   fno_skip_type: soft-gating
   use_postfnochannel_mlp: false
   channel_mlp_skip_type: 'soft-gating'
+  use_prechannel_mlp: true
+  channel_mlp_expansion: 4
+  use_fno_skip_connection: false
+  fno_skip_type: soft-gating
+  use_postfnochannel_mlp: false
+  channel_mlp_skip_type: 'soft-gating'
 
 optim:
   name: adam
