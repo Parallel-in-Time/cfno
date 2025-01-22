@@ -19,10 +19,6 @@ data:
   batchSize: 20
   xStep: 1
   yStep: 1
-  use_domain_sampling: true
-  nPatch_per_sample: 100
-  use_min_limit: false
-  padding : [1,1,1,1]
 
 model:
   da: 4
@@ -47,11 +43,11 @@ optim:
 
 lr_scheduler:
   scheduler: CosAnnealingLR
-  T_max: 50000
+  T_max: 10000
 
 train:
-  trainDir: training_dt1e-3_update_fft_run26
-  nEpochs: 20000
+  trainDir: training_dt1e-3_update_fft
+  nEpochs: 10000
   checkpoint: model.pt
   lossesFile: losses.txt
   saveEvery: 100
