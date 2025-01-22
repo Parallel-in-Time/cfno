@@ -41,9 +41,10 @@ class FourierNeuralOp:
 
         # Data setup
         assert "dataFile" in data, ""
+        self.data_config = {**data}
         self.xStep, self.yStep = data.pop("xStep", 1), data.pop("yStep", 1)
         data.pop("outType", None), data.pop("outScaling", None)  # overwritten by dataset
-        self.trainLoader, self.valLoader, self.dataset = getDataLoaders(**data)
+        self.trainLoader, self.valLoader, self.dataset = getDataLoaders(**data, kX=model['kX'], kY=model['kY'] )
         # sample : [batchSize, 4, nX, nY]
         self.outType = self.dataset.outType
         self.outScaling = self.dataset.outScaling
@@ -166,6 +167,9 @@ class FourierNeuralOp:
             print(f" -- {key}: {val}")
         print(f"Scheduler: {self.scheduler_name}")
         for key,val in self.scheduler_config.items():
+            print(f" -- {key}: {val}")
+        print("Data settings")
+        for key, val in self.data_config.items():
             print(f" -- {key}: {val}")
         # TODO: add more details here ...
         print("-"*80)

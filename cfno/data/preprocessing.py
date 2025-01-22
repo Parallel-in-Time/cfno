@@ -6,7 +6,7 @@ import h5py
 import torch
 import glob
 import numpy as np
-
+import random
 from torch.utils.data import Dataset, DataLoader, random_split, Subset
 from cfno.simulation.post import OutputFiles
 
@@ -110,10 +110,27 @@ class FNOData():
 
 class HDF5Dataset(Dataset):
 
-    def __init__(self, dataFile):
+    def __init__(self, dataFile, 
+                 use_domain_sampling=False, 
+                 nPatch_per_sample=1, 
+                 use_min_limit=False,
+                 padding=[0,0,0,0],
+                 kX= 12, kY= 12):
+        
         self.file = h5py.File(dataFile, 'r')
         self.inputs = self.file['inputs']
         self.outputs = self.file['outputs']
+        self.use_domain_sampling = use_domain_sampling
+        self.nPatch_per_sample = nPatch_per_sample
+        self.use_min_limit = use_min_limit
+        self.kX = kX
+        self.kY = kY
+        xGrid, yGrid = self.grid
+        self.nX = xGrid.size
+        self.nY = yGrid.size
+        self.slices = self.find_patch_size()
+        self.padding = padding  #[left, right, bottom, top]
+            
         assert len(self.inputs) == len(self.outputs), \
             f"different sample number for inputs and outputs ({len(self.inputs)},{len(self.outputs)})"
 
@@ -121,7 +138,38 @@ class HDF5Dataset(Dataset):
         return len(self.inputs)
 
     def __getitem__(self, idx):
-        inpt, outp = self.sample(idx)
+        if self.use_domain_sampling:
+            patch_padding = self.padding.copy()
+            iSample = idx // self.nPatch_per_sample
+            iPatch = idx % self.nPatch_per_sample
+            inpt_grid, outp_grid = self.sample(iSample)  
+            inpt, outp = np.zeros_like(inpt_grid), np.zeros_like(outp_grid)
+    
+            sX, sY = self.slices[iPatch]
+            xPatch_start = random.randint(0, self.nX - sX)
+            yPatch_start = random.randint(0, self.nY - sY)
+           
+            if xPatch_start == 0:
+                patch_padding[0] = 0
+            if xPatch_start == (self.nX-sX):
+                patch_padding[1] = 0
+            if yPatch_start == 0:
+                patch_padding[2] = 0
+            if yPatch_start == (self.nY-sY):
+                patch_padding[3] = 0
+            
+            # print(f"Input size: {inpt.shape}")
+            # print(f'For patch {iPatch} of sample {iSample}')
+            # print(f'(sx,sy): {sX,sY}, (x_start,y_start): {xPatch_start,yPatch_start}')
+            inpt[:, :(sX + patch_padding[0] + patch_padding[1]), 
+                    :(sY + patch_padding[2] + patch_padding[3])] = inpt_grid[:, xPatch_start - patch_padding[0]: (xPatch_start+sX) + patch_padding[1], 
+                                                                              yPatch_start - patch_padding[2]: (yPatch_start+sY) + patch_padding[3]]
+            outp[:,:(sX + patch_padding[0] + patch_padding[1]),
+                   :(sY + patch_padding[2] + patch_padding[3])] = outp_grid[:, xPatch_start - patch_padding[0]: (xPatch_start+sX) + patch_padding[1], 
+                                                                             yPatch_start - patch_padding[2]: (yPatch_start+sY) + patch_padding[3]]
+        else:
+            inpt, outp = self.sample(idx)
+        
         return torch.tensor(inpt), torch.tensor(outp)
 
     def __del__(self):
@@ -148,6 +196,34 @@ class HDF5Dataset(Dataset):
     @property
     def outScaling(self):
         return float(self.infos["outScaling"][()])
+        
+    def find_patch_size(self):
+        """
+        List containing random patch sizes
+        """
+        slices = []
+        if self.use_min_limit:
+            nX_min = self.calc_slice_min(self.nX, self.kX)
+            nY_min = self.calc_slice_min(self.nY, self.kY)
+        else:
+            nX_min, nY_min = 0, 0
+        for i in range(self.nPatch_per_sample):
+            sX = random.randint(nX_min, self.nX)
+            sY = random.randint(nY_min, self.nY)
+            slices.append((sX,sY))
+        return slices
+
+    def calc_slice_min(self, n, modes):
+        """
+        Finding min number of points to satisfy
+        n/2 +1 >= modes
+        """
+        slice_min = 2*(modes-1)
+        if slice_min < n:
+            return slice_min
+        else:
+            print("Insufficient number of points to slice")
+            return 0
 
     def printInfos(self):
         xGrid, yGrid = self.grid
@@ -164,6 +240,12 @@ class HDF5Dataset(Dataset):
         print(f" -- dtInput : {infos['dtInput'][()]:1.2g}")
         print(f" -- outType : {infos['outType'][()].decode('utf-8')}")
         print(f" -- outScaling : {infos['outScaling'][()]:1.2g}")
+        if self.use_domain_sampling:
+            print(f"-- nPatch (per sample): {self.nPatch_per_sample}")
+            print(f" --patches (per sample): {self.slices}")
+            print(f" --padding (per patch): {self.padding}")
+            if self.use_min_limit:
+                print(f" Min nX & nY for patch computed using {self.kX, self.kY} modes")
 
 def createDataset(
         dataDir, inSize, outStep, inStep, outType, outScaling, dataFile,
@@ -231,10 +313,19 @@ def createDataset(
     dataset.close()
     print(" -- done !")
 
-
-def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None):
-    dataset = HDF5Dataset(dataFile)
-    nBatches = len(dataset)
+def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20,
+                   seed=None, use_domain_sampling=False, 
+                   nPatch_per_sample=1,use_min_limit=False,
+                   padding=[0,0,0,0],kX=12, kY=12):
+    
+    dataset = HDF5Dataset(dataFile,use_domain_sampling, 
+                          nPatch_per_sample,use_min_limit,
+                          padding,kX,kY)
+    if use_domain_sampling:
+        nBatches = len(dataset)//nPatch_per_sample
+    else:
+        nBatches = len(dataset)
+        
     trainSize = int(trainRatio*nBatches)
     valSize = nBatches - trainSize
 
