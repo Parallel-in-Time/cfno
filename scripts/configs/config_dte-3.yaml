@@ -29,20 +29,25 @@ model:
   nLayers: 2
   forceFFT: true
   bias: false
+  use_prechannel_mlp: true
+  channel_mlp_expansion: 4
+  use_fno_skip_connection: false
+  fno_skip_type: soft-gating
+  use_postfnochannel_mlp: false
+  channel_mlp_skip_type: 'soft-gating'
 
 optim:
   name: adam
-  lr: 0.0001
+  lr: 0.001
   weight_decay: 1.0e-5
 
 lr_scheduler:
-  scheduler: StepLR
-  step_size: 100.0
-  gamma: 0.98
+  scheduler: CosAnnealingLR
+  T_max: 10000
 
 train:
   trainDir: training_dt1e-3_update_fft
-  nEpochs: 20000
+  nEpochs: 10000
   checkpoint: model.pt
   lossesFile: losses.txt
   saveEvery: 100
