@@ -163,18 +163,16 @@ class HDF5Dataset(Dataset):
                 xPatch_start = random.randint(0, self.nX - sX)
                 yPatch_start = random.randint(0, self.nY - sY)
            
-            if xPatch_start == 0:
-                patch_padding[0] = 0
-            if xPatch_start == (self.nX-sX):
-                patch_padding[1] = 0
-            if yPatch_start == 0:
-                patch_padding[2] = 0
-            if yPatch_start == (self.nY-sY):
-                patch_padding[3] = 0
-            
+            patch_padding[0] = 0 if xPatch_start == 0 or (xPatch_start - patch_padding[0]) < 0 else patch_padding[0]
+            patch_padding[1] = 0 if (xPatch_start + sX + patch_padding[1]) >= self.nX else patch_padding[1]
+            patch_padding[2] = 0 if yPatch_start == 0 or (yPatch_start - patch_padding[2]) < 0 else patch_padding[2]
+            patch_padding[3] = 0 if (yPatch_start + sY + patch_padding[3]) >= self.nY else patch_padding[3]
+
             # print(f"Input size: {inpt.shape}")
             # print(f'For patch {iPatch} of sample {iSample}')
             # print(f'(sx,sy): {sX,sY}, (x_start,y_start): {xPatch_start,yPatch_start}')
+            # print(f'padding: {patch_padding}')
+            
             inpt[:, :(sX + patch_padding[0] + patch_padding[1]), 
                     :(sY + patch_padding[2] + patch_padding[3])] = inpt_grid[:, xPatch_start - patch_padding[0]: (xPatch_start+sX) + patch_padding[1], 
                                                                               yPatch_start - patch_padding[2]: (yPatch_start+sY) + patch_padding[3]]

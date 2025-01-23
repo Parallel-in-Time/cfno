@@ -313,7 +313,8 @@ class CFNO2D(nn.Module):
                  channel_mlp_skip_type='soft-gating',
                  channel_mlp_expansion=4,
                  get_subdomain_output=False,
-                 iXBeg=0,iYBeg=0,iXEnd=256,iYEnd=256,
+                 iXBeg=0,iYBeg=0,
+                 iXEnd=256,iYEnd=256,
                  ):
         
         super().__init__()
@@ -394,7 +395,7 @@ class CFNO2D(nn.Module):
         x = self.Q(x)
         # x = self.pos(x)
         # x = x.permute(0,2,3,1)
-        print(f'Shape of x: {x.shape}')
+        # print(f'Shape of x: {x.shape}')
 
         return x
 
