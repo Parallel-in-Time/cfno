@@ -115,7 +115,10 @@ class HDF5Dataset(Dataset):
                  nPatch_per_sample=1, 
                  use_min_limit=False,
                  padding=[0,0,0,0],
-                 kX= 12, kY= 12):
+                 kX= 12, kY= 12,
+                 slices=[(16,16)],
+                 xPatch_start=0,
+                 yPatch_start=0):
         
         self.file = h5py.File(dataFile, 'r')
         self.inputs = self.file['inputs']
@@ -128,7 +131,14 @@ class HDF5Dataset(Dataset):
         xGrid, yGrid = self.grid
         self.nX = xGrid.size
         self.nY = yGrid.size
-        self.slices = self.find_patch_size()
+        self.xPatch_start = xPatch_start
+        self.yPatch_start = yPatch_start
+
+        if len(slices) != nPatch_per_sample:
+            self.slices = self.find_patch_size()
+        else:
+            self.slices = slices
+
         self.padding = padding  #[left, right, bottom, top]
             
         assert len(self.inputs) == len(self.outputs), \
@@ -146,8 +156,12 @@ class HDF5Dataset(Dataset):
             inpt, outp = np.zeros_like(inpt_grid), np.zeros_like(outp_grid)
     
             sX, sY = self.slices[iPatch]
-            xPatch_start = random.randint(0, self.nX - sX)
-            yPatch_start = random.randint(0, self.nY - sY)
+            if len(self.slices) == 1:
+                xPatch_start = self.xPatch_start.copy()
+                yPatch_start = self.yPatch_start.copy()
+            else:
+                xPatch_start = random.randint(0, self.nX - sX)
+                yPatch_start = random.randint(0, self.nY - sY)
            
             if xPatch_start == 0:
                 patch_padding[0] = 0
@@ -321,10 +335,8 @@ def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20,
     dataset = HDF5Dataset(dataFile,use_domain_sampling, 
                           nPatch_per_sample,use_min_limit,
                           padding,kX,kY)
-    if use_domain_sampling:
-        nBatches = len(dataset)//nPatch_per_sample
-    else:
-        nBatches = len(dataset)
+
+    nBatches = len(dataset)
         
     trainSize = int(trainRatio*nBatches)
     valSize = nBatches - trainSize

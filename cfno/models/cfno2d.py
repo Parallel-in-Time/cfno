@@ -311,7 +311,9 @@ class CFNO2D(nn.Module):
                  fno_skip_type='linear',
                  use_postfnochannel_mlp=False,
                  channel_mlp_skip_type='soft-gating',
-                 channel_mlp_expansion=4
+                 channel_mlp_expansion=4,
+                 get_subdomain_output=False,
+                 iXBeg=0,iYBeg=0,iXEnd=256,iYEnd=256,
                  ):
         
         super().__init__()
@@ -357,9 +359,19 @@ class CFNO2D(nn.Module):
                 for _ in range(nLayers)])
 
         self.memory = CudaMemoryDebugger(print_mem=True)
+        self.get_subdomain_output = get_subdomain_output
+        if self.get_subdomain_output:
+            self.iXBeg = iXBeg
+            self.iXEnd = iXEnd
+            self.iYBeg = iYBeg
+            self.iYEnd = iYEnd
 
     def forward(self, x):
-        """ x[nBatch, nX, nY, da] -> [nBatch, du, nX, nY]"""
+        """ x[nBatch, nX, nY, da] -> [nBatch, du, nX, nY] 
+            if use_subdomain_output:
+                x[nBatch, nX, nY, da] -> [nBatch, du, iEndX-iBegX, iEndY-iBegY]
+        """
+
         # x = x.permute(0,3,1,2)
         x = self.P(x)
 
@@ -373,10 +385,16 @@ class CFNO2D(nn.Module):
                  x = self.channel_mlp[index](x) + x_skip_channel_mlp
                  if index < len(self.layers) - 1:
                     x = nn.functional.gelu(x)
+        
+        # to get only a subdomain output
+        if self.get_subdomain_output:
+            print(f'Filtering to  x-subdomain {self.iXBeg,self.iXEnd} & y-subdomain {self.iYBeg,self.iYEnd}')
+            x = x[:, :, self.iXBeg:self.iXEnd, self.iYBeg:self.iYEnd]
 
         x = self.Q(x)
         # x = self.pos(x)
         # x = x.permute(0,2,3,1)
+        print(f'Shape of x: {x.shape}')
 
         return x
 

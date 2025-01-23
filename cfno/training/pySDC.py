@@ -34,8 +34,10 @@ class FourierNeuralOp:
         self.device = th.device('cuda' if th.cuda.is_available() else 'cpu')
 
         # Inference-only mode
-        if data is None and model is None and optim is None:
+        if data is None and optim is None:
             assert checkpoint is not None, "need a checkpoint in inference-only evaluation"
+            if model is not None:
+                self.modelConfig = model
             self.load(checkpoint, modelOnly=True)
             return
 
@@ -362,8 +364,12 @@ class FourierNeuralOp:
                 # for backward compatibility ...
                 checkpoint['model']["non_linearity"] = checkpoint['model'].pop("nonLinearity")
             if hasattr(self, "modelConfig") and self.modelConfig != checkpoint['model']:
+                for key, value in self.modelConfig.items():
+                    if key not in checkpoint['model']:
+                        checkpoint['model'][key] = value
                 print("WARNING : different model settings in config file,"
                       " overwriting with config from checkpoint ...")
+            # print(f"Model: {checkpoint['model']}")
             self.setupModel(checkpoint['model'])
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.outType = checkpoint["outType"]
@@ -402,7 +408,20 @@ class FourierNeuralOp:
                 outp = model(inpt)
                 if self.outType == "update":
                     outp /= self.outScaling
-                    outp += inpt
+
+                    # Mapping output to input shape to perform addition
+                    if outp.shape == inpt.shape:
+                        outp += inpt
+                    else:
+                        padded_tensor = th.zeros_like(inpt)
+                        padded_tensor[:,:,
+                                      self.modelConfig['iXBeg']: self.modelConfig['iXEnd'],
+                                      self.modelConfig['iYBeg']: self.modelConfig['iYEnd'] ] = outp[:,:,:,:]
+                        # print(f'Padded tensor: {padded_tensor.shape}')
+                        padded_tensor += inpt
+                        outp = padded_tensor[:,:,self.modelConfig['iXBeg']: self.modelConfig['iXEnd'],
+                                                 self.modelConfig['iYBeg']: self.modelConfig['iYEnd']]
+                        # print(f'Ouptut shape: {outp.shape}')
                 inpt = outp
 
         if not multi:
