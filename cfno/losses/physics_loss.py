@@ -445,11 +445,21 @@ class RBEqLoss(object):
                        DivergenceLoss(grids,L,dt,d,device=device),\
                        VectorNormLoss()]
                        #LpOmegaLoss(grids,L,d,p=2,device=device)]
+        num_losses = len(self.losses)
+        self.loss_values = torch.zeros(num_losses)
+                       
+    def getLossValues(self):
+        return self.loss_values
+                   
+    def resetLossValues(self):
+        self.loss_values[:] = 0.0
         
     def __call__(self, pred, ref, inp):
         sum = 0.0
         for i, loss in enumerate(self.losses):
-            sum = sum + self.weights[i] * loss(pred, ref, inp)
+            lossval = loss(pred, ref, inp)
+            sum = sum + self.weights[i] * lossval 
+            self.loss_values[i] = self.loss_values[i] + lossval
         return sum
     
 @register
@@ -466,7 +476,8 @@ class RBEqLossForUpdate(object):
                  Rayleigh:float=1.0,
                  Prantl:float=1.0,
                  device=None,
-                 weights=[1, 1, 1, 1, 0]
+                 weights=[1, 1, 1, 1, 0],
+                 scaling=1.0
                  ):
         self.weights=weights
         self.device=device
@@ -474,13 +485,23 @@ class RBEqLossForUpdate(object):
                        BuoyancyEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device),\
                        IntegralLoss(grids,L,dt,d,device=device),\
                        DivergenceLoss(grids,L,dt,d,device=device),\
-                       #VectorNormLoss()]
-                       LpOmegaLoss(grids,L,d,p=2,device=device)]
+                       VectorNormLoss()]
+                       #LpOmegaLoss(grids,L,d,p=2,device=device)]
+        num_losses = len(self.losses)
+        self.loss_values = torch.zeros(num_losses)
+        
+    def getLossValues(self):
+        return self.loss_values
+    
+    def resetLossValues(self):
+        self.loss_values[:] = 0.0                       
         
     def __call__(self, pred, ref, inp):
         sum = 0.0
         for i, loss in enumerate(self.losses):
-            sum = sum + self.weights[i] * loss(inp+pred, inp+ref, inp)
+            lossval = loss(inp+pred, inp+ref/self.scaling, inp)
+            sum = sum + self.weights[i] * lossval #loss(inp+pred, inp+ref/self.scaling, inp)
+            self.loss_values[i] = self.loss_values[i] + lossval
         return sum
     
 @register
@@ -499,9 +520,11 @@ class RBUpdateEqLoss(object):
                  Rayleigh:float=1.0,
                  Prantl:float=1.0,
                  device=None,
-                 weights=[1, 1, 1, 1, 0]
+                 weights=[1, 1, 1, 1, 0],
+                 scaling=1.0
                  ):
         self.weights=weights
+        self.scaling=scaling
         self.device=device
         self.losses = [VelocityUpdateEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device), \
                        BuoyancyUpdateEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device), \
@@ -509,9 +532,19 @@ class RBUpdateEqLoss(object):
                        DivergenceLoss(grids,L,dt,d,device=device), \
                        VectorNormLoss()]
                        #LpOmegaLoss(grids,L,d,p=2,device=device)]
+        num_losses = len(self.losses)
+        self.loss_values = torch.zeros(num_losses)
+        
+    def getLossValues(self):
+        return self.loss_values
+    
+    def resetLossValues(self):
+        self.loss_values[:] = 0.0
         
     def __call__(self, pred, ref, inp):
         sum = 0.0
         for i, loss in enumerate(self.losses):
-            sum = sum + self.weights[i] * loss(pred, ref, inp)
+            lossval = loss(pred, ref/self.scaling, inp)
+            sum = sum + self.weights[i] * lossval #loss(pred, ref/self.scaling, inp)
+            self.loss_values[i] = self.loss_values[i] + lossval
         return sum
