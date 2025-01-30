@@ -369,7 +369,7 @@ class FourierNeuralOp:
                         checkpoint['model'][key] = value
                 print("WARNING : different model settings in config file,"
                       " overwriting with config from checkpoint ...")
-            # print(f"Model: {checkpoint['model']}")
+            print(f"Model: {checkpoint['model']}")
             self.setupModel(checkpoint['model'])
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.outType = checkpoint["outType"]
