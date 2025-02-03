@@ -112,18 +112,45 @@ class HDF5Dataset(Dataset):
 
     def __init__(self, dataFile, 
                  use_domain_sampling=False, 
+                 use_fixed_domain=False,
+                 use_ordered_sampling=False,
                  nPatch_per_sample=1, 
                  use_min_limit=False,
                  padding=[0,0,0,0],
-                 kX= 12, kY= 12,
-                 slices=[(16,16)],
                  xPatch_start=0,
-                 yPatch_start=0):
+                 yPatch_start=0,
+                 slices=[],
+                 kX=12, kY=12):
+        """
+        Dataset reader and getitem for DataLoader
+
+        Args:
+            dataFile (hdf5): data file 
+            use_domain_sampling (bool, optional): To divide full grid (nX,nY) into nPatch_per_sample 
+                                                  random sized patches of (sX,sY). Defaults to False.
+            use_fixed_domain (bool, optional): To divide full grid (nX,nY) into nPatch_per_sample of 
+                                               (sX,sY) patches with overlapping. Defaults to False.
+            use_ordered_sampling (bool, optional): To divide full grid (nX,nY) into (nX//sX)*(nY//sY) 
+                                                   exactly divisible (sX,sY) size patches w/o overlapping.
+                                                   Defaults to False.
+            nPatch_per_sample (int, optional): Number of sub-domains per sample. Defaults to 1.
+            use_min_limit (bool, optional): Restrict (sX,sY) to be > (2*kX -1, 2*kY-1). Defaults to False.
+            padding (list, optional): Columns and rows to decode inflow information
+                                     in format[left, right, bottom, top]. Defaults to [0,0,0,0] 
+            xPatch_start (int, optional): Starting index of patch in x-axis. Defaults to 0.
+            yPatch_start (int, optional): Starting index of patch in y-axis. Defaults to 0.
+            slices (list, optional): Sizes of patch [[sX,sY]]. Defaults to [].
+            kX (int, optional): Number of fourier modes in x-axis. Defaults to 12.
+            kY (int, optional): Number of fourier modes in y-axis. Defaults to 12.
+            
+        """
         
         self.file = h5py.File(dataFile, 'r')
         self.inputs = self.file['inputs']
         self.outputs = self.file['outputs']
         self.use_domain_sampling = use_domain_sampling
+        self.use_fixed_domain = use_fixed_domain
+        self.use_ordered_sampling = use_ordered_sampling 
         self.nPatch_per_sample = nPatch_per_sample
         self.use_min_limit = use_min_limit
         self.kX = kX
@@ -133,16 +160,25 @@ class HDF5Dataset(Dataset):
         self.nY = yGrid.size
         self.xPatch_start = xPatch_start
         self.yPatch_start = yPatch_start
-
-        if len(slices) != nPatch_per_sample:
+        
+        if len(slices) == 0:
             self.slices = self.find_patch_size()
+        elif len(slices) == 1:
+            if self.use_fixed_domain:
+                if self.use_ordered_sampling:
+                    self.nPatch_per_sample = (self.nX // slices[0][0]) * (self.nY // slices[0][1])
+                self.slices = slices * self.nPatch_per_sample
+            else:
+                self.slices = slices
         else:
             self.slices = slices
-
+            
         self.padding = padding  #[left, right, bottom, top]
             
         assert len(self.inputs) == len(self.outputs), \
             f"different sample number for inputs and outputs ({len(self.inputs)},{len(self.outputs)})"
+        
+        assert not self.use_ordered_sampling or self.use_fixed_domain, "If use_ordered_sampling is True, then use_fixed_domain must also be True"
 
     def __len__(self):
         return len(self.inputs)
@@ -154,15 +190,18 @@ class HDF5Dataset(Dataset):
             iPatch = idx % self.nPatch_per_sample
             inpt_grid, outp_grid = self.sample(iSample)  
             inpt, outp = np.zeros_like(inpt_grid), np.zeros_like(outp_grid)
-    
             sX, sY = self.slices[iPatch]
             if len(self.slices) == 1:
                 xPatch_start = self.xPatch_start.copy()
                 yPatch_start = self.yPatch_start.copy()
             else:
-                xPatch_start = random.randint(0, self.nX - sX)
-                yPatch_start = random.randint(0, self.nY - sY)
-           
+                if self.use_ordered_sampling:
+                    xPatch_start = (iPatch // (self.nX//sX)) * sX
+                    yPatch_start = (iPatch % (self.nY//sY)) * sY            
+                else:
+                    xPatch_start = random.randint(0, self.nX - sX)
+                    yPatch_start = random.randint(0, self.nY - sY)
+            
             patch_padding[0] = 0 if xPatch_start == 0 or (xPatch_start - patch_padding[0]) < 0 else patch_padding[0]
             patch_padding[1] = 0 if (xPatch_start + sX + patch_padding[1]) >= self.nX else patch_padding[1]
             patch_padding[2] = 0 if yPatch_start == 0 or (yPatch_start - patch_padding[2]) < 0 else patch_padding[2]
@@ -171,7 +210,7 @@ class HDF5Dataset(Dataset):
             # print(f"Input size: {inpt.shape}")
             # print(f'For patch {iPatch} of sample {iSample}')
             # print(f'(sx,sy): {sX,sY}, (x_start,y_start): {xPatch_start,yPatch_start}')
-            # print(f'padding: {patch_padding}')
+            # print(f'padding: {patch_padding}, nPatch_per_sample:{self.nPatch_per_sample}')
             
             inpt[:, :(sX + patch_padding[0] + patch_padding[1]), 
                     :(sY + patch_padding[2] + patch_padding[3])] = inpt_grid[:, xPatch_start - patch_padding[0]: (xPatch_start+sX) + patch_padding[1], 
@@ -211,18 +250,28 @@ class HDF5Dataset(Dataset):
         
     def find_patch_size(self):
         """
-        List containing random patch sizes
+        List containing patch sizes
         """
         slices = []
-        if self.use_min_limit:
-            nX_min = self.calc_slice_min(self.nX, self.kX)
-            nY_min = self.calc_slice_min(self.nY, self.kY)
+        if self.use_fixed_domain:
+            self.valid_sX = [sx for sx in range(1,self.nX) if self.nX % sx == 0]
+            self.valid_sY = [sy for sy in range(1,self.nY) if self.nY % sy == 0]
+            # select a (sX,sY) randomly 
+            sX = int(random.choice(self.valid_sX))  
+            sY = int(random.choice(self.valid_sY))
+            if self.use_ordered_sampling:
+                self.nPatch_per_sample = (self.nX // sX) * (self.nY // sY)
+            slices = [(sX,sY)]*self.nPatch_per_sample   
         else:
-            nX_min, nY_min = 0, 0
-        for i in range(self.nPatch_per_sample):
-            sX = random.randint(nX_min, self.nX)
-            sY = random.randint(nY_min, self.nY)
-            slices.append((sX,sY))
+            if self.use_min_limit:
+                nX_min = self.calc_slice_min(self.nX, self.kX)
+                nY_min = self.calc_slice_min(self.nY, self.kY)
+            else:
+                nX_min, nY_min = 0, 0
+                for i in range(self.nPatch_per_sample):
+                    sX = random.randint(nX_min, self.nX)
+                    sY = random.randint(nY_min, self.nY)
+                    slices.append((sX,sY))
         return slices
 
     def calc_slice_min(self, n, modes):
@@ -252,9 +301,13 @@ class HDF5Dataset(Dataset):
         print(f" -- dtInput : {infos['dtInput'][()]:1.2g}")
         print(f" -- outType : {infos['outType'][()].decode('utf-8')}")
         print(f" -- outScaling : {infos['outScaling'][()]:1.2g}")
+        print(f" --use_ordered_sampling: {self.use_ordered_sampling}")
         if self.use_domain_sampling:
             print(f"-- nPatch (per sample): {self.nPatch_per_sample}")
-            print(f" --patches (per sample): {self.slices}")
+            if self.use_fixed_domain:
+                print(f" --patches (per sample): {self.slices[0]}")
+            else:
+                print(f" --patches (per sample): {self.slices}")
             print(f" --padding (per patch): {self.padding}")
             if self.use_min_limit:
                 print(f" Min nX & nY for patch computed using {self.kX, self.kY} modes")
@@ -327,12 +380,26 @@ def createDataset(
 
 def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20,
                    seed=None, use_domain_sampling=False, 
-                   nPatch_per_sample=1,use_min_limit=False,
-                   padding=[0,0,0,0],kX=12, kY=12):
+                   use_fixed_domain=False,
+                   use_ordered_sampling=False,
+                   nPatch_per_sample=1,
+                   use_min_limit=False,
+                   padding=[0,0,0,0], 
+                   xPatch_start=0,
+                   yPatch_start=0,
+                   kX= 12, kY= 12, **kwargs):
     
-    dataset = HDF5Dataset(dataFile,use_domain_sampling, 
-                          nPatch_per_sample,use_min_limit,
-                          padding,kX,kY)
+    if 'slices' in kwargs:
+        slices = kwargs['slices']
+    else:
+        slices = []
+    
+    dataset = HDF5Dataset(dataFile, use_domain_sampling, 
+                          use_fixed_domain, use_ordered_sampling, 
+                          nPatch_per_sample, use_min_limit,
+                          padding,xPatch_start, yPatch_start, 
+                          slices, kX, kY)
+    dataset.printInfos()
 
     nBatches = len(dataset)
         
