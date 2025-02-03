@@ -30,9 +30,9 @@ parser.add_argument(
 parser.add_argument(
     "--iYBeg", default=0, help="yPatch start index", type=int)
 parser.add_argument(
-    "--iXEnd", default=256, help="xPatch end index", type=int)
+    "--iXEnd", default=None, help="xPatch end index", type=int)
 parser.add_argument(
-    "--iYEnd", default=64, help="yPatch end index", type=int)
+    "--iYEnd", default=None, help="yPatch end index", type=int)
 parser.add_argument(
     "--outType", default="solution", help="type of output", choices=["solution", "update"])
 parser.add_argument(
@@ -104,39 +104,22 @@ else:
     model = FourierNeuralOp(checkpoint=checkpoint)
 
 uPred = model(input)[varChoices.index(var)].copy()
-print(f'Shape of uInit: {uInit.shape}, uRef:{uRef.shape}, uPred: {uPred.shape}')
-
-# xExpandedGrid = np.linspace(iXBeg, iXEnd, uPred.shape[0] + 1)
-# yExpandedGrid = np.linspace(iYBeg, iYEnd, uPred.shape[1] + 1)
-# # Create 2D grids for pcolormesh
-# X, Y = np.meshgrid(xExpandedGrid, yExpandedGrid, indexing='ij')
-Y, X = xGrid[iXBeg:iXEnd], yGrid[iYBeg:iYEnd]
 
 if dataset.outType == "update":
     uRef /= dataset.outScaling
 
 if uRef.shape != uInit.shape:
-    padded_uRef = np.zeros_like(uInit)
-    padded_uPred = np.zeros_like(uInit)
-    padded_uRef[iXBeg:iXEnd, iYBeg:iYEnd] = uRef[:,:].copy()
-    padded_uPred[iXBeg:iXEnd, iYBeg:iYEnd] = uPred[:,:].copy()
-    print(f'padded uRef: {padded_uRef.shape}, uPred: {padded_uPred.shape}')          
-    if outType == "solution" and dataset.outType == "update":
-        padded_uRef += uInit
-    if outType == "update" and dataset.outType == "solution":
-        padded_uRef -= uInit
-    if outType == "update":
-        padded_uPred -= uInit
-    uPred[:,:] = padded_uPred[iXBeg:iXEnd, iYBeg:iYEnd]
-    uRef[:,:] = padded_uRef[iXBeg:iXEnd, iYBeg:iYEnd]
-else:
-    if outType == "solution" and dataset.outType == "update":
-        uRef += uInit
-    if outType == "update" and dataset.outType == "solution":
-        uRef -= uInit
-    if outType == "update":
-       uPred -= uInit
+    uInit = u0[varChoices.index(var), iXBeg:iXEnd, iYBeg:iYEnd]
 
+print(f'Shape of uInit: {uInit.shape}, uRef:{uRef.shape}, uPred: {uPred.shape}')
+if outType == "solution" and dataset.outType == "update":
+    uRef += uInit
+if outType == "update" and dataset.outType == "solution":
+    uRef -= uInit
+if outType == "update":
+    uPred -= uInit
+
+Y, X = xGrid[iXBeg:iXEnd], yGrid[iYBeg:iYEnd]
 contourPlot(
     uPred, X, Y, title=f"Model {outType} for {var} using sample {iSample}",
     refField=uRef, refTitle=f"Dedalus reference (dt={dataset.infos['dtInput'][()]:1.2g}s)",
