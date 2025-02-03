@@ -106,10 +106,11 @@ else:
 uPred = model(input)[varChoices.index(var)].copy()
 print(f'Shape of uInit: {uInit.shape}, uRef:{uRef.shape}, uPred: {uPred.shape}')
 
-xExpandedGrid = np.linspace(iXBeg, iXEnd, uPred.shape[0] + 1)
-yExpandedGrid = np.linspace(iYBeg, iYEnd, uPred.shape[1] + 1)
-# Create 2D grids for pcolormesh
-X, Y = np.meshgrid(xExpandedGrid, yExpandedGrid, indexing='ij')
+# xExpandedGrid = np.linspace(iXBeg, iXEnd, uPred.shape[0] + 1)
+# yExpandedGrid = np.linspace(iYBeg, iYEnd, uPred.shape[1] + 1)
+# # Create 2D grids for pcolormesh
+# X, Y = np.meshgrid(xExpandedGrid, yExpandedGrid, indexing='ij')
+Y, X = xGrid[iXBeg:iXEnd], yGrid[iYBeg:iYEnd]
 
 if dataset.outType == "update":
     uRef /= dataset.outScaling
