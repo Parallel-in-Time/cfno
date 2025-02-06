@@ -182,10 +182,12 @@ def createDataset(
     if pySDC:
         from pySDC.helpers.fieldsIO import FieldsIO
         outFiles = FieldsIO.fromFile(f"{simDirs[0]}/run_data/outputs.pysdc")
+        nFields = outFiles.nFields
         times = outFiles.times
         xGrid, yGrid = outFiles.header["coordX"], outFiles.header["coordY"]  # noqa: F841 (used lated by an eval call)
     else:
         outFiles = OutputFiles(f"{simDirs[0]}/run_data")
+        nFields = sum(outFiles.nFields)
         times = outFiles.times().ravel()
         xGrid, yGrid = outFiles.x, outFiles.y  # noqa: F841 (used lated by an eval call)
 
@@ -194,7 +196,7 @@ def createDataset(
     dtSample = dtData*inStep  # noqa: F841 (used lated by an eval call)
 
     iBeg = int(kwargs.get("iBeg", 0))
-    iEnd = int(kwargs.get("iEnd", sum(outFiles.nFields)))
+    iEnd = int(kwargs.get("iEnd", nFields))
     sRange = range(iBeg, iEnd-inSize-outStep+1, inStep)
     nSamples = len(sRange)
     print(f'selector: {sRange},  outStep: {outStep}, inStep: {inStep}, iBeg: {iBeg}, iEnd: {iEnd}')
