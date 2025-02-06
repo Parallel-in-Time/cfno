@@ -283,7 +283,7 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
     tBeg=0, tEnd=10, dtWrite=0.1, restartFile=None, useFNO=None,
     QI="MIN-SR-FLEX", QE="PIC", nSweeps=4, useRK=False):
 
-    from pySDC.implementations.problem_classes.RayleighBenard import RayleighBenard, MPI
+    from pySDC.implementations.problem_classes.RayleighBenard import RayleighBenard
     from pySDC.implementations.sweeper_classes.imex_1st_order import imex_1st_order
     from pySDC.implementations.sweeper_classes.Runge_Kutta import ARK3
     from pySDC.implementations.problem_classes.generic_spectral import compute_residual_DAE
