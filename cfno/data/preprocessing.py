@@ -183,11 +183,13 @@ def createDataset(
         from pySDC.helpers.fieldsIO import FieldsIO
         outFiles = FieldsIO.fromFile(f"{simDirs[0]}/run_data/outputs.pysdc")
         nFields = outFiles.nFields
+        fieldShape = (outFiles.nVar, outFiles.nX, outFiles.nY)
         times = outFiles.times
         xGrid, yGrid = outFiles.header["coordX"], outFiles.header["coordY"]  # noqa: F841 (used lated by an eval call)
     else:
         outFiles = OutputFiles(f"{simDirs[0]}/run_data")
         nFields = sum(outFiles.nFields)
+        fieldShape = outFiles.shape
         times = outFiles.times().ravel()
         xGrid, yGrid = outFiles.x, outFiles.y  # noqa: F841 (used lated by an eval call)
 
@@ -221,7 +223,7 @@ def createDataset(
         except:
             dataset.create_dataset(f"infos/{name}", data=eval(name))
 
-    dataShape = (nSamples*nSimu, *outFiles.shape)
+    dataShape = (nSamples*nSimu, *fieldShape)
     print(f'data shape: {dataShape}')
     inputs = dataset.create_dataset("inputs", dataShape)
     outputs = dataset.create_dataset("outputs", dataShape)
@@ -230,7 +232,7 @@ def createDataset(
             outFiles = FieldsIO.fromFile(f"{dataDir}/run_data/outputs.pysdc")
         else:
             outFiles = OutputFiles(f"{dataDir}/run_data")
-        print(f" -- sampling data from {outFiles.folder}")
+        print(f" -- sampling data from {dataDir}/run_data")
         for iSample, iField in enumerate(sRange):
             if verbose:
                 print(f"\t -- creating sample {iSample+1}/{nSamples}")
