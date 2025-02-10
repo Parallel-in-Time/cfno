@@ -88,9 +88,9 @@ class CF2DConv(nn.Module):
         x = th.fft.rfft2(x, norm="ortho")   # RFFT on last 2 dimensions
         return x
 
-    def _toRealSpace_FORCE_FFT(self, x):
+    def _toRealSpace_FORCE_FFT(self, x, org_size):
         """ x[nBatch, dv, fX = nX/2+1, fY = nY/2+1] -> [nBatch, dv, nX, nY]"""
-        x = th.fft.irfft2(x, norm="ortho")  # IRFFT on last 2 dimensions
+        x = th.fft.irfft2(x, s=org_size, norm="ortho")  # IRFFT on last 2 dimensions
         return x
 
     def _toFourierSpace_FORCE_FFT_REORDER(self, x):
@@ -115,6 +115,7 @@ class CF2DConv(nn.Module):
 
     def forward(self, x:th.tensor):
         """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY] """
+        org_size = x.shape
         # Transform to Fourier space -> [nBatch, dv, fX, fY]
         x = self._toFourierSpace(x)
         # Truncate and keep only first modes -> [nBatch, dv, kX, kY]
@@ -130,7 +131,9 @@ class CF2DConv(nn.Module):
         x = th.einsum("xa,yb,eiab->eixy", Tx.T, Ty.T, x)
 
         # Transform back to Real space -> [nBatch, dv, nX, nY]
-        x = self._toRealSpace(x)
+        # Need to pass signal orginal shape to round irfft2() 
+        # if last dim is odd
+        x = self._toRealSpace(x, org_size[-2:])
 
         if self.bias is not None:
             x = x + self.bias
@@ -314,7 +317,7 @@ class CFNO2D(nn.Module):
                  channel_mlp_expansion=4,
                  get_subdomain_output=False,
                  iXBeg=0,iYBeg=0,
-                 iXEnd=256,iYEnd=256,
+                 iXEnd=None,iYEnd=None,
                  ):
         
         super().__init__()
@@ -387,7 +390,7 @@ class CFNO2D(nn.Module):
                  if index < len(self.layers) - 1:
                     x = nn.functional.gelu(x)
         
-        # to get only a subdomain output
+        # to get only a subdomain output inference
         if self.get_subdomain_output:
             print(f'Filtering to  x-subdomain {self.iXBeg,self.iXEnd} & y-subdomain {self.iYBeg,self.iYEnd}')
             x = x[:, :, self.iXBeg:self.iXEnd, self.iYBeg:self.iYEnd]
