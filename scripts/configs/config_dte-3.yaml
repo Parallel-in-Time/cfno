@@ -19,10 +19,16 @@ data:
   batchSize: 20
   xStep: 1
   yStep: 1
-  use_domain_sampling: true
+  use_domainSampling: true
+  use_fixedPatchSize: false        # fixed domain with overlapping
+  use_orderedSampling: false       # fixed domain w/o overlapping 
+  pad_to_fullGrid: false
+  use_fixedPatch_startIdx: true
   nPatch_per_sample: 100
-  use_min_limit: false
+  use_minLimit: true
   padding : [1,1,1,1]
+  # slices: []
+  # patch_startIdx: []
 
 model:
   da: 4
@@ -39,11 +45,11 @@ model:
   fno_skip_type: soft-gating
   use_postfnochannel_mlp: false
   channel_mlp_skip_type: 'soft-gating'
-  get_subdomain_output: true
-  iXBeg: 16
-  iYBeg: 16
-  iXEnd: 64
-  iYEnd: 64
+  get_subdomain_output: false               # set to true only for inference
+  iXBeg: 5
+  iYBeg: 12
+  iXEnd: 30
+  iYEnd: 60
 
 optim:
   name: adam
@@ -55,7 +61,7 @@ lr_scheduler:
   T_max: 50000
 
 train:
-  trainDir: training_dt1e-3_update_fft_run26
+  trainDir: training_dt1e-3_update_fft_test
   nEpochs: 20000
   checkpoint: model.pt
   lossesFile: losses.txt

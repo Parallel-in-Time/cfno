@@ -185,11 +185,22 @@ class FourierNeuralOp:
         else:
             ValueError(f"cannot compute id loss on {loader} dataset")
         nBatches = len(loader)
+        data_iter = iter(loader)
+
+        if self.data_config['use_domainSampling'] and not self.data_config['pad_to_fullGrid']:
+            inp_list, out_list = next(data_iter)  #[nBatches=nPatch_per_sample, batchSize=nSamples/nBatches, 4, nX, ny]
+            nBatches = len(inp_list)
+
         avgLoss = 0
         outType = self.outType
 
         with th.no_grad():
-            for inputs, outputs in loader:
+            # for inputs, outputs in loader:
+            for iBatch in range(nBatches):
+                if self.data_config['use_domainSampling'] and not self.data_config['pad_to_fullGrid']:
+                    inputs, outputs = (inp_list[iBatch], out_list[iBatch])
+                else:
+                    inputs, outputs = next(data_iter)
                 if outType == "solution":
                     avgLoss += self.lossFunction(inputs, outputs, inputs).item()
                 elif outType == "update":
@@ -213,9 +224,17 @@ class FourierNeuralOp:
     # -------------------------------------------------------------------------
     def train(self):
         """Train the model for one epoch"""
+
         nSamples = len(self.trainLoader.dataset)
         nBatches = len(self.trainLoader)
         batchSize = self.trainLoader.batch_size
+        data_iter = iter(self.trainLoader)
+
+        if self.data_config['use_domainSampling'] and not self.data_config['pad_to_fullGrid']:
+            inp_list, out_list = next(data_iter) # [nBatches=nPatch_per_sample, batchSize=nSamples/nBatches, 4, nX, ny]
+            nBatches = len(inp_list)
+            batchSize = len(inp_list[0])
+           
         model = self.model
         optimizer = self.optimizer
         scheduler = self.lr_scheduler
@@ -224,7 +243,12 @@ class FourierNeuralOp:
         idLoss = self.losses['id']['train']
 
         model.train()
-        for iBatch, data in enumerate(self.trainLoader):
+        for iBatch in range(nBatches):
+        # for iBatch, data in enumerate(self.trainLoader):
+            if self.data_config['use_domainSampling'] and not self.data_config['pad_to_fullGrid']:
+                data = (inp_list[iBatch], out_list[iBatch])
+            else:
+                data = next(data_iter)
             inp = data[0][..., ::self.xStep, ::self.yStep].to(self.device)
             ref = data[1][..., ::self.xStep, ::self.yStep].to(self.device)
 
@@ -274,12 +298,22 @@ class FourierNeuralOp:
         model = self.model
         avgLoss = 0
         idLoss = self.losses['id']['valid']
+        data_iter = iter(self.valLoader)
+
+        if self.data_config['use_domainSampling'] and not self.data_config['pad_to_fullGrid']:
+            inp_list, out_list = next(data_iter) #[nBatches=nPatch_per_sample, batchSize=nSamples/nBatches, 4, nX, ny]
+            nBatches = len(inp_list)
+            batchSize = len(inp_list[0])
 
         model.eval()
         with th.no_grad():
-            for data in self.valLoader:
-                inp = data[0].to(self.device)
-                ref = data[1].to(self.device)
+            for iBatch in range(nBatches):
+                if self.data_config['use_domainSampling'] and not self.data_config['pad_to_fullGrid']:
+                    data = (inp_list[iBatch], out_list[iBatch])
+                else:
+                    data = next(data_iter)
+                inp = data[0][..., ::self.xStep, ::self.yStep].to(self.device)
+                ref = data[1][..., ::self.xStep, ::self.yStep].to(self.device)
                 pred = model(inp)
                 avgLoss += self.lossFunction(pred, ref, inp).item()
 
@@ -413,15 +447,11 @@ class FourierNeuralOp:
                     if outp.shape == inpt.shape:
                         outp += inpt
                     else:
-                        padded_tensor = th.zeros_like(inpt)
-                        padded_tensor[:,:,
+                        sliced_inpt = inpt[:,:,
                                       self.modelConfig['iXBeg']: self.modelConfig['iXEnd'],
-                                      self.modelConfig['iYBeg']: self.modelConfig['iYEnd'] ] = outp[:,:,:,:]
-                        # print(f'Padded tensor: {padded_tensor.shape}')
-                        padded_tensor += inpt
-                        outp = padded_tensor[:,:,self.modelConfig['iXBeg']: self.modelConfig['iXEnd'],
-                                                 self.modelConfig['iYBeg']: self.modelConfig['iYEnd']]
-                        # print(f'Ouptut shape: {outp.shape}')
+                                      self.modelConfig['iYBeg']: self.modelConfig['iYEnd']]
+                        # print(f'Sliced Input: {sliced_inpt.shape}')
+                        outp += sliced_inpt
                 inpt = outp
 
         if not multi:

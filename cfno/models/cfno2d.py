@@ -77,9 +77,9 @@ class CF2DConv(nn.Module):
         x = th.fft.rfft(x, dim=-2, norm="ortho")    # RFFT on before-last dimension
         return x
 
-    def _toRealSpace(self, x):
+    def _toRealSpace(self, x, org_size):
         """ x[nBatch, dv, fX = nX/2+1, fY = nY] -> [nBatch, dv, nX, nY] """
-        x = th.fft.irfft(x, dim=-2, norm="ortho")   # IRFFT on before-last dimension
+        x = th.fft.irfft(x, dim=-2, s=org_size[0], norm="ortho")   # IRFFT on before-last dimension
         x = idct(x, norm="ortho")                   # IDCT on last dimension
         return x
 
@@ -101,9 +101,9 @@ class CF2DConv(nn.Module):
         x = th.fft.rfft2(x, norm="ortho")   # RFFT on last 2 dimensions
         return x
 
-    def _toRealSpace_FORCE_FFT_REORDER(self, x):
+    def _toRealSpace_FORCE_FFT_REORDER(self, x, org_size):
         """ x[nBatch, dv, fX = nX/2+1, fY = nY/2+1] -> [nBatch, dv, nX, nY]"""
-        x = th.fft.irfft2(x, norm="ortho")  # IRFFT on last 2 dimensions
+        x = th.fft.irfft2(x, s=org_size, norm="ortho")  # IRFFT on last 2 dimensions
         nY = x.shape[-1]
         reorder = np.zeros(nY, dtype=int)
         reorder[: nY - nY % 2 : 2] = np.arange(nY // 2)
