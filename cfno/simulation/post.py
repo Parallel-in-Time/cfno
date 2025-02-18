@@ -47,12 +47,13 @@ class OutputFiles():
              self.dim = 2
         else:
             self.x = np.array(vData0.dims[2]["x"])
-            self.z = np.array(vData0.dims[-1]["z"])
             self.dim = dim = len(vData0.dims)-2
             if dim == 2:
+                self.z = np.array(vData0.dims[3]["z"])
                 self.y = self.z
             elif dim == 3:
                 self.y = np.array(vData0.dims[3]["y"])
+                self.z = np.array(vData0.dims[4]["z"])
             else:
                 raise NotImplementedError(f"{dim = }")
 
