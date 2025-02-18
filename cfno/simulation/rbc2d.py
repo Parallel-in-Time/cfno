@@ -222,7 +222,7 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     Rayleigh: float
         Rayleigh number.
     resFactor: int
-        Resolution factor, considering a base space grid size of (256,64).
+        Resolution factor, considering a base space grid size of (64,64,64).
     baseDt: float
         Base time-step for the base space resolution. The default is 1e-2/2.
     seed: int, optional
@@ -245,8 +245,8 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
         Write into a file the space parallel distribution from dedalus
     """
     # Parameters
-    Lx, Ly, Lz = 4, 1, 1
-    Nx, Ny, Nz = 256*resFactor, 64*resFactor, 64*resFactor
+    Lx, Ly, Lz = 1, 1, 1
+    Nx, Ny, Nz = 64*resFactor, 64*resFactor, 64*resFactor
     timestep = baseDt/resFactor
 
     nSteps = round(float(tEnd-tBeg)/timestep, ndigits=3)
@@ -631,4 +631,4 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
 
 
 if __name__ == "__main__":
-    runSim("test")
+    runSim3D("test", logEvery=10, tEnd=50, dtWrite=1)

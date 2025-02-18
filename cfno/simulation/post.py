@@ -44,10 +44,17 @@ class OutputFiles():
              print(f'x-grid: {self.x.shape}')
              print(f'z-grid: {self.z.shape}')
              print(f'timesteps: {np.array(vData0[:,0,0,0]).shape}')
+             self.dim = 2
         else:
             self.x = np.array(vData0.dims[2]["x"])
-            self.z = np.array(vData0.dims[3]["z"])
-            self.y = self.z
+            self.z = np.array(vData0.dims[-1]["z"])
+            self.dim = dim = len(vData0.dims)-2
+            if dim == 2:
+                self.y = self.z
+            elif dim == 3:
+                self.y = np.array(vData0.dims[3]["y"])
+            else:
+                raise NotImplementedError(f"{dim = }")
 
 
     def file(self, iFile:int):
@@ -73,16 +80,26 @@ class OutputFiles():
         return self.x.size
 
     @property
+    def nY(self):
+        return self.y.size
+
+    @property
     def nZ(self):
         return self.z.size
 
     @property
     def shape(self):
-        return (4, self.nX, self.nZ)
+        if self.dim == 2:
+            return (4, self.nX, self.nZ)
+        elif self.dim == 3:
+            return (4, self.nX, self.nY, self.nZ)
 
     @property
     def k(self):
-        return getModes(self.x)
+        if self.dim == 2:
+            return getModes(self.x)
+        elif self.dim == 3:
+            return getModes(self.x), getModes(self.y)
 
     def vData(self, iFile:int):
         return self.file(iFile)['tasks']['velocity']
@@ -118,11 +135,17 @@ class OutputFiles():
         #             pass # Was already closed
         # print(f'Files {self.files}')
         data = self.file(iFile)["tasks"]
-        vx = data["velocity"][iTime, 0]
-        vz = data["velocity"][iTime, 1]
-        b = data["buoyancy"][iTime]
-        p = data["pressure"][iTime]
-        return np.array([vx, vz, b, p])
+        fields = [
+            data["velocity"][iTime, 0],
+            data["velocity"][iTime, 1],
+            ]
+        if self.dim == 3:
+            fields += [data["velocity"][iTime, 2]]
+        fields += [
+            data["buoyancy"][iTime],
+            data["pressure"][iTime]
+            ]
+        return np.array(fields)
 
     def nTimes(self, iFile:int):
         return self.times(iFile).size
