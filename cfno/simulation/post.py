@@ -8,15 +8,62 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 def computeMeanSpectrum(uValues):
-    """ uValues[nT, nVar >= 2, nX, nY] """
+    """ uValues[nT, nVar, nX, (nY,) nZ] """
+    uValues = np.asarray(uValues)
+    nT, nVar, *gridSizes = uValues.shape
+    dim = len(gridSizes)
+
     energy_spectrum = []
-    for i in range(2):
-        u = uValues[:, i]                           # (nT, Nx, Nz)
-        spectrum = np.fft.rfft(u, axis=-2)          # over Nx -->  #(nT, k, Nz)
-        spectrum *= np.conj(spectrum)               # (nT, k, Nz)
-        spectrum /= spectrum.shape[-2]              # normalize with Nx --> (nT, k, Nz)
-        spectrum = np.mean(spectrum.real, axis=-1)  # mean over Nz --> (nT,k)
-        energy_spectrum.append(spectrum)
+    if dim == 2:
+
+        for i in range(2):
+            u = uValues[:, i]                           # (nT, Nx, Nz)
+            spectrum = np.fft.rfft(u, axis=-2)          # over Nx -->  #(nT, k, Nz)
+            spectrum *= np.conj(spectrum)               # (nT, k, Nz)
+            spectrum /= spectrum.shape[-2]              # normalize with Nx --> (nT, k, Nz)
+            spectrum = np.mean(spectrum.real, axis=-1)  # mean over Nz --> (nT,k)
+            energy_spectrum.append(spectrum)
+
+    elif dim == 3:
+
+        nX, nY, nZ = gridSizes
+        assert nX == nY
+        size = nX // 2
+
+        kX = np.fft.fftfreq(nX, 1/nX)**2
+        kY = np.fft.fftfreq(nY, 1/nY)**2
+        kMod = kX[:, None] + kY[None, :]
+        kMod **= 0.5
+        idx = kMod.copy()
+        idx *= (kMod < size)
+        idx -= (kMod >= size)
+
+        idxList = range(int(idx.max()) + 1)
+        flatIdx = idx.ravel()
+
+        uvF = np.fft.fft2(uValues[:, :2], axes=(-3, -2))
+        wF = np.fft.fft2(uValues[:, -1:], axes=(-3, -2))
+
+        for uF2D in [uvF, wF]:
+
+            ffts = [uF2D[:, i] for i in range(uF2D.shape[1])]
+            reParts = [uF.reshape((nT, nX*nZ, nZ)).real**2 for uF in ffts]
+            imParts = [uF.reshape((nT, nX*nZ, nZ)).real**2 for uF in ffts]
+
+            spectrum = np.zeros((nT, size, nZ))
+            for i in idxList:
+                kIdx = np.argwhere(flatIdx == i)
+                tmp = np.empty((nT, *kIdx.shape, nZ))
+                for re, im in zip(reParts, imParts):
+                    np.copyto(tmp, re[:, kIdx])
+                    tmp += im[:, kIdx]
+                    spectrum[:, i] += tmp.sum(axis=(1, 2))
+            spectrum /= 2*(nX*nY)**2
+            spectrum = spectrum.mean(axis=-1)
+
+            energy_spectrum.append(spectrum)
+
+
     return energy_spectrum
 
 
@@ -156,9 +203,10 @@ class OutputFiles():
            profilr (list): mean profiles of velocity, buoyancy and pressure
         """
         profile = []
-        for i in range(2):                              # x and z components (time_index, 2, Nx, Nz)
-            u = self.vData(iFile)[:, i]                 # (time_index, Nx, Nz)
-            mean = np.mean(abs(u), axis=1)              # avg over Nx ---> (time_index, Nz)
+        for i in range(self.dim):                       # x and z components (time_index, 2, Nx, (nY), Nz)
+            u = self.vData(iFile)[:, i]                 # (time_index, Nx, (nY), Nz)
+            mean = np.mean(abs(u), axis=1 if self.dim==2 else (1, 2))
+            # avg over Nx (and Ny) ---> (time_index, Nz)
             profile.append(mean)                        # (2, time_index, Nz)
         if buoyancy:
             b = self.bData(iFile)                       #(time_index, Nx, Nz)
