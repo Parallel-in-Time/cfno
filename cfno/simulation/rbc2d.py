@@ -631,4 +631,4 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
 
 
 if __name__ == "__main__":
-    runSim3D("cube_64", Rayleigh=1e8, logEvery=10, tEnd=200, dtWrite=1)
+    runSim3D("cube_64_video", Rayleigh=1e8, logEvery=10, tEnd=200, dtWrite=0.1)

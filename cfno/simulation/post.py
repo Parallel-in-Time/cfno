@@ -1,3 +1,4 @@
+import os
 import h5py
 import glob
 import random
@@ -127,14 +128,6 @@ class OutputFiles():
         offset = np.cumsum(self.nFields)
         iFile = np.argmax(iField < offset)
         iTime = iField - sum(offset[:iFile])
-        # for obj in gc.get_objects():   # Browse through ALL objects
-        #     if isinstance(obj, h5py.File):   # Just HDF5 files
-        #         try:
-        #             obj.close()
-        #             print('Closed Files')
-        #         except:
-        #             pass # Was already closed
-        # print(f'Files {self.files}')
         data = self.file(iFile)["tasks"]
         fields = [
             data["velocity"][iTime, 0],
@@ -210,6 +203,40 @@ class OutputFiles():
         sMean = np.mean(sMean, axis=0)                      # mean over x and z ---> (k)
         np.savetxt(f'{self.folder}/spectrum.txt', np.vstack((sMean, self.k)))
         return sMean, self.k
+
+    def toVTR(self, idxFormat="{:06d}"):
+        """
+        Convert all 3D fields from the OutputFiles object into a list
+        of VTR files, that can be read later with Paraview or equivalent to
+        make videos.
+
+        Parameters
+        ----------
+        idxFormat : str, optional
+            Formating string for the index suffix of the VTR file.
+            The default is "{:06d}".
+
+        Example
+        -------
+        >>> # Suppose the FieldsIO object is already writen into outputs.pysdc
+        >>> import os
+        >>> from pySDC.utils.fieldsIO import Rectilinear
+        >>> os.makedirs("vtrFiles")  # to store all VTR files into a subfolder
+        >>> Rectilinear.fromFile("outputs.pysdc").toVTR(
+        >>>    baseName="vtrFiles/field", varNames=["u", "v", "w", "T", "p"])
+        """
+        assert self.dim == 3, "can only be used with 3D fields"
+        from pySDC.helpers.vtkIO import writeToVTR
+
+        baseName = f"{self.folder}/vtrFiles"
+        os.makedirs(baseName, exist_ok=True)
+        baseName += "/out"
+        template = f"{baseName}_{idxFormat}"
+        coords = [self.x, self.y, self.z]
+        varNames = ["velocity_x", "velocity_y", "velocity_z", "buoyancy", "pressure"]
+        for i in range(np.cumsum(self.nFields)[0]):
+            u = self.fields(i)
+            writeToVTR(template.format(i), u, coords, varNames)
 
 
 def extractU(outFields, idx=-1):
