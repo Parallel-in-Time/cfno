@@ -165,6 +165,7 @@ for iDec in range(len(decomps)):
     avgErr = err.mean(axis=0)
     avgErrId = errId.mean(axis=0)
     errors = pd.DataFrame(data={"model": avgErr, "id": avgErrId}, index=varNames)
+    errors.loc["avg"] = errors.mean(axis=0)
 
 
     # -------------------------------------------------------------------------
