@@ -20,6 +20,8 @@ dedalus/scripts
 *.ipynb
 *.jpg
 *.png
+*eval.md
+*.vtr
 scripts/*.pdf
 scripts/*/*.pdf
 scripts/config_*.yaml
