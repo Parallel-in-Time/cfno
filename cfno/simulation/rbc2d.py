@@ -245,8 +245,8 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
         Write into a file the space parallel distribution from dedalus
     """
     # Parameters
-    Lx, Ly, Lz = 1, 1, 1
-    Nx, Ny, Nz = 64*resFactor, 64*resFactor, 64*resFactor
+    Lx = Ly = Lz = 1
+    Nx = Ny = Nz = 64*resFactor
     timestep = baseDt/resFactor
 
     nSteps = round(float(tEnd-tBeg)/timestep, ndigits=3)
@@ -486,7 +486,7 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
     from pySDC.implementations.sweeper_classes.imex_1st_order import imex_1st_order
     from pySDC.implementations.sweeper_classes.Runge_Kutta import ARK3
     from pySDC.implementations.problem_classes.generic_spectral import compute_residual_DAE
-    from pySDC.helpers.fieldsIO import Cart2D
+    from pySDC.helpers.fieldsIO import Rectilinear
 
     from cfno.simulation.sweeper import FNO_IMEX, StepperController
 
@@ -586,8 +586,8 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
     prob = controller.MS[0].levels[0].prob
 
     sX, sZ = prob.local_slice
-    Cart2D.setupMPI(
-        prob.comm, sX.start, sX.stop-sX.start, sZ.start, sZ.stop-sZ.start)
+    Rectilinear.setupMPI(
+        prob.comm, [sX.start, sZ.start], [sX.stop-sX.start, sZ.stop-sZ.start])
     coordX = prob.axes[0].get_1dgrid()
     coordZ = prob.axes[1].get_1dgrid()
 
@@ -608,14 +608,14 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
         b *= z * (2 - z) # Damp noise at walls
         b += 2 - z # Add linear background
     else:
-        file = Cart2D.fromFile(restartFile)
+        file = Rectilinear.fromFile(restartFile)
         np.copyto(uTmp, file.readField(-1)[-1])
     uTmp = prob.transform(uTmp)
     np.copyto(u0, uTmp)
 
     u0Real = prob.itransform(u0)
-    outFile = Cart2D(u0Real.dtype, f"{dirName}/outputs.pysdc")
-    outFile.setHeader(4, coordX, coordZ)
+    outFile = Rectilinear(u0Real.dtype, f"{dirName}/outputs.pysdc")
+    outFile.setHeader(4, [coordX, coordZ])
     outFile.initialize()
     outFile.addField(0, u0Real)
     for t0, t1 in zip(tWrite[:-1], tWrite[1:]):
@@ -628,7 +628,3 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
             f.write("Done !")
 
     return infos, controller, prob
-
-
-if __name__ == "__main__":
-    runSim3D("cube_64_video", Rayleigh=1e8, logEvery=10, tEnd=200, dtWrite=0.1)
