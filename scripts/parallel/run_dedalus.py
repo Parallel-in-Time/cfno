@@ -21,6 +21,8 @@ parser.add_argument(
     "--dt", type=float, default=0.005, help="base time-step for the simulation")
 parser.add_argument(
     "--run3D", action="store_true", help="use 3D simulation")
+parser.add_argument(
+    "--resFactor", type=int, default=1, help="factor for base grid sizes (256x64 for 2D, 64^3 for 3D)")
 args = parser.parse_args()
 
 useSDC = args.useSDC or args.timeParallel
@@ -30,6 +32,7 @@ useTimePar2 = args.useTimePar2
 tEnd = args.tEnd
 dt = args.dt
 run3D = args.run3D
+resFactor = args.resFactor
 
 dirID = f"{MPI_SIZE:03d}"
 if useSDC:
@@ -52,8 +55,7 @@ SpectralDeferredCorrectionIMEX.setParameters(
 runFunction = runSim3D if run3D else runSim
 
 infos, solver = runFunction(
-    f"scaling_{dirID}",
-    tEnd=tEnd, baseDt=dt,
+    f"scaling_{dirID}", resFactor=resFactor, tEnd=tEnd, baseDt=dt,
     dtWrite=2*tEnd, writeSpaceDistr=True, logEvery=10000,
     useSDC=useSDC, timeParallel=timeParallel, groupTimeProcs=groupTime,
     useTimePar2=useTimePar2)
