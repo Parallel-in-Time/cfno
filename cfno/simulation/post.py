@@ -7,11 +7,13 @@ import scipy.optimize as sco
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-def computeMeanSpectrum(uValues):
+def computeMeanSpectrum(uValues, verbose=False):
     """ uValues[nT, nVar, nX, (nY,) nZ] """
     uValues = np.asarray(uValues)
     nT, nVar, *gridSizes = uValues.shape
     dim = len(gridSizes)
+    if verbose:
+        print(f"Computing Mean Spectrum on u[{', '.join([str(n) for n in uValues.shape])}]")
 
     energy_spectrum = []
     if dim == 2:
@@ -41,17 +43,21 @@ def computeMeanSpectrum(uValues):
         idxList = range(int(idx.max()) + 1)
         flatIdx = idx.ravel()
 
+        if verbose: print(" -- 2D FFT on u and v ...")
         uvF = np.fft.fft2(uValues[:, :2], axes=(-3, -2))
+        if verbose: print(" -- 2D FFT on w ...")
         wF = np.fft.fft2(uValues[:, -1:], axes=(-3, -2))
 
-        for uF2D in [uvF, wF]:
+        for uF2D, name in zip([uvF, wF], ["uv", "w"]):
+            if verbose: print(f" -- spectrum for {name} ...")
 
             ffts = [uF2D[:, i] for i in range(uF2D.shape[1])]
             reParts = [uF.reshape((nT, nX*nZ, nZ)).real**2 for uF in ffts]
-            imParts = [uF.reshape((nT, nX*nZ, nZ)).real**2 for uF in ffts]
+            imParts = [uF.reshape((nT, nX*nZ, nZ)).imag**2 for uF in ffts]
 
             spectrum = np.zeros((nT, size, nZ))
             for i in idxList:
+                if verbose: print(f" -- k{i+1}/{len(idxList)}")
                 kIdx = np.argwhere(flatIdx == i)
                 tmp = np.empty((nT, *kIdx.shape, nZ))
                 for re, im in zip(reParts, imParts):
@@ -62,6 +68,7 @@ def computeMeanSpectrum(uValues):
             spectrum = spectrum.mean(axis=-1)
 
             energy_spectrum.append(spectrum)
+            if verbose: print(" -- done !")
 
 
     return energy_spectrum
@@ -217,7 +224,7 @@ class OutputFiles():
         return profile
 
 
-    def getMeanSpectrum(self, iFile:int):
+    def getMeanSpectrum(self, iFile:int, iBeg=0, iEnd=None, step=1, verbose=False):
         """
         Function to get mean spectrum
         Args:
@@ -226,7 +233,17 @@ class OutputFiles():
         Returns:
             energy_spectrum (list): mean energy spectrum
         """
-        return computeMeanSpectrum(self.vData(iFile))
+        if verbose: print(f"Reading data from hdf5 file {iFile}")
+        fData = self.vData(iFile)
+        shape = fData.shape
+        if iEnd is None: iEnd = shape[0]
+        rData = range(iBeg, iEnd, step)
+        data = np.zeros((len(rData), *shape[1:]))
+        for i, iData in enumerate(rData):
+            if verbose: print(f" -- field {i+1}/{len(rData)}")
+            data[i] = self.vData(iFile)[iData]
+        if verbose: print(" -- done !")
+        return computeMeanSpectrum(data, verbose=verbose)
 
 
     def getFullMeanSpectrum(self, iBeg:int, iEnd=None):
