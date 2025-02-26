@@ -34,7 +34,7 @@ dt = args.dt
 run3D = args.run3D
 resFactor = args.resFactor
 
-dirID = f"{MPI_SIZE:03d}"
+dirID = f"{MPI_SIZE:04d}"
 if useSDC:
     dirID += "_sdc"
 else:
