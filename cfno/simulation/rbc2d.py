@@ -604,7 +604,7 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
         rng = np.random.default_rng(seed=seed)
         b = uTmp[2]
         z = prob.Z + 1
-        b[:] = rng.normal(scale=1e-3, size=b.shape)
+        b[:] = 2*rng.normal(scale=1e-3, size=b.shape)
         b *= z * (2 - z) # Damp noise at walls
         b += 2 - z # Add linear background
     else:
