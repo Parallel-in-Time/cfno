@@ -195,6 +195,7 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
                 log(f'Iteration={solver.iteration}, Time={solver.sim_time}, dt={timestep}')
         t1 = MPI.Wtime()
         infos["tComp"] = t1-t0
+        infos["MPI_SIZE"] = MPI_SIZE
         if MPI_RANK == 0:
             with open(f"{dirName}/01_finalized.txt", "w") as f:
                 f.write("Done !")
@@ -394,6 +395,7 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
                 log(f'Iteration={solver.iteration}, Time={solver.sim_time}, dt={timestep}')
         t1 = MPI.Wtime()
         infos["tComp"] = t1-t0
+        infos["MPI_SIZE"] = MPI_SIZE
         if MPI_RANK == 0:
             with open(f"{dirName}/01_finalized.txt", "w") as f:
                 f.write("Done !")
