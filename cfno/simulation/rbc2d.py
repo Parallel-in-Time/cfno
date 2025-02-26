@@ -327,6 +327,7 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     if writeSpaceDistr:
         print(f"Rank {MPI_RANK}/{MPI_SIZE} :\n"
               f"\tx: {x.shape}, [{x.min(initial=np.inf)}, {x.max(initial=-np.inf)}]\n"
+              f"\tz: {y.shape}, [{y.min(initial=np.inf)}, {y.max(initial=-np.inf)}]\n"
               f"\tz: {z.shape}, [{z.min(initial=np.inf)}, {z.max(initial=-np.inf)}]\n"
               f"cpu: {os.sched_getaffinity(0)}")
 
