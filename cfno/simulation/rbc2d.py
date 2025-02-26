@@ -1,6 +1,8 @@
 import os
+import socket
 import numpy as np
 from datetime import datetime
+from time import sleep
 
 import dedalus.public as d3
 from mpi4py import MPI
@@ -125,11 +127,13 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     grad_b = d3.grad(b) + ez*lift(tau_b1) # First-order reduction
 
     if writeSpaceDistr:
-        print(f"Rank {MPI_RANK}/{MPI_SIZE} :\n"
+        MPI.COMM_WORLD.Barrier()
+        sleep(0.01*MPI_RANK)
+        print(f"Rank {MPI_RANK}({MPI_SIZE}) :\n"
               f"\tx: {x.shape}, [{x.min(initial=np.inf)}, {x.max(initial=-np.inf)}]\n"
               f"\tz: {z.shape}, [{z.min(initial=np.inf)}, {z.max(initial=-np.inf)}]\n"
-              f"cpu: {os.sched_getaffinity(0)}")
-
+              f"\tcpu: {os.sched_getaffinity(0)}, on {socket.gethostname()}", flush=True)
+        MPI.COMM_WORLD.Barrier()
     # Problem
     # First-order form: "div(f)" becomes "trace(grad_f)"
     # First-order form: "lap(f)" becomes "div(grad_f)"
@@ -288,7 +292,7 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
         sComm = COMM_WORLD
 
     from pySDC.helpers.blocks import BlockDecomposition
-    blocks = BlockDecomposition(sComm.Get_size(), [Nx, Ny])
+    blocks = BlockDecomposition(sComm.Get_size(), [Ny, Nz])
 
     os.makedirs(dirName, exist_ok=True)
     with open(f"{dirName}/00_infoSimu.txt", "w") as f:
@@ -301,7 +305,7 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
 
     # Bases
     coords = d3.CartesianCoordinates('x', 'y', 'z')
-    distr = d3.Distributor(coords, dtype=dtype, mesh=blocks.nBlocks[-1::-1], comm=sComm)
+    distr = d3.Distributor(coords, dtype=dtype, mesh=blocks.nBlocks, comm=sComm)
     xbasis = d3.RealFourier(coords['x'], size=Nx, bounds=(0, Lx), dealias=dealias)
     ybasis = d3.RealFourier(coords['y'], size=Ny, bounds=(0, Ly), dealias=dealias)
     zbasis = d3.ChebyshevT(coords['z'], size=Nz, bounds=(0, Lz), dealias=dealias)
@@ -328,11 +332,14 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     grad_b = d3.grad(b) + ez*lift(tau_b1) # First-order reduction
 
     if writeSpaceDistr:
-        print(f"Rank {MPI_RANK}/{MPI_SIZE} :\n"
+        MPI.COMM_WORLD.Barrier()
+        sleep(0.01*MPI_RANK)
+        print(f"Rank {MPI_RANK}({MPI_SIZE}) :\n"
               f"\tx: {x.shape}, [{x.min(initial=np.inf)}, {x.max(initial=-np.inf)}]\n"
-              f"\tz: {y.shape}, [{y.min(initial=np.inf)}, {y.max(initial=-np.inf)}]\n"
+              f"\ty: {y.shape}, [{y.min(initial=np.inf)}, {y.max(initial=-np.inf)}]\n"
               f"\tz: {z.shape}, [{z.min(initial=np.inf)}, {z.max(initial=-np.inf)}]\n"
-              f"cpu: {os.sched_getaffinity(0)}")
+              f"\tcpu: {os.sched_getaffinity(0)}, on {socket.gethostname()}", flush=True)
+        MPI.COMM_WORLD.Barrier()
 
     # Problem
     # First-order form: "div(f)" becomes "trace(grad_f)"
@@ -634,3 +641,6 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
             f.write("Done !")
 
     return infos, controller, prob
+
+if __name__ == '__main__':
+    runSim3D("test", writeSpaceDistr=True)
