@@ -211,7 +211,7 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
 def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     tBeg=0, tEnd=150, dtWrite=0.1, useSDC=False,
     writeVort=False, writeFull=False, initFields=None,
-    writeSpaceDistr=False, logEvery=100, distrMesh=None,
+    writeSpaceDistr=False, logEvery=100,
     timeParallel=False, groupTimeProcs=False, useTimePar2=False):
     """
     Run RBC simulation in a given folder.
@@ -287,6 +287,9 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     else:
         sComm = COMM_WORLD
 
+    from pySDC.helpers.blocks import BlockDecomposition
+    blocks = BlockDecomposition(sComm.Get_size(), [Nx, Ny])
+
     os.makedirs(dirName, exist_ok=True)
     with open(f"{dirName}/00_infoSimu.txt", "w") as f:
         f.write(f"Rayleigh : {Rayleigh:1.2e}\n")
@@ -298,7 +301,7 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
 
     # Bases
     coords = d3.CartesianCoordinates('x', 'y', 'z')
-    distr = d3.Distributor(coords, dtype=dtype, mesh=distrMesh, comm=sComm)
+    distr = d3.Distributor(coords, dtype=dtype, mesh=blocks.nBlocks[-1::-1], comm=sComm)
     xbasis = d3.RealFourier(coords['x'], size=Nx, bounds=(0, Lx), dealias=dealias)
     ybasis = d3.RealFourier(coords['y'], size=Ny, bounds=(0, Ly), dealias=dealias)
     zbasis = d3.ChebyshevT(coords['z'], size=Nz, bounds=(0, Lz), dealias=dealias)
