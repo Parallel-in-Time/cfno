@@ -4,7 +4,7 @@
 Script for a full run (with output) for 3D RBC simulations
 """
 import sys
-from cfno.simulation.rbc2d import runSim3D
+from cfno.simulation.rbc3d import runSim3D
 
 simDir = "."
 if len(sys.argv) > 1:

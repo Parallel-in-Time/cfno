@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import argparse
-from cfno.simulation.rbc2d import runSim, runSim3D, \
+from cfno.simulation.rbc2d import runSim, \
     MPI_RANK, MPI_SIZE, SpectralDeferredCorrectionIMEX
+from cfno.simulation.rbc3d import runSim3D
+
 
 parser = argparse.ArgumentParser(
     description='Run scaling test with dedalus',
@@ -23,6 +25,9 @@ parser.add_argument(
     "--run3D", action="store_true", help="use 3D simulation")
 parser.add_argument(
     "--resFactor", type=int, default=1, help="factor for base grid sizes (256x64 for 2D, 64^3 for 3D)")
+parser.add_argument(
+    "--mpiBlocks", type=int, default=None, nargs='*', help="number of MPI blocks in Y and Z for 3D simulation")
+
 args = parser.parse_args()
 
 useSDC = args.useSDC or args.timeParallel
@@ -33,8 +38,11 @@ tEnd = args.tEnd
 dt = args.dt
 run3D = args.run3D
 resFactor = args.resFactor
+mpiBlocks = args.mpiBlocks
 
 dirID = f"{MPI_SIZE:04d}"
+if mpiBlocks is not None:
+    dirID += f"-[{','.join(str(n) for n in mpiBlocks)}]"
 if useSDC:
     dirID += "_sdc"
 else:
@@ -51,14 +59,15 @@ if run3D:
 SpectralDeferredCorrectionIMEX.setParameters(
     nNodes=4, implSweep="MIN-SR-FLEX", explSweep="PIC", initSweep="COPY"
 )
-
 runFunction = runSim3D if run3D else runSim
-
-infos, solver = runFunction(
-    f"scaling_{dirID}", resFactor=resFactor, tEnd=tEnd, baseDt=dt,
+arguments = dict(
+    dirName=f"scaling_{dirID}", resFactor=resFactor, tEnd=tEnd, baseDt=dt,
     dtWrite=2*tEnd, writeSpaceDistr=True, logEvery=10000,
     useSDC=useSDC, timeParallel=timeParallel, groupTimeProcs=groupTime,
     useTimePar2=useTimePar2)
+if run3D:
+    arguments["mpiBlocks"] = mpiBlocks
+infos, solver = runFunction(**arguments)
 if MPI_RANK == 0:
     with open(f"infos_{dirID}.txt", "w") as f:
         f.write(str(infos)+"\n")
