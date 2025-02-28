@@ -94,7 +94,7 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     if mpiBlocks is None:
         from pySDC.helpers.blocks import BlockDecomposition
         blocks = BlockDecomposition(sComm.Get_size(), [Ny, Nz])
-        mpiBlocks = blocks.nBlocks
+        mpiBlocks = blocks.nBlocks[-1::-1]
 
     os.makedirs(dirName, exist_ok=True)
     with open(f"{dirName}/00_infoSimu.txt", "w") as f:
@@ -210,6 +210,7 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
         infos["tComp"] = t1-t0
         infos["MPI_SIZE"] = MPI_SIZE
         infos["MPI_BLOCKS"] = mpiBlocks
+        infos["tCompAll"] = (t1-t0)*MPI_SIZE
         if MPI_RANK == 0:
             with open(f"{dirName}/01_finalized.txt", "w") as f:
                 f.write("Done !")
