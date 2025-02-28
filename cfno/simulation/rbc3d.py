@@ -209,6 +209,7 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
         t1 = MPI.Wtime()
         infos["tComp"] = t1-t0
         infos["MPI_SIZE"] = MPI_SIZE
+        infos["MPI_BLOCKS"] = mpiBlocks
         if MPI_RANK == 0:
             with open(f"{dirName}/01_finalized.txt", "w") as f:
                 f.write("Done !")
