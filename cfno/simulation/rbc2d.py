@@ -432,6 +432,3 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
             f.write("Done !")
 
     return infos, controller, prob
-
-if __name__ == '__main__':
-    runSim3D("test", writeSpaceDistr=True)

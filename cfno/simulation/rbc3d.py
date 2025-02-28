@@ -219,3 +219,6 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
         solver.log_stats()
 
     return infos, solver
+
+if __name__ == '__main__':
+    runSim3D("test", writeSpaceDistr=True)
