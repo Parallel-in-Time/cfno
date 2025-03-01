@@ -17,7 +17,7 @@ parser = argparse.ArgumentParser(
     description='Compute 3D spectrum from Dedalus simulations',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
-    "folder", help="folder containing the simulation")
+    "folders", nargs='+', help="folder(s) containing the simulation")
 parser.add_argument(
     "--iBeg", default=0, type=int, help="starting time index")
 parser.add_argument(
@@ -32,7 +32,7 @@ parser.add_argument(
     "--yMin", default=1e-12, type=float, help="minimum value for the plot")
 
 args = parser.parse_args()
-folder = args.folder
+folders = args.folders
 iBeg = args.iBeg
 iEnd = args.iEnd
 step = args.step
@@ -40,28 +40,30 @@ verbose = args.verbose
 output = args.output
 yMin = args.yMin
 
-sFile = f"{folder}/{output}"
-if not os.path.isfile(sFile):
-    files = OutputFiles(folder)
-    data = files.getMeanSpectrum(
-        0, iBeg=iBeg, iEnd=iEnd, step=step, verbose=verbose)
-    spectrum = data[0].mean(axis=0)
-    if verbose: print(f" -- saving spectrum into {sFile}...")
-    np.savetxt(sFile, spectrum, header="spectrum[uv,z]")
-else:
-    if verbose: print(f" -- loading spectrum from {sFile} ...")
-    spectrum = np.loadtxt(sFile)
+for folder in folders:
+    sFile = f"{folder}/{output}"
+    if not os.path.isfile(sFile):
+        files = OutputFiles(folder)
+        data = files.getMeanSpectrum(
+            0, iBeg=iBeg, iEnd=iEnd, step=step, verbose=verbose)
+        spectrum = data[0].mean(axis=0)
+        if verbose: print(f" -- saving spectrum into {sFile}...")
+        np.savetxt(sFile, spectrum, header="spectrum[uv,z]")
+    else:
+        if verbose: print(f" -- loading spectrum from {sFile} ...")
+        spectrum = np.loadtxt(sFile)
 
-if verbose: print(" -- ploting and saving figure to file ...")
-nK = spectrum.size
-k = np.arange(nK) + 0.5
+    if verbose: print(" -- ploting and saving figure to file ...")
+    nK = spectrum.size
+    k = np.arange(nK) + 0.5
 
-plt.loglog(k, spectrum, label=folder)
+    plt.loglog(k, spectrum, label=folder)
+
 plt.legend()
 plt.xlabel("wavenumber")
 plt.ylabel("energy spectrum")
 plt.ylim(bottom=yMin)
 plt.grid(True)
 plt.tight_layout()
-plt.savefig(os.path.splitext(sFile)[0]+".pdf")
+plt.savefig(os.path.splitext(output)[0]+".pdf")
 if verbose: print(" -- done !")
