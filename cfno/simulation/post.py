@@ -7,11 +7,12 @@ import scipy.optimize as sco
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-def computeMeanSpectrum(uValues, verbose=False):
+def computeMeanSpectrum(uValues, xGrid=None, zGrid=None, verbose=False):
     """ uValues[nT, nVar, nX, (nY,) nZ] """
     uValues = np.asarray(uValues)
     nT, nVar, *gridSizes = uValues.shape
     dim = len(gridSizes)
+    assert nVar == dim
     if verbose:
         print(f"Computing Mean Spectrum on u[{', '.join([str(n) for n in uValues.shape])}]")
 
@@ -28,13 +29,21 @@ def computeMeanSpectrum(uValues, verbose=False):
 
     elif dim == 3:
 
+        # Check for a cube with uniform dimensions
         nX, nY, nZ = gridSizes
         assert nX == nY
         size = nX // 2
 
-        kX = np.fft.fftfreq(nX, 1/nX)**2
-        kY = np.fft.fftfreq(nY, 1/nY)**2
-        kMod = kX[:, None] + kY[None, :]
+        # Interpolate in z direction
+        assert xGrid is not None and zGrid is not None
+        if verbose: print(" -- interpolating from zGrid to a uniform mesh ...")
+        from qmat.lagrange import LagrangeApproximation
+        P = LagrangeApproximation(zGrid).getInterpolationMatrix(xGrid)
+        np.einsum('ij,tvxyj->tvxyi', P, uValues, out=uValues)
+
+        # Compute 3D mode shells
+        k1D = np.fft.fftfreq(nX, 1/nX)**2
+        kMod = k1D[:, None, None] + k1D[None, :, None] + k1D[None, None, :]
         kMod **= 0.5
         idx = kMod.copy()
         idx *= (kMod < size)
@@ -43,33 +52,30 @@ def computeMeanSpectrum(uValues, verbose=False):
         idxList = range(int(idx.max()) + 1)
         flatIdx = idx.ravel()
 
-        if verbose: print(" -- 2D FFT on u and v ...")
-        uvF = np.fft.fft2(uValues[:, :2], axes=(-3, -2))
-        if verbose: print(" -- 2D FFT on w ...")
-        wF = np.fft.fft2(uValues[:, -1:], axes=(-3, -2))
+        # Fourier transform and square of Im,Re
+        if verbose: print(" -- 3D FFT on u, v & w ...")
+        uHat = np.fft.fftn(uValues, axes=(-3, -2, -1))
 
-        for uF2D, name in zip([uvF, wF], ["uv", "w"]):
-            if verbose: print(f" -- spectrum for {name} ...")
+        if verbose: print(" -- square of Im,Re ...")
+        ffts = [uHat[:, i] for i in range(nVar)]
+        reParts = [uF.reshape((nT, nX*nY*nZ)).real**2 for uF in ffts]
+        imParts = [uF.reshape((nT, nX*nY*nZ)).imag**2 for uF in ffts]
 
-            ffts = [uF2D[:, i] for i in range(uF2D.shape[1])]
-            reParts = [uF.reshape((nT, nX*nZ, nZ)).real**2 for uF in ffts]
-            imParts = [uF.reshape((nT, nX*nZ, nZ)).imag**2 for uF in ffts]
+        # Spectrum computation
+        if verbose: print(" -- computing spectrum ...")
+        spectrum = np.zeros((nT, size))
+        for i in idxList:
+            if verbose: print(f" -- k{i+1}/{len(idxList)}")
+            kIdx = np.argwhere(flatIdx == i)
+            tmp = np.empty((nT, *kIdx.shape))
+            for re, im in zip(reParts, imParts):
+                np.copyto(tmp, re[:, kIdx])
+                tmp += im[:, kIdx]
+                spectrum[:, i] += tmp.sum(axis=(1, 2))
+        spectrum /= 2*(nX*nY*nZ)**2
 
-            spectrum = np.zeros((nT, size, nZ))
-            for i in idxList:
-                if verbose: print(f" -- k{i+1}/{len(idxList)}")
-                kIdx = np.argwhere(flatIdx == i)
-                tmp = np.empty((nT, *kIdx.shape, nZ))
-                for re, im in zip(reParts, imParts):
-                    np.copyto(tmp, re[:, kIdx])
-                    tmp += im[:, kIdx]
-                    spectrum[:, i] += tmp.sum(axis=(1, 2))
-            spectrum /= 2*(nX*nY)**2
-            spectrum = spectrum.mean(axis=-1)
-
-            energy_spectrum.append(spectrum)
-            if verbose: print(" -- done !")
-
+        energy_spectrum.append(spectrum)
+        if verbose: print(" -- done !")
 
     return energy_spectrum
 
@@ -243,7 +249,7 @@ class OutputFiles():
             if verbose: print(f" -- field {i+1}/{len(rData)}")
             data[i] = self.vData(iFile)[iData]
         if verbose: print(" -- done !")
-        return computeMeanSpectrum(data, verbose=verbose)
+        return computeMeanSpectrum(data, verbose=verbose, xGrid=self.x, zGrid=self.z)
 
 
     def getFullMeanSpectrum(self, iBeg:int, iEnd=None):

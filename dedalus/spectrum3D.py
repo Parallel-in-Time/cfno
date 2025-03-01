@@ -45,18 +45,18 @@ if not os.path.isfile(sFile):
     files = OutputFiles(folder)
     data = files.getMeanSpectrum(
         0, iBeg=iBeg, iEnd=iEnd, step=step, verbose=verbose)
-    spectrum = np.array([d.mean(axis=0) for d in data])
+    spectrum = data[0].mean(axis=0)
+    if verbose: print(f" -- saving spectrum into {sFile}...")
     np.savetxt(sFile, spectrum, header="spectrum[uv,z]")
 else:
-    if verbose: print(" -- loading spectrum from file ...")
+    if verbose: print(f" -- loading spectrum from {sFile} ...")
     spectrum = np.loadtxt(sFile)
 
 if verbose: print(" -- ploting and saving figure to file ...")
-nK = spectrum.shape[1]
+nK = spectrum.size
 k = np.arange(nK) + 0.5
 
-plt.loglog(k, spectrum[0], label="uv-spectrum")
-plt.loglog(k, spectrum[1], label="z-spectrum")
+plt.loglog(k, spectrum, label=folder)
 plt.legend()
 plt.xlabel("wavenumber")
 plt.ylabel("energy spectrum")
