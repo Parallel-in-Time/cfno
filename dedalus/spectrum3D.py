@@ -28,6 +28,8 @@ parser.add_argument(
     "--verbose", action="store_true", help="print computation logs")
 parser.add_argument(
     "--output", default="spectrum.txt", help="file on which save the spectrum data")
+parser.add_argument(
+    "--yMin", default=1e-12, type=float, help="minimum value for the plot")
 
 args = parser.parse_args()
 folder = args.folder
@@ -36,6 +38,7 @@ iEnd = args.iEnd
 step = args.step
 verbose = args.verbose
 output = args.output
+yMin = args.yMin
 
 sFile = f"{folder}/{output}"
 if not os.path.isfile(sFile):
@@ -45,8 +48,10 @@ if not os.path.isfile(sFile):
     spectrum = np.array([d.mean(axis=0) for d in data])
     np.savetxt(sFile, spectrum, header="spectrum[uv,z]")
 else:
+    if verbose: print(" -- loading spectrum from file ...")
     spectrum = np.loadtxt(sFile)
 
+if verbose: print(" -- ploting and saving figure to file ...")
 nK = spectrum.shape[1]
 k = np.arange(nK) + 0.5
 
@@ -59,3 +64,4 @@ plt.ylim(bottom=1e-10)
 plt.grid(True)
 plt.tight_layout()
 plt.savefig(os.path.splitext(sFile)[0]+".pdf")
+if verbose: print(" -- done !")
