@@ -13,10 +13,10 @@ MPI_SIZE = COMM_WORLD.Get_size()
 MPI_RANK = COMM_WORLD.Get_rank()
 
 def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
-    tBeg=0, tEnd=150, dtWrite=0.1, useSDC=False,
-    writeVort=False, writeFull=False, initFields=None,
-    writeSpaceDistr=False, logEvery=100, mpiBlocks=None,
-    timeParallel=False, groupTimeProcs=False, useTimePar2=False):
+    tBeg=0, tEnd=150, useSDC=False, initFields=None,
+    writeFields=True, dtWrite=0.1, writeVort=False, writeFull=False,
+    writeSpaceDistr=False, logEvery=100,
+    mpiBlocks=None, timeParallel=False, groupTimeProcs=False, useTimePar2=False):
     """
     Run RBC simulation in a given folder.
 
@@ -177,24 +177,25 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
             field['g'] = initFields[name][-1][localSlices]
 
     # Analysis
-    iterWrite = dtWrite/timestep
-    if int(iterWrite) != round(iterWrite, ndigits=3):
-        raise ValueError(
-            f"dtWrite ({dtWrite}) is not divisible by timestep ({timestep}) : {iterWrite}")
-    iterWrite = int(iterWrite)
-    snapshots = solver.evaluator.add_file_handler(
-        dirName, sim_dt=dtWrite, max_writes=stop_sim_time/timestep)
-    snapshots.add_task(u, name='velocity')
-    snapshots.add_task(b, name='buoyancy')
-    snapshots.add_task(p, name='pressure')
-    if writeFull:
-        snapshots.add_task(tau_p, name='tau_p')
-        snapshots.add_task(tau_b1, name='tau_b1')
-        snapshots.add_task(tau_b2, name='tau_b2')
-        snapshots.add_task(tau_u1, name='tau_u1')
-        snapshots.add_task(tau_u2, name='tau_u2')
-    if writeVort:
-        snapshots.add_task(-d3.div(d3.skew(u)), name='vorticity')
+    if writeFields:
+        iterWrite = dtWrite/timestep
+        if int(iterWrite) != round(iterWrite, ndigits=3):
+            raise ValueError(
+                f"dtWrite ({dtWrite}) is not divisible by timestep ({timestep}) : {iterWrite}")
+        iterWrite = int(iterWrite)
+        snapshots = solver.evaluator.add_file_handler(
+            dirName, sim_dt=dtWrite, max_writes=stop_sim_time/timestep)
+        snapshots.add_task(u, name='velocity')
+        snapshots.add_task(b, name='buoyancy')
+        snapshots.add_task(p, name='pressure')
+        if writeFull:
+            snapshots.add_task(tau_p, name='tau_p')
+            snapshots.add_task(tau_b1, name='tau_b1')
+            snapshots.add_task(tau_b2, name='tau_b2')
+            snapshots.add_task(tau_u1, name='tau_u1')
+            snapshots.add_task(tau_u2, name='tau_u2')
+        if writeVort:
+            snapshots.add_task(-d3.div(d3.skew(u)), name='vorticity')
 
     # Main loop
     if nSteps == 0:

@@ -67,6 +67,7 @@ arguments = dict(
     useTimePar2=useTimePar2)
 if run3D:
     arguments["mpiBlocks"] = mpiBlocks
+    arguments["writeFields"] = False
 infos, solver = runFunction(**arguments)
 if MPI_RANK == 0:
     with open(f"infos_{dirID}.txt", "w") as f:

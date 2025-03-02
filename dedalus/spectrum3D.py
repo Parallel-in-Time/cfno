@@ -58,6 +58,8 @@ for folder in folders:
     k = np.arange(nK) + 0.5
 
     plt.loglog(k, spectrum, label=folder)
+    kPlot = k[2:]
+    plt.loglog(kPlot, kPlot**(-6)*20, '--', c="gray")
 
 plt.legend()
 plt.xlabel("wavenumber")
