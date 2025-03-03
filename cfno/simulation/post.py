@@ -205,13 +205,15 @@ class OutputFiles():
         return self.times(iFile).size
 
     def readField(self, iFile, name, iBeg=0, iEnd=None, step=1, verbose=False):
-        if verbose: print(f"Reading data from hdf5 file {iFile}")
+        if verbose: print(f"Reading {name} from hdf5 file {iFile}")
         if name == "velocity":
             fData = self.vData(iFile)
         elif name == "buoyancy":
             fData = self.bData(iFile)
         elif name == "pressure":
             fData = self.pData(iFile)
+        else:
+            raise ValueError(f"cannot read {name} from file")
         shape = fData.shape
         if iEnd is None: iEnd = shape[0]
         rData = range(iBeg, iEnd, step)
