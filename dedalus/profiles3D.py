@@ -27,7 +27,7 @@ parser.add_argument(
 parser.add_argument(
     "--verbose", action="store_true", help="print computation logs")
 parser.add_argument(
-    "--output", default="profiles.txt", help="file on which save the spectrum data")
+    "--output", default="profiles.txt", help="file on which save the profiles data")
 
 args = parser.parse_args()
 folders = args.folders
@@ -56,7 +56,7 @@ for folder in folders:
             0, iBeg=iBeg, iEnd=iEnd, step=step, verbose=verbose)
         if verbose: print(f" -- saving profiles into {dataFile}...")
         profiles = np.array([zFine, uMeanFine, bRMSFine])
-        np.savetxt(dataFile, profiles, header="spectrum[uv,z]")
+        np.savetxt(dataFile, profiles, header="profiles[zFine,uMeanFine,bRMSFine]")
     else:
         if verbose: print(f" -- loading profiles from {dataFile} ...")
         zFine, uMeanFine, bRMSFine = np.loadtxt(dataFile)
