@@ -204,7 +204,28 @@ class OutputFiles():
     def nTimes(self, iFile:int):
         return self.times(iFile).size
 
-    def getMeanProfiles(self, iFile:int, buoyancy=False, pressure=False):
+    def readField(self, iFile, name, iBeg=0, iEnd=None, step=1, verbose=False):
+        if verbose: print(f"Reading data from hdf5 file {iFile}")
+        if name == "velocity":
+            fData = self.vData(iFile)
+        elif name == "buoyancy":
+            fData = self.bData(iFile)
+        elif name == "pressure":
+            fData = self.pData(iFile)
+        shape = fData.shape
+        if iEnd is None: iEnd = shape[0]
+        rData = range(iBeg, iEnd, step)
+        data = np.zeros((len(rData), *shape[1:]))
+        for i, iData in enumerate(rData):
+            if verbose: print(f" -- field {i+1}/{len(rData)}")
+            data[i] = fData[iData]
+        if verbose: print(" -- done !")
+        return data
+
+
+    def getMeanProfiles(self, iFile:int,
+                        buoyancy=False, bRMS=False, pressure=False,
+                        iBeg=0, iEnd=None, step=1, verbose=False):
         """
 
         Args:
@@ -216,18 +237,52 @@ class OutputFiles():
            profilr (list): mean profiles of velocity, buoyancy and pressure
         """
         profile = []
-        for i in range(self.dim):                       # x and z components (time_index, 2, Nx, (nY), Nz)
-            u = self.vData(iFile)[:, i]                 # (time_index, Nx, (nY), Nz)
-            mean = np.mean(abs(u), axis=1 if self.dim==2 else (1, 2))
-            # avg over Nx (and Ny) ---> (time_index, Nz)
-            profile.append(mean)                        # (2, time_index, Nz)
+        axes = 1 if self.dim==2 else (1, 2)
+        velocity = self.readField(0, "velocity", iBeg, iEnd, step, verbose)
+
+        # Horizontal mean velocity amplitude
+        uH = velocity[:, :self.dim-1]
+        meanH = ((uH**2).sum(axis=1)**0.5).mean(axis=axes)
+        profile.append(meanH)
+
+        # Vertical mean velocity
+        uV = velocity[:, -1]
+        meanV = np.mean(abs(uV), axis=axes)
+        profile.append(meanV)
+
+        if bRMS or buoyancy:
+            b = self.readField(0, "buoyancy", iBeg, iEnd, step, verbose)
         if buoyancy:
-            b = self.bData(iFile)                       #(time_index, Nx, Nz)
-            profile.append(np.mean(b, axis=1))          # (time_index, Nz)
+            profile.append(np.mean(b, axis=axes))
+        if bRMS:
+            diff = b - b.mean(axis=axes)[(slice(None), *[None]*(self.dim-1), slice(None))]
+            rms = (diff**2).mean(axis=axes)**0.5
+            profile.append(rms)
         if pressure:
-            p = self.pData(iFile)                       #(time_index, Nx, Nz)
-            profile.append(np.mean(p, axis=1))          # (time_index, Nz)
+            p = self.readField(0, "pressure", iBeg, iEnd, step, verbose)
+            profile.append(np.mean(p, axis=axes))          # (time_index, Nz)
         return profile
+
+
+    def getLayersQuantities(self, iFile, iBeg=0, iEnd=None, step=1, verbose=False):
+        uMean, _, bRMS = self.getMeanProfiles(
+            iFile, bRMS=True, iBeg=iBeg, iEnd=iEnd, step=step, verbose=verbose)
+        uMean = uMean.mean(axis=0)
+        bRMS = bRMS.mean(axis=0)
+
+        from qmat.lagrange import LagrangeApproximation
+        z = self.z
+        nFine = int(1e4)
+        zFine = np.linspace(0, 1, num=nFine)
+        P = LagrangeApproximation(z).getInterpolationMatrix(zFine)
+
+        uMeanFine = P @ uMean
+        bRMSFine = P @ bRMS
+
+        deltaU = zFine[np.argmax(uMeanFine[:nFine//2])]
+        deltaT = zFine[np.argmax(bRMSFine[:nFine//2])]
+
+        return zFine, uMeanFine, bRMSFine, deltaU, deltaT
 
 
     def getMeanSpectrum(self, iFile:int, iBeg=0, iEnd=None, step=1, verbose=False):
@@ -239,17 +294,8 @@ class OutputFiles():
         Returns:
             energy_spectrum (list): mean energy spectrum
         """
-        if verbose: print(f"Reading data from hdf5 file {iFile}")
-        fData = self.vData(iFile)
-        shape = fData.shape
-        if iEnd is None: iEnd = shape[0]
-        rData = range(iBeg, iEnd, step)
-        data = np.zeros((len(rData), *shape[1:]))
-        for i, iData in enumerate(rData):
-            if verbose: print(f" -- field {i+1}/{len(rData)}")
-            data[i] = self.vData(iFile)[iData]
-        if verbose: print(" -- done !")
-        return computeMeanSpectrum(data, verbose=verbose, xGrid=self.x, zGrid=self.z)
+        velocity = self.readField(iFile, "velocity", iBeg, iEnd, step, verbose)
+        return computeMeanSpectrum(velocity, verbose=verbose, xGrid=self.x, zGrid=self.z)
 
 
     def getFullMeanSpectrum(self, iBeg:int, iEnd=None):
