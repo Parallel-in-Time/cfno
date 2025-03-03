@@ -50,8 +50,6 @@ for folder in folders:
     dataFile = f"{folder}/{output}"
     if not os.path.isfile(dataFile):
         files = OutputFiles(folder)
-        zFine, uMeanFine, bRMSFine, deltaU, deltaT = files.getLayersQuantities(0)
-
         zFine, uMeanFine, bRMSFine, _, _ = files.getLayersQuantities(
             0, iBeg=iBeg, iEnd=iEnd, step=step, verbose=verbose)
         if verbose: print(f" -- saving profiles into {dataFile}...")
