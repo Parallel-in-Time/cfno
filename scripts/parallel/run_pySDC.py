@@ -1,3 +1,5 @@
+from time import time
+
 def parse_args():
     import argparse
 
@@ -59,7 +61,9 @@ def run_experiment(args, config, **kwargs):
 
     config.prepare_caches(prob)
 
+    tStart = time()
     uend, stats = controller.run(u0=u0, t0=t0, Tend=config.Tend)
+    print(f"Computation time : {time()-tStart:1.2f}s")
 
     combined_stats = filter_stats(stats, comm=config.comm_world)
 

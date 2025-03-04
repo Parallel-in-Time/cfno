@@ -32,12 +32,14 @@ parser.add_argument(
 parser.add_argument(
     "--dataFile", default="dataset.h5", help="name of the dataset HDF5 file")
 parser.add_argument(
+    "--pySDC", action='store_true', help="use pySDC generated simulation data")
+parser.add_argument(
     "--config", default=None, help="config file, overwriting all parameters specified in it")
 parser.add_argument(
     "--dryRun", default=None, action='store_true',
     help="don't extract the data, just print the infos of the expected dataset")
 parser.add_argument(
-    "--verbose", default=None, action='store_true', help="create dataset with verbose option on")
+    "--verbose", action='store_true', help="create dataset with verbose option on")
 args = parser.parse_args()
 
 # To avoid import when using help ...

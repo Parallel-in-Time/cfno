@@ -50,13 +50,14 @@ lr_scheduler:
 
 train:
   trainDir: training
-  nEpochs: 1500
+  nEpochs: 10
   checkpoint: model.pt
   lossesFile: losses.txt
   saveEvery: 100
   savePermanent: false
   noTensorboard: false
   logPrint: false
+  physicsLossesFile: physloss.txt
 
 eval:
   iSimu: 8

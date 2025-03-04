@@ -109,6 +109,7 @@ class FNOData():
         print(f'Total {task} data: {inputs.shape[0]}')
         return inputs, outputs
 
+
 class HDF5Dataset(Dataset):
 
     def __init__(self, dataFile, **kwargs):
@@ -476,9 +477,10 @@ class FixedDomainDataset(HDF5Dataset):
         if self.use_fixedPatch_startIdx:
             print(f" -- patch start index (per epoch): {self.patch_startIdx}")
 
+
 def createDataset(
         dataDir, inSize, outStep, inStep, outType, outScaling, dataFile,
-        dryRun=False, verbose=False, **kwargs):
+        dryRun=False, verbose=False, pySDC=False, **kwargs):
     assert inSize == 1, "inSize != 1 not implemented yet ..."
     simDirsSorted = sorted(glob.glob(f"{dataDir}/simu_*"), key=lambda f: int(f.split('simu_',1)[1]))
     nSimu = int(kwargs.get("nSimu", len(simDirsSorted)))
@@ -488,16 +490,26 @@ def createDataset(
         print(f" -- {s}")
 
     # -- retrieve informations from first simulation
-    outFiles = OutputFiles(f"{simDirs[0]}/run_data")
+    if pySDC:
+        from pySDC.helpers.fieldsIO import FieldsIO
+        outFiles = FieldsIO.fromFile(f"{simDirs[0]}/run_data/outputs.pysdc")
+        nFields = outFiles.nFields
+        fieldShape = (outFiles.nVar, outFiles.nX, outFiles.nY)
+        times = outFiles.times
+        xGrid, yGrid = outFiles.header["coordX"], outFiles.header["coordY"]  # noqa: F841 (used lated by an eval call)
+    else:
+        outFiles = OutputFiles(f"{simDirs[0]}/run_data")
+        nFields = sum(outFiles.nFields)
+        fieldShape = outFiles.shape
+        times = outFiles.times().ravel()
+        xGrid, yGrid = outFiles.x, outFiles.y  # noqa: F841 (used lated by an eval call)
 
-    times = outFiles.times().ravel()
     dtData = times[1]-times[0]
     dtInput = dtData*outStep  # noqa: F841 (used lated by an eval call)
     dtSample = dtData*inStep  # noqa: F841 (used lated by an eval call)
-    xGrid, yGrid = outFiles.x, outFiles.y  # noqa: F841 (used lated by an eval call)
 
     iBeg = int(kwargs.get("iBeg", 0))
-    iEnd = int(kwargs.get("iEnd", sum(outFiles.nFields)))
+    iEnd = int(kwargs.get("iEnd", nFields))
     sRange = range(iBeg, iEnd-inSize-outStep+1, inStep)
     nSamples = len(sRange)
     print(f'selector: {sRange},  outStep: {outStep}, inStep: {inStep}, iBeg: {iBeg}, iEnd: {iEnd}')
@@ -522,17 +534,23 @@ def createDataset(
         except:
             dataset.create_dataset(f"infos/{name}", data=eval(name))
 
-    dataShape = (nSamples*nSimu, *outFiles.shape)
+    dataShape = (nSamples*nSimu, *fieldShape)
     print(f'data shape: {dataShape}')
     inputs = dataset.create_dataset("inputs", dataShape)
     outputs = dataset.create_dataset("outputs", dataShape)
     for iSim, dataDir in enumerate(simDirs):
-        outFiles = OutputFiles(f"{dataDir}/run_data")
-        print(f" -- sampling data from {outFiles.folder}")
+        if pySDC:
+            outFiles = FieldsIO.fromFile(f"{dataDir}/run_data/outputs.pysdc")
+        else:
+            outFiles = OutputFiles(f"{dataDir}/run_data")
+        print(f" -- sampling data from {dataDir}/run_data")
         for iSample, iField in enumerate(sRange):
             if verbose:
                 print(f"\t -- creating sample {iSample+1}/{nSamples}")
-            inpt, outp = outFiles.fields(iField), outFiles.fields(iField+outStep).copy()
+            if pySDC:
+                inpt, outp = outFiles.readField(iField)[-1], outFiles.readField(iField+outStep)[-1]
+            else:
+                inpt, outp = outFiles.fields(iField), outFiles.fields(iField+outStep).copy()
             if outType == "update":
                 outp -= inpt
                 if outScaling != 1:

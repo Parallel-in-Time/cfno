@@ -1,6 +1,8 @@
 import os
+import socket
 import numpy as np
 from datetime import datetime
+from time import sleep
 
 import dedalus.public as d3
 from mpi4py import MPI
@@ -125,11 +127,13 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     grad_b = d3.grad(b) + ez*lift(tau_b1) # First-order reduction
 
     if writeSpaceDistr:
-        print(f"Rank {MPI_RANK}/{MPI_SIZE} :\n"
+        MPI.COMM_WORLD.Barrier()
+        sleep(0.01*MPI_RANK)
+        print(f"Rank {MPI_RANK}({MPI_SIZE}) :\n"
               f"\tx: {x.shape}, [{x.min(initial=np.inf)}, {x.max(initial=-np.inf)}]\n"
               f"\tz: {z.shape}, [{z.min(initial=np.inf)}, {z.max(initial=-np.inf)}]\n"
-              f"cpu: {os.sched_getaffinity(0)}")
-
+              f"\tcpu: {os.sched_getaffinity(0)}, on {socket.gethostname()}", flush=True)
+        MPI.COMM_WORLD.Barrier()
     # Problem
     # First-order form: "div(f)" becomes "trace(grad_f)"
     # First-order form: "lap(f)" becomes "div(grad_f)"
@@ -195,6 +199,7 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
                 log(f'Iteration={solver.iteration}, Time={solver.sim_time}, dt={timestep}')
         t1 = MPI.Wtime()
         infos["tComp"] = t1-t0
+        infos["MPI_SIZE"] = MPI_SIZE
         if MPI_RANK == 0:
             with open(f"{dirName}/01_finalized.txt", "w") as f:
                 f.write("Done !")
@@ -205,8 +210,6 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
         solver.log_stats()
 
     return infos, solver
-
-
 
 def transposeForParallel(uLoc:np.ndarray, uGlob:np.ndarray):
     uLoc = uLoc.swapaxes(0, 1).copy()
@@ -283,11 +286,11 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
     tBeg=0, tEnd=10, dtWrite=0.1, restartFile=None, useFNO=None,
     QI="MIN-SR-FLEX", QE="PIC", nSweeps=4, useRK=False):
 
-    from pySDC.implementations.problem_classes.RayleighBenard import RayleighBenard, MPI
+    from pySDC.implementations.problem_classes.RayleighBenard import RayleighBenard
     from pySDC.implementations.sweeper_classes.imex_1st_order import imex_1st_order
     from pySDC.implementations.sweeper_classes.Runge_Kutta import ARK3
     from pySDC.implementations.problem_classes.generic_spectral import compute_residual_DAE
-    from pySDC.helpers.fieldsIO import Cart2D
+    from pySDC.helpers.fieldsIO import Rectilinear
 
     from cfno.simulation.sweeper import FNO_IMEX, StepperController
 
@@ -387,8 +390,8 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
     prob = controller.MS[0].levels[0].prob
 
     sX, sZ = prob.local_slice
-    Cart2D.setupMPI(
-        prob.comm, sX.start, sX.stop-sX.start, sZ.start, sZ.stop-sZ.start)
+    Rectilinear.setupMPI(
+        prob.comm, [sX.start, sZ.start], [sX.stop-sX.start, sZ.stop-sZ.start])
     coordX = prob.axes[0].get_1dgrid()
     coordZ = prob.axes[1].get_1dgrid()
 
@@ -405,18 +408,18 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
         rng = np.random.default_rng(seed=seed)
         b = uTmp[2]
         z = prob.Z + 1
-        b[:] = rng.normal(scale=1e-3, size=b.shape)
+        b[:] = 2*rng.normal(scale=1e-3, size=b.shape)
         b *= z * (2 - z) # Damp noise at walls
         b += 2 - z # Add linear background
     else:
-        file = Cart2D.fromFile(restartFile)
+        file = Rectilinear.fromFile(restartFile)
         np.copyto(uTmp, file.readField(-1)[-1])
     uTmp = prob.transform(uTmp)
     np.copyto(u0, uTmp)
 
     u0Real = prob.itransform(u0)
-    outFile = Cart2D(u0Real.dtype, f"{dirName}/outputs.pysdc")
-    outFile.setHeader(4, coordX, coordZ)
+    outFile = Rectilinear(u0Real.dtype, f"{dirName}/outputs.pysdc")
+    outFile.setHeader(4, [coordX, coordZ])
     outFile.initialize()
     outFile.addField(0, u0Real)
     for t0, t1 in zip(tWrite[:-1], tWrite[1:]):

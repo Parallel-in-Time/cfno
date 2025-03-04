@@ -25,6 +25,8 @@ class FourierNeuralOp:
                             # for easier comparison between different training.
     USE_TENSORBOARD = True
     LOG_PRINT = False
+    
+    PHYSICS_LOSSES_FILE = None # to track the individual losses that are combined into the phyics loss
 
 
     def __init__(self, 
@@ -291,6 +293,16 @@ class FourierNeuralOp:
         self.losses["model"]["train"] = avgLoss
         self.gradientNormEpoch = gradsEpoch
 
+        getPhysicsLosses = getattr(self.lossFunction, 'getLossValues', None)  
+        if getPhysicsLosses is not None:
+            partial_losses = getPhysicsLosses()
+            if self.PHYSICS_LOSSES_FILE:
+                with open(self.fullPath(self.PHYSICS_LOSSES_FILE), "a") as f:
+                    f.write("{epochs}\t{velocity:1.18f}\t{buoyancy:1.18f}\t{pressure:1.18f}\t{divergence:1.18f}\t{data:1.18f}\n".format(
+                        epochs=self.epochs,
+                        velocity=partial_losses[0]/nBatches, buoyancy=partial_losses[1]/nBatches,
+                        pressure=partial_losses[2]/nBatches, divergence=partial_losses[3]/nBatches, data=partial_losses[4]/nBatches))
+            self.lossFunction.resetLossValues()
 
     def valid(self):
         """Validate the model for one epoch"""

@@ -32,6 +32,8 @@ parser.add_argument(
 parser.add_argument(
     "--lossesFile", default=FourierNeuralOp.LOSSES_FILE, help='base text file to write the loss')
 parser.add_argument(
+    "--physicsLossesFile", default=None, help="text file to write individual loss contributions for the physics loss")
+parser.add_argument(
     "--logPrint", action="store_true", help='print loss after each optimizer step')
 parser.add_argument(
     "--config", default="config.yaml", help="configuration file")
@@ -60,6 +62,7 @@ FourierNeuralOp.TRAIN_DIR = args.trainDir
 FourierNeuralOp.USE_TENSORBOARD = args.noTensorboard
 FourierNeuralOp.LOSSES_FILE = args.lossesFile
 FourierNeuralOp.LOG_PRINT = args.logPrint
+FourierNeuralOp.PHYSICS_LOSSES_FILE = args.physicsLossesFile
 
 model = FourierNeuralOp(**configs)
 try:
