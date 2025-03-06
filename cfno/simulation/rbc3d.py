@@ -60,8 +60,8 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
             f"tEnd ({tEnd}) is not divisible by timestep ({timestep}) (nSteps={nSteps})")
     nSteps = int(nSteps)
     infos = {
-        "nSteps": nSteps+1,
-        "nDOF": Nx*Nz
+        "nSteps": nSteps,
+        "nDOF": Nx*Ny*Nz
     }
     if os.path.isfile(f"{dirName}/01_finalized.txt"):
         if MPI_RANK == 0:
@@ -202,10 +202,12 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
         return
     try:
         log('Starting main loop')
+        solver.step(timestep)   # don't count first time-step in timings
+        log('Finished first time-step')
         t0 = MPI.Wtime()
-        for _ in range(nSteps+1): # need to do one more step to write last solution ...
+        for _ in range(nSteps): # need to do one more step to write last solution ...
             solver.step(timestep)
-            if (solver.iteration-1) % logEvery == 0:
+            if (solver.iteration) % logEvery == 0:
                 log(f'Iteration={solver.iteration}, Time={solver.sim_time}, dt={timestep}')
         t1 = MPI.Wtime()
         infos["tComp"] = t1-t0
