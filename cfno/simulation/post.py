@@ -39,7 +39,7 @@ def computeMeanSpectrum(uValues, xGrid=None, zGrid=None, verbose=False):
         if verbose: print(" -- interpolating from zGrid to a uniform mesh ...")
         from qmat.lagrange import LagrangeApproximation
         P = LagrangeApproximation(zGrid).getInterpolationMatrix(xGrid)
-        np.einsum('ij,tvxyj->tvxyi', P, uValues, out=uValues)
+        uValues = np.einsum('ij,tvxyj->tvxyi', P, uValues)
 
         # Compute 3D mode shells
         k1D = np.fft.fftfreq(nX, 1/nX)**2
