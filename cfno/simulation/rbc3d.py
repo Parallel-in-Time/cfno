@@ -99,6 +99,8 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
             from pySDC.helpers.blocks import BlockDecomposition
             blocks = BlockDecomposition(sComm.Get_size(), [Ny, Nz])
             mpiBlocks = blocks.nBlocks
+    if MPI_RANK == 0:
+        print(f" -- {mpiBlocks = }")
 
     os.makedirs(dirName, exist_ok=True)
     with open(f"{dirName}/00_infoSimu.txt", "w") as f:
