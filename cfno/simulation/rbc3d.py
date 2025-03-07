@@ -97,8 +97,8 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
             mpiBlocks = [1, nProcs]
         else:
             from pySDC.helpers.blocks import BlockDecomposition
-            blocks = BlockDecomposition(sComm.Get_size(), [Ny, Nz])
-            mpiBlocks = blocks.nBlocks
+            blocks = BlockDecomposition(nProcs, [Ny, Nz])
+            mpiBlocks = blocks.nBlocks[-1::-1]
     if MPI_RANK == 0:
         print(f" -- {mpiBlocks = }")
 
