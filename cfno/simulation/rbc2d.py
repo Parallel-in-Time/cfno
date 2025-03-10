@@ -343,7 +343,7 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
         },
         # Level parameters
         "level_params": {
-            "restol": 5e-2,
+            "restol": 1e-1,
             "dt": timestep,
         },
         # problem parameters
