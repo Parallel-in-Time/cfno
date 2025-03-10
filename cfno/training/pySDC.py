@@ -25,15 +25,19 @@ class FourierNeuralOp:
                             # for easier comparison between different training.
     USE_TENSORBOARD = True
     LOG_PRINT = False
-    
+
     PHYSICS_LOSSES_FILE = None # to track the individual losses that are combined into the phyics loss
 
 
-    def __init__(self, 
-                 data:dict=None, model:dict=None, loss:dict=None, 
-                 optim:dict=None, lr_scheduler:dict=None, checkpoint=None):
+    def __init__(self,
+                 data:dict=None, model:dict=None, loss:dict=None,
+                 optim:dict=None, lr_scheduler:dict=None, checkpoint=None,
+                 gpuRank=None):
 
-        self.device = th.device('cuda' if th.cuda.is_available() else 'cpu')
+        if gpuRank is not None:
+            self.device = th.device("cuda", gpuRank)
+        else:
+            self.device = th.device('cuda' if th.cuda.is_available() else 'cpu')
 
         # Inference-only mode
         if data is None and model is None and optim is None:
@@ -49,7 +53,7 @@ class FourierNeuralOp:
         # sample : [batchSize, 4, nX, nY]
         self.outType = self.dataset.outType
         self.outScaling = self.dataset.outScaling
-        
+
         if loss is None:    # Use default settings
             loss = {
                 "name": "VectorNormLoss",
@@ -77,10 +81,10 @@ class FourierNeuralOp:
                 "train": self.idLoss("train"),
                 }
             }
-        
+
         # For backward compatibility, remove any "absLoss" in optim section and raise a warning if any
         old = optim.pop("absLoss", None)
-        if old is not None: 
+        if old is not None:
             print("WARNING : absLoss should be now specified with 'absolute' in the loss section for VectorNormLoss")
 
         # Set model
@@ -98,7 +102,7 @@ class FourierNeuralOp:
         self.gradientNormEpoch = 0.0
         if self.USE_TENSORBOARD:
             self.writer = SummaryWriter(self.fullPath("tboard"))
-        
+
         # Print settings summary
         self.printInfos()
 
@@ -141,7 +145,7 @@ class FourierNeuralOp:
             self.lr_scheduler = th.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, **lr_scheduler)
         else:
             raise ValueError(f"LR scheduler {scheduler} not implemented yet")
-        
+
 
     def setOptimizerParam(self, **params):
         """
@@ -171,7 +175,7 @@ class FourierNeuralOp:
             print(f" -- {key}: {val}")
         # TODO: add more details here ...
         print("-"*80)
-        
+
 
     def idLoss(self, dataset="valid"):
         if dataset == "valid":
@@ -263,7 +267,7 @@ class FourierNeuralOp:
         self.losses["model"]["train"] = avgLoss
         self.gradientNormEpoch = gradsEpoch
 
-        getPhysicsLosses = getattr(self.lossFunction, 'getLossValues', None)  
+        getPhysicsLosses = getattr(self.lossFunction, 'getLossValues', None)
         if getPhysicsLosses is not None:
             partial_losses = getPhysicsLosses()
             if self.PHYSICS_LOSSES_FILE:

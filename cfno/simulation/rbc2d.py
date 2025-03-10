@@ -284,15 +284,15 @@ def readPySDCSolution(path:str, uLoc:np.ndarray):
 
 def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
     tBeg=0, tEnd=10, dtWrite=0.1, restartFile=None, useFNO=None,
-    QI="MIN-SR-FLEX", QE="PIC", nSweeps=4, useRK=False):
+    QI="MIN-SR-S", QE="PIC", useRK=False, timeParallel=False):
 
     from pySDC.implementations.problem_classes.RayleighBenard import RayleighBenard
-    from pySDC.implementations.sweeper_classes.imex_1st_order import imex_1st_order
+    from pySDC.implementations.sweeper_classes.imex_1st_order_MPI import imex_1st_order, imex_1st_order_MPI
     from pySDC.implementations.sweeper_classes.Runge_Kutta import ARK3
     from pySDC.implementations.problem_classes.generic_spectral import compute_residual_DAE
     from pySDC.helpers.fieldsIO import Rectilinear
 
-    from cfno.simulation.sweeper import FNO_IMEX, StepperController
+    from cfno.simulation.sweeper import FNO_IMEX, FNO_IMEX_PINT, StepperController
 
     imex_1st_order.compute_residual = compute_residual_DAE
 
@@ -328,15 +328,22 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
         f.write(f"tEnd : {tEnd}\n")
         f.write(f"dtWrite : {dtWrite}\n")
 
+    if timeParallel:
+        from pySDC.playgrounds.dedalus.sdc import initSpaceTimeMPI
+        _, sComm, tComm = initSpaceTimeMPI(nProcTime=4, groupTime=True)
+    else:
+        tComm = None
+        sComm = COMM_WORLD
+
+
     description = {
         # Step parameters
         "step_params": {
-            "maxiter": 1,
+            "maxiter": 20,
         },
         # Level parameters
         "level_params": {
-            "restol": -1,
-            "nsweeps": nSweeps,
+            "restol": 5e-2,
             "dt": timestep,
         },
         # problem parameters
@@ -346,12 +353,14 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
             "nx": Nx,
             "nz": Nz,
             "dealiasing": 3/2,
-            "max_cached_factorizations": nNodes*nSweeps
+            "max_cached_factorizations": nNodes+1,
+            "comm": sComm,
             }
     }
 
     # Sweeper and its parameters
     if useRK:
+        assert not timeParallel, "cannot use timeParallel with RK"
         description.update({
             "sweeper_class": ARK3,
             "sweeper_params": {},
@@ -359,7 +368,7 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
         description["level_params"]["nsweeps"] = 1
     else:
         description.update({
-        "sweeper_class": imex_1st_order,
+        "sweeper_class": imex_1st_order_MPI if timeParallel else imex_1st_order,
         "sweeper_params": {
             "quad_type": "RADAU-RIGHT",
             "num_nodes": nNodes,
@@ -368,11 +377,11 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
             "do_coll_update": False,
             "QI": QI,
             "QE": QE,
-            # 'skip_residual_computation': ('IT_CHECK', 'IT_DOWN', 'IT_UP', 'IT_FINE', 'IT_COARSE'),
+            "comm": tComm
             },
         })
         if useFNO is not None:
-            description["sweeper_class"] = FNO_IMEX
+            description["sweeper_class"] = FNO_IMEX_PINT if timeParallel else FNO_IMEX
             description["sweeper_params"]["FNO"] = useFNO
 
 
@@ -388,6 +397,7 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
         description=description)
 
     prob = controller.MS[0].levels[0].prob
+    sweeper = controller.MS[0].levels[0].sweep
 
     sX, sZ = prob.local_slice
     Rectilinear.setupMPI(
@@ -422,10 +432,18 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
     outFile.setHeader(4, [coordX, coordZ])
     outFile.initialize()
     outFile.addField(0, u0Real)
+    tComp = 0
     for t0, t1 in zip(tWrite[:-1], tWrite[1:]):
+        tBeg = MPI.Wtime()
         u, _ = controller.run(u0=u0, t0=t0, Tend=t1, nSteps=iterWrite)
+        tComp += MPI.Wtime()-tBeg
         outFile.addField(t1, prob.itransform(u))
         np.copyto(u0, u)
+
+    infos["tComp"] = tComp
+    infos["nSweeps"] = controller.iterCount
+    if useFNO:
+        infos["tModelEval"] = sweeper.tModelEval
 
     if MPI_RANK == 0:
         with open(f"{dirName}/01_finalized.txt", "w") as f:

@@ -8,7 +8,7 @@ import itertools
 
 from cfno.training.pySDC import FourierNeuralOp
 
-from pySDC.implementations.sweeper_classes.imex_1st_order import imex_1st_order
+from pySDC.implementations.sweeper_classes.imex_1st_order_MPI import imex_1st_order, imex_1st_order_MPI, MPI
 from pySDC.implementations.controller_classes.controller_nonMPI import controller_nonMPI
 from pySDC.core.errors import ControllerError
 
@@ -34,6 +34,9 @@ class StepperController(controller_nonMPI):
         num_procs = len(self.MS)
         for hook in self.hooks:
             hook.reset_stats()
+
+        if not hasattr(self, "iterCount"):
+            self.iterCount = 0
 
         # initial ordering of the steps: 0,1,...,Np-1
         slots = list(range(num_procs))
@@ -110,6 +113,10 @@ class StepperController(controller_nonMPI):
 
         return uend, self.return_stats()
 
+    def it_fine(self, local_MS_running):
+        super().it_fine(local_MS_running)
+        self.iterCount += 1
+
 
 class FNO_IMEX(imex_1st_order):
 
@@ -121,6 +128,7 @@ class FNO_IMEX(imex_1st_order):
 
         M = params["num_nodes"]
         self.uPrev = [None for _ in range(M)]
+        self.tModelEval = 0
 
 
     @property
@@ -141,12 +149,12 @@ class FNO_IMEX(imex_1st_order):
                 L.u[m] = P.dtype_u(L.u[0])
                 L.f[m] = P.dtype_f(L.f[0])
             else:
-                # Use FNO update
+                # Use FNO initial guess
                 L.u[m] = P.u_init
+                tBeg = MPI.Wtime()
                 uTmp = P.transform(self.model(P.itransform(self.uPrev[m-1])))
-                uTmp *= 2 # pySDC has a x2 scaling in space
+                self.tModelEval += MPI.Wtime() - tBeg
                 P.xp.copyto(L.u[m], uTmp)
-                L.u[m][:3] = P.solve_system(L.u[m], dt=1e-10, u0=None)[:3]
                 L.f[m] = P.eval_f(L.u[m], L.time + L.dt * self.coll.nodes[m - 1])
 
         # indicate that this level is now ready for sweeps
@@ -160,3 +168,52 @@ class FNO_IMEX(imex_1st_order):
         # Store the node values into uPrev for next sweep
         for m in range(self.nNodes):
             self.uPrev[m] = self.level.prob.dtype_u(self.level.u[m+1])
+
+
+class FNO_IMEX_PINT(imex_1st_order_MPI):
+
+    def __init__(self, params):
+        super().__init__(params)
+
+        assert "FNO" in params, "need FNO parameters in sweeper params"
+        self.model = FourierNeuralOp(**params["FNO"], gpuRank=self.rank)
+
+        self.nNodes = params["num_nodes"]
+        self.uPrev = None
+        self.tModelEval = 0
+
+
+    def predict(self):
+        # get current level and problem description
+        L = self.level
+        P = L.prob
+
+        # evaluate RHS at left point
+        L.f[0] = P.eval_f(L.u[0], L.time)
+
+        m = self.rank
+
+        # Time-parallel initial guess
+        if self.uPrev is None:
+            # First step, no previous node values stored
+            L.u[m + 1] = P.dtype_u(L.u[0])
+            L.f[m + 1] = P.dtype_f(L.f[0])
+        else:
+            # Use FNO initial guess
+            L.u[m+1] = P.u_init
+            tBeg = MPI.Wtime()
+            uTmp = P.transform(self.model(P.itransform(self.uPrev)))
+            self.tModelEval += MPI.Wtime() - tBeg
+            P.xp.copyto(L.u[m], uTmp)
+            L.f[m] = P.eval_f(L.u[m], L.time + L.dt * self.coll.nodes[m])
+
+        # indicate that this level is now ready for sweeps
+        L.status.unlocked = True
+        L.status.updated = True
+
+    def update_nodes(self):
+        super().update_nodes()
+
+        # Store the node value into uPrev for next sweep
+        m = self.rank
+        self.uPrev = self.level.prob.dtype_u(self.level.u[m+1])
