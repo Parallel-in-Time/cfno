@@ -28,6 +28,14 @@ scripts/config_*.yaml
 scripts/runAll.sh
 scripts/sdcRun*
 scripts/pysdcRun*
+
+scripts/runs
+scripts/datasets
+scripts/models
+scripts/evals
+
+scripts/parallel/*_scaling
+
 scratch.py
 launch_scripts/*.sh
 env
