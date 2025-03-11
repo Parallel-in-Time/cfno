@@ -1,28 +1,38 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Run sequential SDC (no PinT) using FNO for intial guess, comparing with COPY
+Run SDC using FNO for intial guess, comparing with COPY, eventually with time parallelization
 """
 import os
-import sys
 import matplotlib
 matplotlib.use("agg")
+import argparse
 
 from cfno.data.preprocessing import HDF5Dataset
 from cfno.simulation.post import contourPlot
-from cfno.simulation.rbc2d import runSimPySDC, MPI_SIZE, MPI_RANK
+from cfno.simulation.rbc2d import runSimPySDC, MPI_SIZE, MPI_RANK, COMM_WORLD
 
 from pySDC.helpers.fieldsIO import Rectilinear, FieldsIO
 
 
-if len(sys.argv) > 1:
-    dataPath = sys.argv[1]
-else:
-    dataPath = "../datasets/dataset_pySDC_dt1e-2_update.h5"
-if len(sys.argv) > 2:
-    timeParallel = True
-else:
-    timeParallel = False
+parser = argparse.ArgumentParser(
+    description='Run (parallel) SDC with and without FNO',
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument(
+    "--dataPath", default="../datasets/dataset_pySDC_dt1e-2_update.h5",
+    help="path to the dataset from which the last sample 1999 (last) is used as initial guess")
+parser.add_argument(
+    "--timeParallel", action="store_true", help="use time parallelization")
+parser.add_argument(
+    "--nSweeps", type=int, default=None, help="number of sweeps used for SDC")
+parser.add_argument(
+    "--nSweepsFNO", type=int, default=None, help="number of sweeps used for SDC-FNO")
+args = parser.parse_args()
+
+dataPath = args.dataPath
+timeParallel = args.timeParallel
+nSweeps = args.nSweeps
+nSweepsFNO = args.nSweepsFNO
 
 
 runDir = f"rbc2d_{MPI_SIZE:03d}"
@@ -47,25 +57,29 @@ file.initialize()
 file.addField(0, initField)
 
 infos, _, _ = runSimPySDC(
-    dirName=f"{runDir}/sdc_seq", tEnd=1, restartFile=initFile)
+    dirName=f"{runDir}/sdc_seq", tEnd=1, restartFile=initFile, nSweeps=nSweeps,
+    timeParallel=timeParallel)
 if MPI_RANK == 0:
-    with open(f"infos_{runDir}_SDC.txt", "w") as f:
-        f.write(str(
-            {"MPI_SIZE": MPI_SIZE, "timeParallel": timeParallel, "method": "SDC",
-             **infos})+"\n")
+    if "tComp" in infos:
+        with open(f"infos_{runDir}_SDC.txt", "w") as f:
+            f.write(str(
+                {"MPI_SIZE": MPI_SIZE, "timeParallel": timeParallel, "method": "SDC",
+                 **infos})+"\n")
 
 
 
-infos, _, _ = runSimPySDC(dirName=f"{runDir}/sdcFNO_seq", tEnd=1, restartFile=initFile,
-            useFNO={"checkpoint": "model.pt"})
+infos, _, _ = runSimPySDC(
+    dirName=f"{runDir}/sdcFNO_seq", tEnd=1, restartFile=initFile,
+    useFNO={"checkpoint": "model.pt"}, nSweeps=nSweepsFNO, timeParallel=timeParallel)
 if MPI_RANK == 0:
-    with open(f"infos_{runDir}_FNO.txt", "w") as f:
-        f.write(str(
-            {"MPI_SIZE": MPI_SIZE, "timeParallel": timeParallel, "method": "SDC-FNO",
-            **infos})+"\n")
+    if "tComp" in infos:
+        with open(f"infos_{runDir}_FNO.txt", "w") as f:
+            f.write(str(
+                {"MPI_SIZE": MPI_SIZE, "timeParallel": timeParallel, "method": "SDC-FNO",
+                **infos})+"\n")
 
 
-
+COMM_WORLD.Barrier()
 if MPI_RANK == 0:
     Rectilinear.setupMPI(None, None, None)
     outputSDC = Rectilinear.fromFile(f"{runDir}/sdc_seq/outputs.pysdc")

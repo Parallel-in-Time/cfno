@@ -284,7 +284,7 @@ def readPySDCSolution(path:str, uLoc:np.ndarray):
 
 def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
     tBeg=0, tEnd=10, dtWrite=0.1, restartFile=None, useFNO=None,
-    QI="MIN-SR-S", QE="PIC", useRK=False, timeParallel=False):
+    QI="MIN-SR-S", QE="PIC", useRK=False, timeParallel=False, nSweeps=None):
 
     from pySDC.implementations.problem_classes.RayleighBenard import RayleighBenard
     from pySDC.implementations.sweeper_classes.imex_1st_order_MPI import imex_1st_order, imex_1st_order_MPI
@@ -340,7 +340,7 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
     description = {
         # Step parameters
         "step_params": {
-            "maxiter": 20,
+            "maxiter": 20 if nSweeps is None else nSweeps,
         },
         # Level parameters
         "level_params": {
@@ -443,6 +443,7 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
 
     infos["tComp"] = tComp
     infos["nSweeps"] = controller.iterCount
+    infos["sSize"] = sComm.Get_size()
     if useFNO:
         infos["tModelEval"] = sweeper.tModelEval
 

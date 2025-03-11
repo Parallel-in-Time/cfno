@@ -34,7 +34,7 @@ class FourierNeuralOp:
                  optim:dict=None, lr_scheduler:dict=None, checkpoint=None,
                  gpuRank=None):
 
-        if gpuRank is not None:
+        if gpuRank is not None and th.cuda.device_count() > 1:
             self.device = th.device("cuda", gpuRank)
         else:
             self.device = th.device('cuda' if th.cuda.is_available() else 'cpu')

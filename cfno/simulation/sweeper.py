@@ -204,8 +204,8 @@ class FNO_IMEX_PINT(imex_1st_order_MPI):
             tBeg = MPI.Wtime()
             uTmp = P.transform(self.model(P.itransform(self.uPrev)))
             self.tModelEval += MPI.Wtime() - tBeg
-            P.xp.copyto(L.u[m], uTmp)
-            L.f[m] = P.eval_f(L.u[m], L.time + L.dt * self.coll.nodes[m])
+            P.xp.copyto(L.u[m+1], uTmp)
+            L.f[m+1] = P.eval_f(L.u[m+1], L.time + L.dt * self.coll.nodes[m])
 
         # indicate that this level is now ready for sweeps
         L.status.unlocked = True
