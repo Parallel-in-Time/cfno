@@ -331,7 +331,7 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
 
     if timeParallel:
         from pySDC.playgrounds.dedalus.sdc import initSpaceTimeMPI
-        _, sComm, tComm = initSpaceTimeMPI(nProcTime=4, groupTime=True)
+        _, sComm, tComm = initSpaceTimeMPI(nProcTime=4, groupTime=False)
     else:
         tComm = None
         sComm = COMM_WORLD
