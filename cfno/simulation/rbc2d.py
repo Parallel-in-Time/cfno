@@ -340,12 +340,13 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
     description = {
         # Step parameters
         "step_params": {
-            "maxiter": 20 if nSweeps is None else nSweeps,
+            "maxiter": 1,
         },
         # Level parameters
         "level_params": {
-            "restol": 5e-2,
+            "restol": -1,
             "dt": timestep,
+            "nsweeps": nSweeps,
         },
         # problem parameters
         "problem_class": RayleighBenard,
@@ -442,7 +443,6 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
         np.copyto(u0, u)
 
     infos["tComp"] = tComp
-    infos["nSweeps"] = controller.iterCount
     infos["sSize"] = sComm.Get_size()
     if useFNO:
         infos["tModelEval"] = sweeper.tModelEval
