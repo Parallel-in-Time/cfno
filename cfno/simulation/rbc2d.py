@@ -289,12 +289,13 @@ def runSimPySDC(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2, seed=999,
     from pySDC.implementations.problem_classes.RayleighBenard import RayleighBenard
     from pySDC.implementations.sweeper_classes.imex_1st_order_MPI import imex_1st_order, imex_1st_order_MPI
     from pySDC.implementations.sweeper_classes.Runge_Kutta import ARK3
-    from pySDC.implementations.problem_classes.generic_spectral import compute_residual_DAE
+    from pySDC.implementations.problem_classes.generic_spectral import compute_residual_DAE, compute_residual_DAE_MPI
     from pySDC.helpers.fieldsIO import Rectilinear
 
     from cfno.simulation.sweeper import FNO_IMEX, FNO_IMEX_PINT, StepperController
 
     imex_1st_order.compute_residual = compute_residual_DAE
+    imex_1st_order_MPI.compute_residual = compute_residual_DAE_MPI
 
     nNodes = 4
 
