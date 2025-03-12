@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Scaling curves for the strong and weak scaling test of (parallel) SDC (FNO)
+Scaling curves for the strong scaling tests with (parallel) SDC (FNO)
 """
 import glob
 import pandas as pd
@@ -84,6 +84,7 @@ plt.grid(True)
 plt.xlabel("$N_{cores}$")
 plt.ylabel(r"$T_{wall}$ per time-step")
 plt.tight_layout()
+plt.savefig("timings.pdf")
 
 plt.figure("speedup")
 plt.loglog(nProcsAll, nProcsAll, "--", c="gray")
@@ -92,6 +93,7 @@ plt.grid(True)
 plt.xlabel("$N_{cores}$")
 plt.ylabel("Speedup")
 plt.tight_layout()
+plt.savefig("speedup.pdf")
 
 plt.figure("tModelEval")
 plt.legend()
@@ -99,6 +101,7 @@ plt.grid(True)
 plt.xlabel("$N_{cores}$")
 plt.ylabel("GPU time per step")
 plt.tight_layout()
+plt.savefig("tModelEval.pdf")
 
 plt.figure("tSpeedup")
 plt.legend()
@@ -106,3 +109,4 @@ plt.grid(True)
 plt.xlabel("$N_{cores}$ in space")
 plt.ylabel("Time-parallel speedup")
 plt.tight_layout()
+plt.savefig("tSpeedup.pdf")
