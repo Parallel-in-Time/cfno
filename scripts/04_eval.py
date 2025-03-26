@@ -198,8 +198,8 @@ for iDec in range(len(decomps)):
     # -------------------------------------------------------------------------
     # -- Averaged spectrum
     # -------------------------------------------------------------------------
-    sxRef, szRef = computeMeanSpectrum(uRef)
-    sxPred, szPred = computeMeanSpectrum(uPred)
+    sxRef, szRef = computeMeanSpectrum(uRef[:, :2])
+    sxPred, szPred = computeMeanSpectrum(uPred[:, :2])
     k = getModes(dataset.grid[0])
 
     plt.figure(f"D{iDec}_spectrum")
