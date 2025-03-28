@@ -7,6 +7,10 @@ from time import sleep
 import dedalus.public as d3
 from mpi4py import MPI
 from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX, SDCIMEX_MPI, SDCIMEX_MPI2
+from pySDC.helpers.blocks import BlockDecomposition
+
+import h5py
+from pySDC.helpers.fieldsIO import Rectilinear
 
 COMM_WORLD = MPI.COMM_WORLD
 MPI_SIZE = COMM_WORLD.Get_size()
@@ -96,7 +100,6 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
         if Nz // nProcs >= 2:
             mpiBlocks = [1, nProcs]
         else:
-            from pySDC.helpers.blocks import BlockDecomposition
             blocks = BlockDecomposition(nProcs, [Ny, Nz])
             mpiBlocks = blocks.nBlocks[-1::-1]
     if MPI_RANK == 0:
@@ -169,6 +172,7 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
 
     # Initial conditions
     if initFields is None:
+        # None given, creating a new one
         b.fill_random('g', seed=seed, distribution='normal', scale=1e-3) # Random noise
         b['g'] *= z * (Lz - z) # Damp noise at walls
         b['g'] += Lz - z # Add linear background
@@ -177,12 +181,34 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
             (b, "buoyancy"), (p, "pressure"), (u, "velocity"),
             *[(f, f.name) for f in [tau_p, tau_b1, tau_b2, tau_u1, tau_u2]]
             ]
-        for field, name in fields:
-            localSlices = (slice(None),) * len(field.tensorsig) \
-                + distr.grid_layout.slices(field.domain, field.scales)
-            field['g'] = initFields[name][-1][localSlices]
+        if type(initFields) == h5py._hl.group.Group:
+            # Reading from HDF5 file
+            for field, name in fields:
+                localSlices = (slice(None),) * len(field.tensorsig) \
+                    + distr.grid_layout.slices(field.domain, field.scales)
+                try:
+                    field['g'] = initFields[name][-1][localSlices]
+                except KeyError:
+                    # field not present in file, put zeros instead
+                    field['g'] = 0
+        elif type(initFields) == Rectilinear:
+            # Reading from pySDC format
+            sFields = {"buoyancy": 3, "pressure": 4, "velocity": slice(3)}
+            slices = distr.grid_layout.slices(u.domain, u.scales)
+            Rectilinear.setupMPI(
+                sComm,
+                [s.start for s in slices], [s.stop-s.start for s in slices]
+                )
+            _, uInit = initFields.readField(-1)
+            for field, name in fields:
+                try:
+                    field['g'] = uInit[sFields["name"]]
+                except KeyError:
+                    # field not present in file, put zeros instead
+                    field['g'] = 0
 
-    # Analysis
+
+    # Fields IO
     if writeFields:
         iterWrite = dtWrite/timestep
         if int(iterWrite) != round(iterWrite, ndigits=3):

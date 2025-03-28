@@ -7,6 +7,11 @@ import scipy.optimize as sco
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+from pySDC.helpers.fieldsIO import Rectilinear
+from qmat.nodes import NodesGenerator
+from qmat.lagrange import LagrangeApproximation
+
+
 def computeMeanSpectrum(uValues, xGrid=None, zGrid=None, verbose=False):
     """ uValues[nT, nVar, nX, (nY,) nZ] """
     uValues = np.asarray(uValues)
@@ -84,6 +89,44 @@ def getModes(grid):
     nX = np.size(grid)
     k = np.fft.rfftfreq(nX, 1/nX) + 0.5
     return k
+
+
+def rbc3dInterpolation(coarseFields):
+    """
+    Interpolate a RBC3D field to twice its space resolution
+
+    Parameters
+    ----------
+    coarseFields : np.4darray
+        The fields values on the coarse grid, with shape [nV,nX,nY,nZ].
+        The last dimension (z) uses a chebychev grid, while x and y are
+        uniform periodic.
+
+    Returns
+    -------
+    fineFields : np.4darray
+        The interpolated fields, with shape [nV,2*nX,2*nY,2*nZ]
+    """
+    coarseFields = np.asarray(coarseFields)
+    assert coarseFields.ndim == 4, "requires 4D array"
+
+    nV, nX, nY, nZ = coarseFields.shape
+
+    # Chebychev grids and interpolation matrix for z
+    zC = NodesGenerator("CHEBY-1", "GAUSS").getNodes(nZ)
+    zF = NodesGenerator("CHEBY-1", "GAUSS").getNodes(2*nZ)
+    Pz = LagrangeApproximation(zC).getInterpolationMatrix(zF)
+
+    # Fourier interpolation in x and y
+    uFFT = np.fft.fftshift(np.fft.fft2(coarseFields, axes=(1, 2)), axes=(1, 2))
+    uPadded = np.zeros_like(uFFT, shape=(nV, 2*nX, 2*nY, nZ))
+    uPadded[:, nX//2:-nX//2, nY//2:-nY//2] = uFFT
+    uXY = np.fft.ifft2(np.fft.ifftshift(uPadded, axes=(1, 2)), axes=(1, 2)).real*4
+
+    # Polynomial interpolation in z
+    fineFields = np.einsum("ij,vxyj->vxyi", Pz, uXY)
+
+    return fineFields
 
 
 class OutputFiles():
@@ -356,6 +399,29 @@ class OutputFiles():
         for i in range(np.cumsum(self.nFields)[0]):
             u = self.fields(i)
             writeToVTR(template.format(i), u, coords, varNames)
+
+
+    def interpolate(self, iFile:int, fileName:str, iField:int=-1):
+        assert self.dim == 3, "interpolation only possible for 3D RBC fields"
+
+        fields = self.file(iFile)["tasks"]
+
+        velocity = fields["velocity"][iField]
+        buoyancy = fields["buoyancy"][iField]
+        pressure = fields["pressure"][iField]
+
+        uCoarse = np.concat([velocity, buoyancy[None, ...], pressure[None, ...]])
+        uFine = rbc3dInterpolation(uCoarse)
+
+        nX, nY, nZ = uFine.shape[1:]
+        xCoord = np.linspace(0, 1, nX, endpoint=False)
+        yCoord = np.linspace(0, 1, nY, endpoint=False)
+        zCoord = NodesGenerator("CHEBY-1", "GAUSS").getNodes(nZ)
+
+        output = Rectilinear(np.float64, fileName)
+        output.setHeader(5, [xCoord, yCoord, zCoord])
+        output.initialize()
+        output.addField(0, uFine)
 
 
 def extractU(outFields, idx=-1):

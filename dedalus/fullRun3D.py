@@ -11,9 +11,9 @@ if len(sys.argv) > 1:
     simDir = sys.argv[1]
 
 Ra = 1e8
-resFactor = 4
+resFactor = 1
 
 runSim3D(
     f"{simDir}/cube{64*resFactor}", Rayleigh=Ra, resFactor=resFactor,
-    baseDt=1e-2/2, logEvery=10, tEnd=120, dtWrite=0.1, writeFull=True,
+    baseDt=1e-2/2, logEvery=10, tEnd=120, dtWrite=0.5, writeFull=True,
     )
