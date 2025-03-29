@@ -43,7 +43,7 @@ def computeMeanSpectrum(uValues, xGrid=None, zGrid=None, verbose=False):
         assert xGrid is not None and zGrid is not None
         if verbose: print(" -- interpolating from zGrid to a uniform mesh ...")
         from qmat.lagrange import LagrangeApproximation
-        P = LagrangeApproximation(zGrid).getInterpolationMatrix(xGrid)
+        P = LagrangeApproximation(zGrid, weightComputation="STABLE").getInterpolationMatrix(xGrid)
         uValues = np.einsum('ij,tvxyj->tvxyi', P, uValues)
 
         # Compute 3D mode shells
@@ -115,7 +115,7 @@ def rbc3dInterpolation(coarseFields):
     # Chebychev grids and interpolation matrix for z
     zC = NodesGenerator("CHEBY-1", "GAUSS").getNodes(nZ)
     zF = NodesGenerator("CHEBY-1", "GAUSS").getNodes(2*nZ)
-    Pz = LagrangeApproximation(zC).getInterpolationMatrix(zF)
+    Pz = LagrangeApproximation(zC, weightComputation="STABLE").getInterpolationMatrix(zF)
 
     # Fourier interpolation in x and y
     uFFT = np.fft.fftshift(np.fft.fft2(coarseFields, axes=(1, 2)), axes=(1, 2))
