@@ -202,7 +202,7 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
             _, uInit = initFields.readField(-1)
             for field, name in fields:
                 try:
-                    field['g'] = uInit[sFields["name"]]
+                    field['g'] = uInit[sFields[name]]
                 except KeyError:
                     # field not present in file, put zeros instead
                     field['g'] = 0
