@@ -124,7 +124,7 @@ def rbc3dInterpolation(coarseFields):
     uXY = np.fft.ifft2(np.fft.ifftshift(uPadded, axes=(1, 2)), axes=(1, 2)).real*4
 
     # Polynomial interpolation in z
-    fineFields = np.einsum("ij,vxyj->vxyi", Pz, uXY)
+    fineFields = (Pz @ uXY.reshape(-1, nZ).T).T.reshape(*coarseFields.shape)
 
     return fineFields
 
