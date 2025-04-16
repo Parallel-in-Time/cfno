@@ -169,9 +169,11 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     solver = problem.build_solver(timestepper)
     solver.sim_time = tBeg
     solver.stop_sim_time = stop_sim_time
+    if MPI_RANK == 0: print(" -- finished building dedalus problem")
 
     # Initial conditions
     if initFields is None:
+        if MPI_RANK == 0: print(" -- generating randomly perturbed initial field")
         # None given, creating a new one
         b.fill_random('g', seed=seed, distribution='normal', scale=1e-3) # Random noise
         b['g'] *= z * (Lz - z) # Damp noise at walls
@@ -182,6 +184,7 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
             *[(f, f.name) for f in [tau_p, tau_b1, tau_b2, tau_u1, tau_u2]]
             ]
         if type(initFields) == h5py._hl.group.Group:
+            if MPI_RANK == 0: print(" -- reading field from HDF5 file")
             # Reading from HDF5 file
             for field, name in fields:
                 localSlices = (slice(None),) * len(field.tensorsig) \
@@ -192,6 +195,7 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
                     # field not present in file, put zeros instead
                     field['g'] = 0
         elif type(initFields) == Rectilinear:
+            if MPI_RANK == 0: print(" -- reading field from pySDC file")
             # Reading from pySDC format
             sFields = {"buoyancy": 3, "pressure": 4, "velocity": slice(3)}
             slices = distr.grid_layout.slices(u.domain, u.scales)
@@ -206,10 +210,12 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
                 except KeyError:
                     # field not present in file, put zeros instead
                     field['g'] = 0
+    if MPI_RANK == 0: print(" -- done !")
 
 
     # Fields IO
     if writeFields:
+        if MPI_RANK == 0: print(" -- setup fields IO")
         iterWrite = dtWrite/timestep
         if int(iterWrite) != round(iterWrite, ndigits=3):
             raise ValueError(
@@ -228,6 +234,7 @@ def runSim3D(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
             snapshots.add_task(tau_u2, name='tau_u2')
         if writeVort:
             snapshots.add_task(-d3.div(d3.skew(u)), name='vorticity')
+        if MPI_RANK == 0: print(" -- done !")
 
     # Main loop
     if nSteps == 0:

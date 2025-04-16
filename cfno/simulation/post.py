@@ -44,7 +44,7 @@ def computeMeanSpectrum(uValues, xGrid=None, zGrid=None, verbose=False):
         if verbose: print(" -- interpolating from zGrid to a uniform mesh ...")
         from qmat.lagrange import LagrangeApproximation
         P = LagrangeApproximation(zGrid, weightComputation="STABLE").getInterpolationMatrix(xGrid)
-        uValues = np.einsum('ij,tvxyj->tvxyi', P, uValues)
+        uValues = (P @ uValues.reshape(-1, nZ).T).T.reshape(nT, 3, *gridSizes)
 
         # Compute 3D mode shells
         k1D = np.fft.fftfreq(nX, 1/nX)**2
@@ -127,6 +127,27 @@ def rbc3dInterpolation(coarseFields):
     fineFields = np.einsum("ij,vxyj->vxyi", Pz, uXY)
 
     return fineFields
+
+def decomposeRange(iBeg, iEnd, step, maxSize):
+    if iEnd is None:
+        raise ValueError("need to provide iEnd for range decomposition")
+    nIndices = len(range(iBeg, iEnd, step))
+    subRanges = []
+
+    # Iterate over the original range and create sub-ranges
+    iStart = iBeg
+    while nIndices > 0:
+        iStop = iStart + (maxSize - 1) * step
+        if step > 0 and iStop > iEnd:
+            iStop = iEnd
+        elif step < 0 and iStop < iEnd:
+            iStop = iEnd
+
+        subRanges.append((iStart, iStop + 1 - (iStop==iEnd), step))
+        nIndices -= maxSize
+        iStart = iStop + step if nIndices > 0 else iEnd
+
+    return subRanges
 
 
 class OutputFiles():
@@ -262,7 +283,7 @@ class OutputFiles():
         rData = range(iBeg, iEnd, step)
         data = np.zeros((len(rData), *shape[1:]))
         for i, iData in enumerate(rData):
-            if verbose: print(f" -- field {i+1}/{len(rData)}")
+            if verbose: print(f" -- field {i+1}/{len(rData)}, idx={iData}")
             data[i] = fData[iData]
         if verbose: print(" -- done !")
         return data
@@ -330,17 +351,40 @@ class OutputFiles():
         return zFine, uMeanFine, bRMSFine, deltaU, deltaT
 
 
-    def getMeanSpectrum(self, iFile:int, iBeg=0, iEnd=None, step=1, verbose=False):
+    def getMeanSpectrum(self, iFile:int, iBeg=0, iEnd=None, step=1, verbose=False, batchSize=5):
         """
-        Function to get mean spectrum
-        Args:
-            iFile (int): file index
+        Mean spectrum from a given output file
 
-        Returns:
-            energy_spectrum (list): mean energy spectrum
+        Parameters
+        ----------
+        iFile : int
+            Index of the file to use.
+        iBeg : int, optional
+            Starting index for the fields to use. The default is 0.
+        iEnd : int, optional
+            Stopping index (non included) for the fields to use. The default is None.
+        step : int, optional
+            Index step for the fields to use. The default is 1.
+        verbose : bool, optional
+            Display infos message in stdout. The default is False.
+        batchSize : int, optional
+            Number of fields to regroup when computing one FFT. The default is 5.
+
+        Returns
+        -------
+        spectra : np.ndarray[nT,size]
+            The spectrum values for all nT fields.
         """
-        velocity = self.readField(iFile, "velocity", iBeg, iEnd, step, verbose)
-        return computeMeanSpectrum(velocity, verbose=verbose, xGrid=self.x, zGrid=self.z)
+        spectra = []
+        if iEnd is None:
+            iEnd = self.nFields[iFile]
+        subRanges = decomposeRange(iBeg, iEnd, step, batchSize)
+        for iBegSub, iEndSub, stepSub in subRanges:
+            if verbose:
+                print(f" -- computing for fields in range ({iBegSub},{iEndSub},{stepSub})")
+            velocity = self.readField(iFile, "velocity", iBegSub, iEndSub, stepSub, verbose)
+            spectra += computeMeanSpectrum(velocity, verbose=verbose, xGrid=self.x, zGrid=self.z)
+        return np.concatenate(spectra)
 
 
     def getFullMeanSpectrum(self, iBeg:int, iEnd=None):

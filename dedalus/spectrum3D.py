@@ -43,10 +43,12 @@ yMin = args.yMin
 for folder in folders:
     sFile = f"{folder}/{output}"
     if not os.path.isfile(sFile):
+        if verbose: print(f" -- reading outputFiles from {folder}...")
         files = OutputFiles(folder)
+        if verbose: print(" -- computing mean spectrum ...")
         data = files.getMeanSpectrum(
             0, iBeg=iBeg, iEnd=iEnd, step=step, verbose=verbose)
-        spectrum = data[0].mean(axis=0)
+        spectrum = data.mean(axis=0)
         if verbose: print(f" -- saving spectrum into {sFile}...")
         np.savetxt(sFile, spectrum, header="spectrum[uv,z]")
     else:
