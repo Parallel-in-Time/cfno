@@ -118,12 +118,16 @@ def rbc3dInterpolation(coarseFields):
     Pz = LagrangeApproximation(zC, weightComputation="STABLE").getInterpolationMatrix(zF)
 
     # Fourier interpolation in x and y
+    print(" -- computing 2D FFT ...")
     uFFT = np.fft.fftshift(np.fft.fft2(coarseFields, axes=(1, 2)), axes=(1, 2))
+    print(" -- padding in Fourier space ...")
     uPadded = np.zeros_like(uFFT, shape=(nV, 2*nX, 2*nY, nZ))
     uPadded[:, nX//2:-nX//2, nY//2:-nY//2] = uFFT
+    print(" -- computing 2D IFFT ...")
     uXY = np.fft.ifft2(np.fft.ifftshift(uPadded, axes=(1, 2)), axes=(1, 2)).real*4
 
     # Polynomial interpolation in z
+    print(" -- interpolating in z direction ...")
     fineFields = (Pz @ uXY.reshape(-1, nZ).T).T.reshape(*coarseFields.shape)
 
     return fineFields
