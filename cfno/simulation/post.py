@@ -128,7 +128,7 @@ def rbc3dInterpolation(coarseFields):
 
     # Polynomial interpolation in z
     print(" -- interpolating in z direction ...")
-    fineFields = (Pz @ uXY.reshape(-1, nZ).T).T.reshape(*coarseFields.shape)
+    fineFields = (Pz @ uXY.reshape(-1, nZ).T).T.reshape(nV, 2*nX, 2*nY, 2*nZ)
 
     return fineFields
 
