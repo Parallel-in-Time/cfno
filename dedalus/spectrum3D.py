@@ -50,18 +50,20 @@ for folder in folders:
             0, iBeg=iBeg, iEnd=iEnd, step=step, verbose=verbose)
         spectrum = data.mean(axis=0)
         if verbose: print(f" -- saving spectrum into {sFile}...")
-        np.savetxt(sFile, spectrum, header="spectrum[uv,z]")
+        np.savetxt(sFile, spectrum, header="spectrum-uv[0.1, 0.5, 0.9]")
     else:
         if verbose: print(f" -- loading spectrum from {sFile} ...")
         spectrum = np.loadtxt(sFile)
 
     if verbose: print(" -- ploting and saving figure to file ...")
-    nK = spectrum.size
+    nK = spectrum.shape[0]
     k = np.arange(nK) + 0.5
 
-    plt.loglog(k, spectrum, label=folder)
-    kPlot = k[2:]
-    plt.loglog(kPlot, kPlot**(-6)*20, '--', c="gray")
+    plt.loglog(k, spectrum.T[0], label=f"{folder} (y=0.1)")
+    plt.loglog(k, spectrum.T[1], label=f"{folder} (y=0.5)")
+    plt.loglog(k, spectrum.T[2], label=f"{folder} (y=0.9)")
+    # kPlot = k[2:]
+    # plt.loglog(kPlot, kPlot**(-6)*20, '--', c="gray")
 
 plt.legend()
 plt.xlabel("wavenumber")

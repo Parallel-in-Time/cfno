@@ -43,12 +43,12 @@ def computeMeanSpectrum(uValues, xGrid=None, zGrid=None, verbose=False):
         assert xGrid is not None and zGrid is not None
         if verbose: print(" -- interpolating from zGrid to a uniform mesh ...")
         from qmat.lagrange import LagrangeApproximation
-        P = LagrangeApproximation(zGrid, weightComputation="STABLE").getInterpolationMatrix(xGrid)
-        uValues = (P @ uValues.reshape(-1, nZ).T).T.reshape(nT, 3, *gridSizes)
+        P = LagrangeApproximation(zGrid, weightComputation="STABLE").getInterpolationMatrix([0.1, 0.5, 0.9])
+        uValues = (P @ uValues.reshape(-1, nZ).T).T.reshape(nT, dim, nX, nY, 3)
 
-        # Compute 3D mode shells
+        # Compute 2D mode disks
         k1D = np.fft.fftfreq(nX, 1/nX)**2
-        kMod = k1D[:, None, None] + k1D[None, :, None] + k1D[None, None, :]
+        kMod = k1D[:, None] + k1D[None, :]
         kMod **= 0.5
         idx = kMod.copy()
         idx *= (kMod < size)
@@ -58,26 +58,26 @@ def computeMeanSpectrum(uValues, xGrid=None, zGrid=None, verbose=False):
         flatIdx = idx.ravel()
 
         # Fourier transform and square of Im,Re
-        if verbose: print(" -- 3D FFT on u, v & w ...")
-        uHat = np.fft.fftn(uValues, axes=(-3, -2, -1))
+        if verbose: print(" -- 2D FFT on u, v & w ...")
+        uHat = np.fft.fftn(uValues, axes=(-3, -2))
 
         if verbose: print(" -- square of Im,Re ...")
         ffts = [uHat[:, i] for i in range(nVar)]
-        reParts = [uF.reshape((nT, nX*nY*nZ)).real**2 for uF in ffts]
-        imParts = [uF.reshape((nT, nX*nY*nZ)).imag**2 for uF in ffts]
+        reParts = [uF.reshape((nT, nX*nY, 3)).real**2 for uF in ffts]
+        imParts = [uF.reshape((nT, nX*nY, 3)).imag**2 for uF in ffts]
 
         # Spectrum computation
         if verbose: print(" -- computing spectrum ...")
-        spectrum = np.zeros((nT, size))
+        spectrum = np.zeros((nT, size, 3))
         for i in idxList:
             if verbose: print(f" -- k{i+1}/{len(idxList)}")
             kIdx = np.argwhere(flatIdx == i)
-            tmp = np.empty((nT, *kIdx.shape))
+            tmp = np.empty((nT, *kIdx.shape, 3))
             for re, im in zip(reParts, imParts):
                 np.copyto(tmp, re[:, kIdx])
                 tmp += im[:, kIdx]
                 spectrum[:, i] += tmp.sum(axis=(1, 2))
-        spectrum /= 2*(nX*nY*nZ)**2
+        spectrum /= 2*(nX*nY)**2
 
         energy_spectrum.append(spectrum)
         if verbose: print(" -- done !")
