@@ -8,7 +8,6 @@ _:scroll: Extension of the [Fourier Neural Operators](https://arxiv.org/abs/2010
 - [dedalus](./dedalus/) : scripts to run RBC simulations with Dedalus and pySDC
 - [docs](./docs/) : main documentation of this package
 - [script](./scripts/) : scripts for the full training pipeline (data generation, training, evaluation)
-- [utils](./utils/) : utility scripts for cluster run
 
 ## Installation
 

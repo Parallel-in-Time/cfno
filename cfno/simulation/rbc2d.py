@@ -6,7 +6,7 @@ from time import sleep
 
 import dedalus.public as d3
 from mpi4py import MPI
-from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX, SDCIMEX_MPI, SDCIMEX_MPI2
+# from pySDC.playgrounds.dedalus.sdc import SpectralDeferredCorrectionIMEX, SDCIMEX_MPI, SDCIMEX_MPI2
 
 COMM_WORLD = MPI.COMM_WORLD
 MPI_SIZE = COMM_WORLD.Get_size()
@@ -50,8 +50,9 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
         Write into a file the space parallel distribution from dedalus
     """
     # Parameters
-    Lx, Lz = 4, 1
-    Nx, Nz = 256*resFactor, 64*resFactor
+    Lx, Lz = 1.5, 1
+    # Nx, Nz = 256*resFactor, 64*resFactor
+    Nx, Nz = 96*resFactor, 64*resFactor
     timestep = baseDt/resFactor
 
     nSteps = round(float(tEnd-tBeg)/timestep, ndigits=3)
@@ -76,20 +77,21 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
                 f.write(f", MPI rank {MPI_RANK} ({MPI_SIZE})")
                 f.write(f" : {msg}\n")
 
-    Prandtl = 1
+    # Prandtl = 1
+    Prandtl = 0.7
     dealias = 3/2
     stop_sim_time = tEnd
     timestepper = SpectralDeferredCorrectionIMEX if useSDC else d3.RK443
     dtype = np.float64
 
-    if timeParallel:
-        assert useSDC, "cannot use time-parallel without SDC"
-        _, sComm, _ = SDCIMEX_MPI.initSpaceTimeComms(groupTime=groupTimeProcs)
-        timestepper = SDCIMEX_MPI2 if useTimePar2 else SDCIMEX_MPI
-        if MPI_RANK == 0:
-            print(" -- using timeParallel implementation" + " 2" if useTimePar2 else "")
-    else:
-        sComm = COMM_WORLD
+    # if timeParallel:
+    #     assert useSDC, "cannot use time-parallel without SDC"
+    #     _, sComm, _ = SDCIMEX_MPI.initSpaceTimeComms(groupTime=groupTimeProcs)
+    #     timestepper = SDCIMEX_MPI2 if useTimePar2 else SDCIMEX_MPI
+    #     if MPI_RANK == 0:
+    #         print(" -- using timeParallel implementation" + " 2" if useTimePar2 else "")
+    # else:
+    sComm = COMM_WORLD
 
     os.makedirs(dirName, exist_ok=True)
     with open(f"{dirName}/00_infoSimu.txt", "w") as f:
@@ -141,9 +143,11 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     problem.add_equation("trace(grad_u) + tau_p = 0")
     problem.add_equation("dt(b) - kappa*div(grad_b) + lift(tau_b2) = - u@grad(b)")
     problem.add_equation("dt(u) - nu*div(grad_u) + grad(p) - b*ez + lift(tau_u2) = - u@grad(u)")
-    problem.add_equation("b(z=0) = Lz")
+    # problem.add_equation("b(z=0) = Lz")
+    problem.add_equation("b(z=0) = 2")
     problem.add_equation("u(z=0) = 0")
-    problem.add_equation("b(z=Lz) = 0")
+    # problem.add_equation("b(z=Lz) = 0")
+    problem.add_equation("b(z=Lz) = 1")
     problem.add_equation("u(z=Lz) = 0")
     problem.add_equation("integ(p) = 0") # Pressure gauge
 

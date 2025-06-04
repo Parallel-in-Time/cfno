@@ -1,4 +1,4 @@
-import os
+import os,sys
 import time
 from pathlib import Path
 
@@ -40,6 +40,7 @@ class FourierNeuralOp:
             assert checkpoint is not None, "need a checkpoint in inference-only evaluation"
             if model is not None:
                 self.modelConfig = model
+            self.dataset = None
             self.load(checkpoint, modelOnly=True)
             return
 
@@ -111,8 +112,9 @@ class FourierNeuralOp:
     # -------------------------------------------------------------------------
     def setupModel(self, model):
         assert model is not None, "model configuration is required"
-        self.model = CFNO2D(**model).to(self.device)
+        self.model = CFNO2D(**model, dataset=self.dataset).to(self.device)
         self.modelConfig = {**self.model.config}
+        self.modelConfig.pop('dataset', None)
         th.cuda.empty_cache()   # in case another model was setup before ...
 
     def setupOptimizer(self, optim=None):
@@ -188,21 +190,12 @@ class FourierNeuralOp:
             ValueError(f"cannot compute id loss on {loader} dataset")
         nBatches = len(loader)
         data_iter = iter(loader)
-
-        if self.data_config['use_domainSampling'] and not self.data_config['pad_to_fullGrid']:
-            inp_list, out_list = next(data_iter)  #[nBatches=nPatch_per_sample, batchSize=nSamples/nBatches, 4, nX, ny]
-            nBatches = len(inp_list)
-
         avgLoss = 0
         outType = self.outType
 
         with th.no_grad():
-            # for inputs, outputs in loader:
             for iBatch in range(nBatches):
-                if self.data_config['use_domainSampling'] and not self.data_config['pad_to_fullGrid']:
-                    inputs, outputs = (inp_list[iBatch], out_list[iBatch])
-                else:
-                    inputs, outputs = next(data_iter)
+                inputs, outputs = next(data_iter)
                 if outType == "solution":
                     avgLoss += self.lossFunction(inputs, outputs, inputs).item()
                 elif outType == "update":
@@ -232,11 +225,6 @@ class FourierNeuralOp:
         batchSize = self.trainLoader.batch_size
         data_iter = iter(self.trainLoader)
 
-        if self.data_config['use_domainSampling'] and not self.data_config['pad_to_fullGrid']:
-            inp_list, out_list = next(data_iter) # [nBatches=nPatch_per_sample, batchSize=nSamples/nBatches, 4, nX, ny]
-            nBatches = len(inp_list)
-            batchSize = len(inp_list[0])
-           
         model = self.model
         optimizer = self.optimizer
         scheduler = self.lr_scheduler
@@ -246,11 +234,7 @@ class FourierNeuralOp:
 
         model.train()
         for iBatch in range(nBatches):
-        # for iBatch, data in enumerate(self.trainLoader):
-            if self.data_config['use_domainSampling'] and not self.data_config['pad_to_fullGrid']:
-                data = (inp_list[iBatch], out_list[iBatch])
-            else:
-                data = next(data_iter)
+            data = next(data_iter)
             inp = data[0][..., ::self.xStep, ::self.yStep].to(self.device)
             ref = data[1][..., ::self.xStep, ::self.yStep].to(self.device)
 
@@ -312,18 +296,10 @@ class FourierNeuralOp:
         idLoss = self.losses['id']['valid']
         data_iter = iter(self.valLoader)
 
-        if self.data_config['use_domainSampling'] and not self.data_config['pad_to_fullGrid']:
-            inp_list, out_list = next(data_iter) #[nBatches=nPatch_per_sample, batchSize=nSamples/nBatches, 4, nX, ny]
-            nBatches = len(inp_list)
-            batchSize = len(inp_list[0])
-
         model.eval()
         with th.no_grad():
             for iBatch in range(nBatches):
-                if self.data_config['use_domainSampling'] and not self.data_config['pad_to_fullGrid']:
-                    data = (inp_list[iBatch], out_list[iBatch])
-                else:
-                    data = next(data_iter)
+                data = next(data_iter)
                 inp = data[0][..., ::self.xStep, ::self.yStep].to(self.device)
                 ref = data[1][..., ::self.xStep, ::self.yStep].to(self.device)
                 pred = model(inp)
@@ -413,6 +389,8 @@ class FourierNeuralOp:
                 for key, value in self.modelConfig.items():
                     if key not in checkpoint['model']:
                         checkpoint['model'][key] = value
+                    if key == 'get_subdomain_output' and value == True:
+                        checkpoint['model'][key] = value
                 print("WARNING : different model settings in config file,"
                       " overwriting with config from checkpoint ...")
             print(f"Model: {checkpoint['model']}")
@@ -455,7 +433,7 @@ class FourierNeuralOp:
                 if self.outType == "update":
                     outp /= self.outScaling
 
-                    # Mapping output to input shape to perform addition
+                    # Mapping input shape to ouput to perform addition
                     if outp.shape == inpt.shape:
                         outp += inpt
                     else:

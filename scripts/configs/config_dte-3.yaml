@@ -19,16 +19,6 @@ data:
   batchSize: 20
   xStep: 1
   yStep: 1
-  use_domainSampling: true
-  use_fixedPatchSize: false        # fixed domain with overlapping
-  use_orderedSampling: false       # fixed domain w/o overlapping 
-  pad_to_fullGrid: false
-  use_fixedPatch_startIdx: true
-  nPatch_per_sample: 100
-  use_minLimit: true
-  padding : [1,1,1,1]
-  # slices: []
-  # patch_startIdx: []
 
 model:
   da: 4
@@ -39,17 +29,19 @@ model:
   nLayers: 2
   forceFFT: true
   bias: false
+  scaling_layers: 4
   use_prechannel_mlp: true
   channel_mlp_expansion: 4
   use_fno_skip_connection: false
   fno_skip_type: soft-gating
   use_postfnochannel_mlp: false
   channel_mlp_skip_type: 'soft-gating'
-  get_subdomain_output: false               # set to true only for inference
+  get_subdomain_output: false             # set it to false during training
   iXBeg: 5
   iYBeg: 12
   iXEnd: 30
   iYEnd: 60
+
 
 optim:
   name: adam
