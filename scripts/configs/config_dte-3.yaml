@@ -54,7 +54,7 @@ lr_scheduler:
 
 train:
   trainDir: training_dt1e-3_update_fft_test
-  nEpochs: 20000
+  nEpochs: 11500
   checkpoint: model.pt
   lossesFile: losses.txt
   saveEvery: 100
