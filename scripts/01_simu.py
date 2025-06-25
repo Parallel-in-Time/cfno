@@ -5,6 +5,7 @@ import sys
 import argparse
 import numpy as np
 sys.path.insert(2, os.getcwd())
+sys.path.insert(1, '/p/project1/cexalab/john2/NeuralOperators/fourier_operator')
 from cfno.simulation.rbc2d import runSim, runSimPySDC, MPI_RANK
 from cfno.simulation.post import OutputFiles
 from cfno.utils import readConfig

@@ -54,7 +54,7 @@ lr_scheduler:
 
 
 train:
-  trainDir: training_dt0_5_update
+  trainDir: run24_straat_dt0_5_update
   nEpochs: 14200
   checkpoint: model.pt
   lossesFile: losses.txt

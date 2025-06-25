@@ -16,6 +16,8 @@ Contour plots :
 - [model output]({contourPlotSol})
 - [model update]({contourPlotUpdate})
 - [absolute error]({contourPlotErr})
+- [dedalus output]({contourPlotSolRef})
+- [dedalus update]({contourPlotUpdateRef})
 
 Averaged spectrum :
 

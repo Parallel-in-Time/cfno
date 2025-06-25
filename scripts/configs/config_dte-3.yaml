@@ -13,7 +13,7 @@ sample:
 data:
   outType: update
   outScaling: 1000
-  dataFile: dataset_dt1e-3_update.h5
+  dataFile: dataset_256x64_Ra1e7_dt1e-3_update.h5
   trainRatio: 0.8
   seed: null
   batchSize: 20
@@ -53,7 +53,7 @@ lr_scheduler:
   T_max: 50000
 
 train:
-  trainDir: training_dt1e-3_update_fft_test
+  trainDir: run24_dt1e_3_update
   nEpochs: 11500
   checkpoint: model.pt
   lossesFile: losses.txt
