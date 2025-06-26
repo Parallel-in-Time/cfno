@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-
+import torch.distributed as dist
 import signal
 import math
 import yaml
@@ -8,7 +8,6 @@ from configmypy import  Bunch
 
 
 DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
 def readConfig(config):
     """
     Safe read config based on yaml, that does not convert scalar into weird ruaml types ...
@@ -88,7 +87,7 @@ def all_gather_item(item, dtype, group=None, async_op=False, local_rank=None):
     torch.distributed.all_gather(output_tensors, tensor, group, async_op)
     output = [elem.item() for elem in output_tensors]
     return output
-
+    
 def _ensure_var_is_initialized(var, name):
     """Make sure the input variable is not None."""
     assert var is not None, '{} is not initialized.'.format(name)

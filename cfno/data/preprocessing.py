@@ -6,8 +6,9 @@ import h5py
 import torch
 import glob
 import numpy as np
-from torch.utils.data import Dataset, DataLoader, random_split, Subset
+from torch.utils.data import Dataset, DataLoader, random_split, Subset, DistributedSampler
 from cfno.simulation.post import OutputFiles
+from cfno.communication import get_rank, get_world_size
 
 class HDF5Dataset(Dataset):
 
@@ -174,14 +175,9 @@ def createDataset(
             outputs[iSim*nSamples + iSample] = outp
     dataset.close()
     print(" -- done !")
-
-def getDataLoaders(dataFile, 
-                   trainRatio=0.8, 
-                   batchSize=20,
-                   seed=None, 
-                   **kwargs):
-
     
+
+def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None, use_distributed_sampler=False):
     dataset = HDF5Dataset(dataFile)
 
     dataset.printInfos()
@@ -198,9 +194,18 @@ def getDataLoaders(dataFile,
         generator = torch.Generator().manual_seed(seed)
         trainSet, valSet = random_split(
             dataset, [trainSize, valSize], generator=generator)
+        
+    # Reconfigure DataLoaders to use a DistributedSampler for
+    # distributed data parallel mode
+    if use_distributed_sampler:
+        train_sampler = DistributedSampler(trainSet, num_replicas=get_world_size(), rank=get_rank(), shuffle=True)
+        val_sampler = DistributedSampler(valSet, num_replicas=get_world_size(), rank=get_rank(), shuffle=False)
+    else:
+        train_sampler = None
+        val_sampler = None
 
-    trainLoader = DataLoader(trainSet, batch_size=batchSize, shuffle=True, num_workers=0, pin_memory=True)
-    valLoader = DataLoader(valSet, batch_size=batchSize, shuffle=False, num_workers=0, pin_memory=True)
+    trainLoader = DataLoader(trainSet, batch_size=batchSize, sampler=train_sampler, shuffle=(train_sampler is None), pin_memory=True, num_workers=4)
+    valLoader = DataLoader(valSet, batch_size=batchSize, sampler=val_sampler, shuffle=False, pin_memory=True, num_workers=4)
 
     return trainLoader, valLoader, dataset
 

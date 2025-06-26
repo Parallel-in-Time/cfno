@@ -7,7 +7,7 @@ import os
 import sys
 sys.path.insert(2, os.getcwd())
 import argparse
-
+import torch
 from cfno.training.pySDC import FourierNeuralOp
 from cfno.utils import readConfig
 
@@ -43,7 +43,7 @@ config = readConfig(args.config)
 if "train" in config:
     args.__dict__.update(**config.train)
 
-sections = ["data", "model", "optim", "lr_scheduler"]
+sections = ["data", "model", "optim", "lr_scheduler", "parallel_strategy"]
 for name in sections:
     assert name in config, f"config file needs a {name} section"
 # trainer class configs, "loss" parameter uses default if not specified
@@ -86,3 +86,6 @@ if lastChunk > 0:
     model.save(checkpoint)
     if savePermanent:
         model.save(f"{cPrefix}_epochs{model.epochs:06d}.pt")
+
+if torch.distributed.is_initialized():
+    torch.distributed.destroy_process_group()
