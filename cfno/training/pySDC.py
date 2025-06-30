@@ -9,7 +9,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader, DistributedSampler
 from cfno.data.preprocessing import getDataLoaders
 from cfno.models.cfno2d import CFNO2D
-from cfno.losses import VectormNormLoss
+from cfno.losses import LOSSES_CLASSES
 from cfno.utils import print_rank0
 from cfno.communication import Communicator
 
