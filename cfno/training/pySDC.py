@@ -49,6 +49,8 @@ class FourierNeuralOp:
                 self.device = self.communicator.device
                 self.rank = self.communicator.rank
                 self.local_rank = self.communicator.local_rank
+        else:
+            self.DDP_enabled = False
          
         # Inference-only mode
         if data is None and optim is None:
