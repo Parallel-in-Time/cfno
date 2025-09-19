@@ -329,12 +329,10 @@ class CFNO2D(nn.Module):
                  use_postfnochannel_mlp=False,
                  channel_mlp_skip_type='soft-gating',
                  channel_mlp_expansion=4,
-                 use_dse=False,
                  get_subdomain_output=False,
                  iXBeg=0,iYBeg=0,
                  iXEnd=None,iYEnd=None,
-                 dataset=None,
-                 ):
+                 **kwargs):
         
         super().__init__()
         self.config = {
@@ -342,12 +340,7 @@ class CFNO2D(nn.Module):
             if key != "self" and not key.startswith('__')}
         
         self.use_postfnochannel_mlp = use_postfnochannel_mlp
-        self.use_dse = use_dse
-        if self.use_dse and dataset is not None:
-           transformer = VandermondeTransform(dataset, kX, kY, device='cuda:0')
-        else:
-           transformer = None
-        
+
         # Use conv1d
         if use_prechannel_mlp:
             self.P = ChannelMLP(
@@ -376,24 +369,14 @@ class CFNO2D(nn.Module):
                                   n_layers=scaling_layers
                                 )
            
-           
-
-        if transformer is not None:
-            self.layers = nn.ModuleList(
-                [DSELayer(kX, kY, dv,
-                          transformer,
-                          non_linearity,
-                          bias)
-                 for _ in range(nLayers)])
-        else:
-            self.layers = nn.ModuleList(
-                [CF2DLayer(kX, kY, dv, 
-                           forceFFT,
-                           non_linearity, 
-                           bias, reorder,
-                           use_fno_skip_connection,
-                           fno_skip_type)
-                 for _ in range(nLayers)])
+        self.layers = nn.ModuleList(
+            [CF2DLayer(kX, kY, dv, 
+                        forceFFT,
+                        non_linearity, 
+                        bias, reorder,
+                        use_fno_skip_connection,
+                        fno_skip_type)
+                for _ in range(nLayers)])
 
 
         if self.use_postfnochannel_mlp:
@@ -422,9 +405,7 @@ class CFNO2D(nn.Module):
         """
 
         x = self.P(x)
-        if self.use_dse: 
-            x = x.permute(0,1,3,2).to(th.cfloat)
-            
+        
         for index,layer in enumerate(self.layers):
             if self.use_postfnochannel_mlp:
                 x_skip_channel_mlp = self.channel_mlp_skips[index](x)
@@ -436,9 +417,6 @@ class CFNO2D(nn.Module):
                  if index < len(self.layers) - 1:
                     x = nn.functional.gelu(x)
 
-        if self.use_dse: 
-            x = x.permute(0,1,3,2).real
-        
         # to get only a subdomain output inference
         if self.get_subdomain_output:
             print(f'Filtering to  x-subdomain {self.iXBeg,self.iXEnd} & y-subdomain {self.iYBeg,self.iYEnd}')

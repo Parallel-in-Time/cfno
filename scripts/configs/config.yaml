@@ -48,6 +48,10 @@ lr_scheduler:
   step_size: 100.0
   gamma: 0.98
 
+parallel_strategy:
+  ddp: False      # Distributed Data Parallel
+  gpus_per_node: 4
+
 train:
   trainDir: training
   nEpochs: 10
