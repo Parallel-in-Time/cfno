@@ -1,8 +1,9 @@
-import os,sys
+import os
 import time
 from pathlib import Path
 from collections import OrderedDict
 import torch as th
+import pickle
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
@@ -12,6 +13,8 @@ from cfno.models.cfno2d import CFNO2D
 from cfno.losses import LOSSES_CLASSES
 from cfno.utils import print_rank0
 from cfno.communication import Communicator
+from .lbfgs import LBFGS
+
 
 class FourierNeuralOp:
     """
@@ -31,7 +34,7 @@ class FourierNeuralOp:
     PHYSICS_LOSSES_FILE = None # to track the individual losses that are combined into the phyics loss
 
 
-    def __init__(self, data:dict=None, model:dict=None, optim:dict=None, lr_scheduler:dict=None, 
+    def __init__(self, data:dict=None, model:dict=None, optim:dict=None, lr_scheduler:dict=None, loss:dict=None,
                  checkpoint=None, parallel_strategy:dict=None):
 
         self.device = th.device('cuda:0' if th.cuda.is_available() else 'cpu')
@@ -129,7 +132,7 @@ class FourierNeuralOp:
     def setupModel(self, model):
         assert model is not None, "model configuration is required"
         self.model = CFNO2D(**model, dataset=self.dataset).to(self.device)
-        self.modelConfig = {**self.model.config}
+        self.modelConfig = {**model}
         self.modelConfig.pop('dataset', None)
         if self.DDP_enabled:
             self.model = DDP(self.model, device_ids=[self.local_rank])
@@ -411,8 +414,17 @@ class FourierNeuralOp:
             'lr_scheduler_state_dict': self.lr_scheduler.state_dict()
             })
             
+        def is_picklable(obj):
+            try:
+                pickle.dumps(obj)
+                return True
+            except (pickle.PicklingError, TypeError, AttributeError):
+                return False
+
+        safe_infos = {k: v for k, v in infos.items() if is_picklable(v)}
+
         if self.rank == 0:
-            th.save(infos, fullPath)
+            th.save(safe_infos, fullPath)
      
     def load(self, filePath, modelOnly=False):
         fullPath = self.fullPath(filePath)
