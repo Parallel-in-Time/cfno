@@ -1,14 +1,19 @@
 import os
 import time
 from pathlib import Path
-
+from collections import OrderedDict
 import torch as th
+import pickle
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
-
+from torch.utils.data import DataLoader, DistributedSampler
 from cfno.data.preprocessing import getDataLoaders
 from cfno.models.cfno2d import CFNO2D
 from cfno.losses import LOSSES_CLASSES
-from cfno.training.lbfgs import LBFGS
+from cfno.utils import print_rank0
+from cfno.communication import Communicator
+from .lbfgs import LBFGS
 
 
 class FourierNeuralOp:
@@ -32,24 +37,46 @@ class FourierNeuralOp:
     def __init__(self,
                  data:dict=None, model:dict=None, loss:dict=None,
                  optim:dict=None, lr_scheduler:dict=None, checkpoint=None,
-                 gpuRank=None):
+                 gpuRank=None, parallel_strategy:dict=None):
 
         if gpuRank is not None and th.cuda.device_count() > 1:
             self.device = th.device("cuda", gpuRank)
         else:
             self.device = th.device('cuda' if th.cuda.is_available() else 'cpu')
 
+        self.device = th.device('cuda:0' if th.cuda.is_available() else 'cpu')
+        self.DDP_enabled = False
+        self.rank = int(os.getenv('RANK', '0'))
+        self.world_size = int(os.getenv('WORLD_SIZE', '1'))
+
+        if parallel_strategy is not None:
+            gpus_per_node = parallel_strategy.pop("gpus_per_node", 4)
+            self.DDP_enabled = parallel_strategy.pop("ddp", True)
+            if self.DDP_enabled:
+                self.communicator = Communicator(gpus_per_node, self.rank)
+                self.world_size = self.communicator.world_size
+                assert  self.world_size > 1, 'More than 1 GPU required for ditributed training'
+                self.device = self.communicator.device
+                self.rank = self.communicator.rank
+                self.local_rank = self.communicator.local_rank
+        else:
+            self.DDP_enabled = False
+
         # Inference-only mode
-        if data is None and model is None and optim is None:
+        if data is None and optim is None:
             assert checkpoint is not None, "need a checkpoint in inference-only evaluation"
+            if model is not None:
+                self.modelConfig = model
+            self.dataset = None
             self.load(checkpoint, modelOnly=True)
             return
 
         # Data setup
         assert "dataFile" in data, ""
+        self.data_config = {**data}
         self.xStep, self.yStep = data.pop("xStep", 1), data.pop("yStep", 1)
         data.pop("outType", None), data.pop("outScaling", None)  # overwritten by dataset
-        self.trainLoader, self.valLoader, self.dataset = getDataLoaders(**data)
+        self.trainLoader, self.valLoader, self.dataset = getDataLoaders(**data, use_distributed_sampler=self.DDP_enabled)
         # sample : [batchSize, 4, nX, nY]
         self.outType = self.dataset.outType
         self.outScaling = self.dataset.outScaling
@@ -85,7 +112,7 @@ class FourierNeuralOp:
         # For backward compatibility, remove any "absLoss" in optim section and raise a warning if any
         old = optim.pop("absLoss", None)
         if old is not None:
-            print("WARNING : absLoss should be now specified with 'absolute' in the loss section for VectorNormLoss")
+            print_rank0("WARNING : absLoss should be now specified with 'absolute' in the loss section for VectorNormLoss")
 
         # Set model
         self.setupModel(model)
@@ -100,7 +127,7 @@ class FourierNeuralOp:
         self.epochs = 0
         self.tCompEpoch = 0
         self.gradientNormEpoch = 0.0
-        if self.USE_TENSORBOARD:
+        if self.USE_TENSORBOARD and self.rank == 0:
             self.writer = SummaryWriter(self.fullPath("tboard"))
 
         # Print settings summary
@@ -112,8 +139,11 @@ class FourierNeuralOp:
     # -------------------------------------------------------------------------
     def setupModel(self, model):
         assert model is not None, "model configuration is required"
-        self.model = CFNO2D(**model).to(self.device)
-        self.modelConfig = {**self.model.config}
+        self.model = CFNO2D(**model, dataset=self.dataset).to(self.device)
+        self.modelConfig = {**model}
+        self.modelConfig.pop('dataset', None)
+        if self.DDP_enabled:
+            self.model = DDP(self.model, device_ids=[self.local_rank])
         th.cuda.empty_cache()   # in case another model was setup before ...
 
     def setupOptimizer(self, optim=None):
@@ -157,24 +187,27 @@ class FourierNeuralOp:
                 g[name] = val
 
     def printInfos(self):
-        print("-"*80)
-        print("Model settings")
-        print(f" -- class: {self.model}")
+        print_rank0("-"*80)
+        print_rank0("Model settings")
+        print_rank0(f" -- class: {self.model}")
         for key, val in self.modelConfig.items():
-            print(f" -- {key}: {val}")
-        print(f"Loss settings")
-        print(f" -- name : {self.lossFunction.__class__.__name__}")
+            print_rank0(f" -- {key}: {val}")
+        print_rank0(f"Loss settings")
+        print_rank0(f" -- name : {self.lossFunction.__class__.__name__}")
         for key, val in self.lossConfig.items():
-            print(f" -- {key}: {val}")
-        print("Optim settings")
-        print(f" -- name : {self.optim}")
+            print_rank0(f" -- {key}: {val}")
+        print_rank0("Optim settings")
+        print_rank0(f" -- name : {self.optim}")
         for key, val in self.optimConfig.items():
-            print(f" -- {key}: {val}")
-        print(f"Scheduler: {self.scheduler_name}")
+            print_rank0(f" -- {key}: {val}")
+        print_rank0(f"Scheduler: {self.scheduler_name}")
         for key,val in self.scheduler_config.items():
-            print(f" -- {key}: {val}")
+            print_rank0(f" -- {key}: {val}")
+        print_rank0("Data settings")
+        for key, val in self.data_config.items():
+            print_rank0(f" -- {key}: {val}")
         # TODO: add more details here ...
-        print("-"*80)
+        print_rank0("-"*80)
 
 
     def idLoss(self, dataset="valid"):
@@ -185,11 +218,13 @@ class FourierNeuralOp:
         else:
             ValueError(f"cannot compute id loss on {loader} dataset")
         nBatches = len(loader)
+        data_iter = iter(loader)
         avgLoss = 0
         outType = self.outType
 
         with th.no_grad():
-            for inputs, outputs in loader:
+            for iBatch in range(nBatches):
+                inputs, outputs = next(data_iter)
                 if outType == "solution":
                     avgLoss += self.lossFunction(inputs, outputs, inputs).item()
                 elif outType == "update":
@@ -213,9 +248,12 @@ class FourierNeuralOp:
     # -------------------------------------------------------------------------
     def train(self):
         """Train the model for one epoch"""
+
         nSamples = len(self.trainLoader.dataset)
         nBatches = len(self.trainLoader)
         batchSize = self.trainLoader.batch_size
+        data_iter = iter(self.trainLoader)
+
         model = self.model
         optimizer = self.optimizer
         scheduler = self.lr_scheduler
@@ -224,7 +262,8 @@ class FourierNeuralOp:
         idLoss = self.losses['id']['train']
 
         model.train()
-        for iBatch, data in enumerate(self.trainLoader):
+        for iBatch in range(nBatches):
+            data = next(data_iter)
             inp = data[0][..., ::self.xStep, ::self.yStep].to(self.device)
             ref = data[1][..., ::self.xStep, ::self.yStep].to(self.device)
 
@@ -250,22 +289,28 @@ class FourierNeuralOp:
 
             grads = [param.grad.detach().flatten() for param in self.model.parameters() if param.grad is not None]
             gradsNorm = th.cat(grads).norm()
-            if self.USE_TENSORBOARD:
+            if self.USE_TENSORBOARD and self.rank == 0:
                 self.writer.add_histogram("Gradients/GradientNormBatch", gradsNorm, iBatch)
             gradsEpoch += gradsNorm
 
             loss, current = loss.item(), iBatch*batchSize + len(inp)
             if self.LOG_PRINT:
-                print(f" At [{current}/{nSamples:>5d}] loss: {loss:>7f} (id: {idLoss:>7f}) -- lr: {optimizer.param_groups[0]['lr']}")
+                print_rank0(f" At [{current}/{nSamples:>5d}] loss: {loss:>7f} (id: {idLoss:>7f}) -- lr: {optimizer.param_groups[0]['lr']}")
             avgLoss += loss
 
         scheduler.step()
         avgLoss /= nBatches
         gradsEpoch /= nBatches
 
-        print(f"Training: \n Avg loss: {avgLoss:>8f} (id: {idLoss:>7f}) -- lr: {optimizer.param_groups[0]['lr']}\n")
-        self.losses["model"]["train"] = avgLoss
-        self.gradientNormEpoch = gradsEpoch
+        if self.DDP_enabled:
+            # Obtain the global average loss.
+            ddp_loss = th.Tensor([avgLoss]).to(self.device).clone()
+            self.communicator.allreduce(ddp_loss,op=dist.ReduceOp.AVG)
+            train_loss = ddp_loss.item()
+        else:
+            train_loss = avgLoss
+        print_rank0(f"Training: \n Avg loss: {train_loss:>8f} (id: {idLoss:>7f})\n")
+        self.losses["model"]["train"] = train_loss
 
         getPhysicsLosses = getattr(self.lossFunction, 'getLossValues', None)
         if getPhysicsLosses is not None:
@@ -277,6 +322,9 @@ class FourierNeuralOp:
                         velocity=partial_losses[0]/nBatches, buoyancy=partial_losses[1]/nBatches,
                         pressure=partial_losses[2]/nBatches, divergence=partial_losses[3]/nBatches, data=partial_losses[4]/nBatches))
             self.lossFunction.resetLossValues()
+        self.gradientNormEpoch = gradsEpoch
+
+
 
     def valid(self):
         """Validate the model for one epoch"""
@@ -284,23 +332,33 @@ class FourierNeuralOp:
         model = self.model
         avgLoss = 0
         idLoss = self.losses['id']['valid']
+        data_iter = iter(self.valLoader)
 
         model.eval()
         with th.no_grad():
-            for data in self.valLoader:
-                inp = data[0].to(self.device)
-                ref = data[1].to(self.device)
+            for iBatch in range(nBatches):
+                data = next(data_iter)
+                inp = data[0][..., ::self.xStep, ::self.yStep].to(self.device)
+                ref = data[1][..., ::self.xStep, ::self.yStep].to(self.device)
                 pred = model(inp)
                 avgLoss += self.lossFunction(pred, ref, inp).item()
 
         avgLoss /= nBatches
 
-        print(f"Validation: \n Avg loss: {avgLoss:>8f} (id: {idLoss:>7f})\n")
-        self.losses["model"]["valid"] = avgLoss
+        if self.DDP_enabled:
+            # Obtain the global average loss.
+            ddp_loss = th.Tensor([avgLoss]).to(self.device).clone()
+            self.communicator.allreduce(ddp_loss,op=dist.ReduceOp.AVG)
+            val_loss = ddp_loss.item()
+        else:
+            val_loss = avgLoss
+
+        print_rank0(f"Validation: \n Avg loss: {val_loss:>8f} (id: {idLoss:>7f})\n")
+        self.losses["model"]["valid"] = val_loss
 
     def learn(self, nEpochs):
         for _ in range(nEpochs):
-            print(f"Epoch {self.epochs+1}\n-------------------------------")
+            print_rank0(f"Epoch {self.epochs+1}\n-------------------------------")
             tBeg = time.perf_counter()
             self.train()
             self.valid()
@@ -312,12 +370,12 @@ class FourierNeuralOp:
             tMonit = time.perf_counter()-tBeg
 
             self.epochs += 1
-            print(f" --- End of epoch {self.epochs} (tComp: {tComp:1.2e}s, tMonit: {tMonit:1.2e}s) ---\n")
+            print_rank0(f" --- End of epoch {self.epochs} (tComp: {tComp:1.2e}s, tMonit: {tMonit:1.2e}s) ---\n")
 
-        print("Done!")
+        print_rank0("Done!")
 
     def monitor(self):
-        if self.USE_TENSORBOARD:
+        if self.USE_TENSORBOARD and self.rank == 0:
             writer = self.writer
             writer.add_scalars("Losses", {
                 "train_avg" : self.losses["model"]["train"],
@@ -328,7 +386,7 @@ class FourierNeuralOp:
             writer.add_scalar("Gradients/GradientNormEpoch", self.gradientNormEpoch, self.epochs)
             writer.flush()
 
-        if self.LOSSES_FILE:
+        if self.LOSSES_FILE and self.rank == 0:
             with open(self.fullPath(self.LOSSES_FILE), "a") as f:
                 f.write("{epochs}\t{train:1.18f}\t{valid:1.18f}\t{train_id:1.18f}\t{valid_id:1.18f}\t{gradNorm:1.18f}\t{tComp}\n".format(
                     epochs=self.epochs,
@@ -363,21 +421,63 @@ class FourierNeuralOp:
             'optimizer_state_dict': self.optimizer.state_dict(),
             'lr_scheduler_state_dict': self.lr_scheduler.state_dict()
             })
-        th.save(infos, fullPath)
+
+        def is_picklable(obj):
+            try:
+                pickle.dumps(obj)
+                return True
+            except (pickle.PicklingError, TypeError, AttributeError):
+                return False
+
+        safe_infos = {k: v for k, v in infos.items() if is_picklable(v)}
+
+        if self.rank == 0:
+            th.save(safe_infos, fullPath)
 
     def load(self, filePath, modelOnly=False):
         fullPath = self.fullPath(filePath)
-        checkpoint = th.load(fullPath, weights_only=True, map_location=self.device)
+        if self.DDP_enabled:
+            map_location = {f'cuda:0': f'{self.device}'}
+        else:
+            map_location = self.device
+        checkpoint = th.load(fullPath, weights_only=True, map_location=map_location)
+
         # Load model state (eventually config before)
         if 'model' in checkpoint:
             if 'nonLinearity' in checkpoint['model']:
                 # for backward compatibility ...
                 checkpoint['model']["non_linearity"] = checkpoint['model'].pop("nonLinearity")
             if hasattr(self, "modelConfig") and self.modelConfig != checkpoint['model']:
-                print("WARNING : different model settings in config file,"
+                for key, value in self.modelConfig.items():
+                    if key not in checkpoint['model']:
+                        checkpoint['model'][key] = value
+                    if key == 'get_subdomain_output' and value == True:
+                        checkpoint['model'][key] = value
+                print_rank0("WARNING : different model settings in config file,"
                       " overwriting with config from checkpoint ...")
+            print_rank0(f"Model: {checkpoint['model']}")
             self.setupModel(checkpoint['model'])
-        self.model.load_state_dict(checkpoint['model_state_dict'])
+
+        state_dict = checkpoint['model_state_dict']
+        # creating new OrderedDict for model trained without DDP but used now with DDP
+        # or model trained using DPP but used now without DDP
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            if self.DDP_enabled:
+                if k[:7] == 'module.':
+                    name = k
+                else:
+                    name = 'module.'+ k
+            else:
+                if k[:7] == 'module.':
+                    name = k[7:]
+                else:
+                    name = k
+            if v.dtype == th.complex64:
+                new_state_dict[name] = th.view_as_real(v)
+            else:
+                new_state_dict[name] = v
+        self.model.load_state_dict(new_state_dict)
         self.outType = checkpoint["outType"]
         self.outScaling = checkpoint["outScaling"]
         # Learning status
@@ -394,7 +494,7 @@ class FourierNeuralOp:
             try:
                 self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
             except KeyError:
-                print("Learning rate scheduler is restarted!")
+                print_rank0("Learning rate scheduler is restarted!")
 
 
 
@@ -414,7 +514,16 @@ class FourierNeuralOp:
                 outp = model(inpt)
                 if self.outType == "update":
                     outp /= self.outScaling
-                    outp += inpt
+
+                    # Mapping input shape to ouput to perform addition
+                    if outp.shape == inpt.shape:
+                        outp += inpt
+                    else:
+                        sliced_inpt = inpt[:,:,
+                                      self.modelConfig['iXBeg']: self.modelConfig['iXEnd'],
+                                      self.modelConfig['iYBeg']: self.modelConfig['iYEnd']]
+                        # print(f'Sliced Input: {sliced_inpt.shape}')
+                        outp += sliced_inpt
                 inpt = outp
 
         if not multi:

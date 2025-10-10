@@ -52,6 +52,8 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     # Parameters
     Lx, Lz = 4, 1
     Nx, Nz = 256*resFactor, 64*resFactor
+    # Lx, Lz = 1.5, 1
+    # Nx, Nz = 96*resFactor, 64*resFactor
     timestep = baseDt/resFactor
 
     nSteps = round(float(tEnd-tBeg)/timestep, ndigits=3)
@@ -77,6 +79,7 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
                 f.write(f" : {msg}\n")
 
     Prandtl = 1
+    # Prandtl = 0.7
     dealias = 3/2
     stop_sim_time = tEnd
     timestepper = SpectralDeferredCorrectionIMEX if useSDC else d3.RK443
@@ -146,6 +149,8 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     problem.add_equation("b(z=Lz) = 0")
     problem.add_equation("u(z=Lz) = 0")
     problem.add_equation("integ(p) = 0") # Pressure gauge
+    # problem.add_equation("b(z=0) = 2")
+    # problem.add_equation("b(z=Lz) = 1")
 
     # Solver
     solver = problem.build_solver(timestepper)

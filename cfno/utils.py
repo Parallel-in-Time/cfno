@@ -1,35 +1,13 @@
 import torch
 import torch.nn.functional as F
-
+import torch.distributed as dist
 import signal
 import math
 import yaml
-from configmypy import ConfigPipeline, YamlConfig, Bunch
+from configmypy import  Bunch
 
-_GLOBAL_SIGNAL_HANDLER = None
+
 DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-def read_config(config):
-    """
-    Read a configuration file for a FNO model
-
-    Parameters
-    ----------
-    config : str or configmypy.bunch.Bunch
-        The path of the configuration file, or the already loaded config file.
-
-    Returns
-    -------
-    configmypy.bunch.Bunch
-        Configuration parameters.
-    """
-    if isinstance(config, Bunch):
-        return config
-    assert isinstance(config, str), "config parameter must be a string"
-    pipe = ConfigPipeline([YamlConfig(config)])
-    return pipe.read_conf()
-
-
 def readConfig(config):
     """
     Safe read config based on yaml, that does not convert scalar into weird ruaml types ...
@@ -109,7 +87,7 @@ def all_gather_item(item, dtype, group=None, async_op=False, local_rank=None):
     torch.distributed.all_gather(output_tensors, tensor, group, async_op)
     output = [elem.item() for elem in output_tensors]
     return output
-
+    
 def _ensure_var_is_initialized(var, name):
     """Make sure the input variable is not None."""
     assert var is not None, '{} is not initialized.'.format(name)
@@ -173,55 +151,6 @@ class CudaMemoryDebugger():
 
         CudaMemoryDebugger.LAST_MEM = cur_mem
 
-# normalization, pointwise gaussian
-class UnitGaussianNormalizer(object):
-    def __init__(self, x, eps=0.00001, time_last=True):
-        super(UnitGaussianNormalizer, self).__init__()
-
-        # x could be in shape of ntrain*n or ntrain*T*n or ntrain*n*T in 1D
-        # x could be in shape of ntrain*w*l or ntrain*T*w*l or ntrain*w*l*T in 2D
-        self.mean = torch.mean(x, 0)
-        self.std = torch.std(x, 0)
-        self.eps = eps
-        self.time_last = time_last # if the time dimension is the last dim
-
-    def encode(self, x):
-        x = (x - self.mean) / (self.std + self.eps)
-        return x
-
-    def decode(self, x, sample_idx=None):
-        # sample_idx is the spatial sampling mask
-        if sample_idx is None:
-            std = self.std + self.eps # n
-            mean = self.mean
-        else:
-            if self.mean.ndim == sample_idx.ndim or self.time_last:
-                std = self.std[sample_idx] + self.eps  # batch*n
-                mean = self.mean[sample_idx]
-            if self.mean.ndim > sample_idx.ndim and not self.time_last:
-                    std = self.std[...,sample_idx] + self.eps # T*batch*n
-                    mean = self.mean[...,sample_idx]
-        # x is in shape of batch*(spatial discretization size) or T*batch*(spatial discretization size)
-        x = (x * std) + mean
-        return x
-
-    def to(self, device):
-        if torch.is_tensor(self.mean):
-            self.mean = self.mean.to(device)
-            self.std = self.std.to(device)
-        else:
-            self.mean = torch.from_numpy(self.mean).to(device)
-            self.std = torch.from_numpy(self.std).to(device)
-        return self
-
-    def cuda(self):
-        self.mean = self.mean.cuda()
-        self.std = self.std.cuda()
-
-    def cpu(self):
-        self.mean = self.mean.cpu()
-        self.std = self.std.cpu()
-
 class DistributedSignalHandler:
     def __init__(self, sig=signal.SIGTERM):
         self.sig = sig
@@ -255,18 +184,38 @@ class DistributedSignalHandler:
         self.released = True
         return True
 
-def activation_selection(choice):
-    if choice in ['tanh', 'Tanh']:
-        return F.tanh
-    elif choice in ['relu', 'ReLU']:
-        return F.relu
-    elif choice in ['sigmoid', 'Sigmoid']:
-        return F.sigmoid
-    elif choice in ['celu', 'CeLU']:
-        return F.celu
-    elif choice in ['gelu', 'GeLU']:
-        return F.gelu
-    elif choice in ['mish']:
-        return F.mish
+def format_complexTensor(weight):
+    """
+    Convert torch.cfloat to torch.float32
+    for torch DDP with NCCL communication
+  
+    """
+  
+    if weight.dtype == torch.complex64:
+        R = torch.view_as_real(weight)
     else:
-        raise ValueError('Unknown activation function')
+        R  = weight
+    return R
+
+def deformat_complexTensor(weight):  
+    """
+    Convert torch.float32 to torch.cfloat
+    for computation
+  
+    """
+
+    if weight.dtype != torch.complex64:
+        R = torch.view_as_complex(weight)
+    else:
+        R  = weight
+    return R
+
+def print_rank0(message):
+    """
+    If distributed training is initiliazed, print only on rank 0
+    """
+    if dist.is_initialized():
+        if dist.get_rank() == 0:
+            print(message, flush=True)
+    else:
+        print(message, flush=True)

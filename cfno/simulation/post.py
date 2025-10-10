@@ -17,7 +17,7 @@ def computeMeanSpectrum(uValues, xGrid=None, zGrid=None, verbose=False):
     uValues = np.asarray(uValues)
     nT, nVar, *gridSizes = uValues.shape
     dim = len(gridSizes)
-    assert nVar == dim
+    # assert nVar == dim
     if verbose:
         print(f"Computing Mean Spectrum on u[{', '.join([str(n) for n in uValues.shape])}]")
 

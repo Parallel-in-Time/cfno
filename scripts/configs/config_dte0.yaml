@@ -6,7 +6,7 @@ sample:
 data:
   outType: update
   outScaling: 1
-  dataFile: dataset_dt1e0_update.h5
+  dataFile: dataset_256x64_Ra1e7_dt1e0_update.h5
   trainRatio: 0.8
   seed: null
   batchSize: 20
@@ -22,6 +22,18 @@ model:
   nLayers: 2
   forceFFT: false
   bias: false
+  scaling_layers: 4
+  use_prechannel_mlp: true
+  channel_mlp_expansion: 4
+  use_fno_skip_connection: false
+  fno_skip_type: soft-gating
+  use_postfnochannel_mlp: false
+  channel_mlp_skip_type: 'soft-gating'
+  get_subdomain_output: false             # set it to false during training
+  iXBeg: 5
+  iYBeg: 12
+  iXEnd: 30
+  iYEnd: 60
 
 optim:
   name: adam
@@ -29,13 +41,12 @@ optim:
   weight_decay: 1.0e-5
 
 lr_scheduler:
-  scheduler: StepLR
-  step_size: 100.0
-  gamma: 0.98
+  scheduler: CosAnnealingLR
+  T_max: 50000
 
 train:
-  trainDir: training_dt1e0_update
-  nEpochs: 8000
+  trainDir: run24_dt1e0_update
+  nEpochs: 11500
   checkpoint: model.pt
   lossesFile: losses.txt
   saveEvery: 100

@@ -13,7 +13,7 @@ sample:
 data:
   outType: update
   outScaling: 1000
-  dataFile: dataset_dt1e-3_update.h5
+  dataFile: dataset_256x64_Ra1e7_dt1e-3_update.h5
   trainRatio: 0.8
   seed: null
   batchSize: 20
@@ -29,12 +29,19 @@ model:
   nLayers: 2
   forceFFT: true
   bias: false
+  scaling_layers: 4
   use_prechannel_mlp: true
   channel_mlp_expansion: 4
   use_fno_skip_connection: false
   fno_skip_type: soft-gating
   use_postfnochannel_mlp: false
   channel_mlp_skip_type: 'soft-gating'
+  get_subdomain_output: false             # set it to false during training
+  iXBeg: 5
+  iYBeg: 12
+  iXEnd: 30
+  iYEnd: 60
+
 
 optim:
   name: adam
@@ -43,11 +50,11 @@ optim:
 
 lr_scheduler:
   scheduler: CosAnnealingLR
-  T_max: 10000
+  T_max: 50000
 
 train:
-  trainDir: training_dt1e-3_update_fft
-  nEpochs: 10000
+  trainDir: run24_dt1e_3_update
+  nEpochs: 11500
   checkpoint: model.pt
   lossesFile: losses.txt
   saveEvery: 100

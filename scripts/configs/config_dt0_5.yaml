@@ -1,17 +1,24 @@
+simu:
+  dataDir: simuData
+  tInit: 100
+  nSimu: 10
+  dtData: 0.5
+  tEnd: 100
+
 sample:
   inSize: 1
-  outStep: 10
-  inStep: 500
+  outStep: 1
+  inStep: 1
 
 data:
   outType: update
-  outScaling: 100
-  dataFile: dataset_256x64_Ra1e7_dt1e-2_update.h5
+  dataFile: dataset_96x64_Ra5e6_dt0_5_update.h5
   trainRatio: 0.8
   seed: null
   batchSize: 20
   xStep: 1
   yStep: 1
+  
 
 model:
   da: 4
@@ -20,7 +27,7 @@ model:
   kX: 12
   kY: 12
   nLayers: 2
-  forceFFT: false
+  forceFFT: true
   bias: false
   scaling_layers: 4
   use_prechannel_mlp: true
@@ -29,24 +36,26 @@ model:
   fno_skip_type: soft-gating
   use_postfnochannel_mlp: false
   channel_mlp_skip_type: 'soft-gating'
-  get_subdomain_output: false             # set it to false during training
-  iXBeg: 5
-  iYBeg: 12
-  iXEnd: 30
-  iYEnd: 60
+  use_dse: false
+  get_subdomain_output: False              # set to true only for inference
+  iXBeg: 0
+  iYBeg: 0
+  iXEnd: 96
+  iYEnd: 64
 
 optim:
   name: adam
-  lr: 0.0001
+  lr: 1.0e-4
   weight_decay: 1.0e-5
 
 lr_scheduler:
   scheduler: CosAnnealingLR
   T_max: 50000
 
+
 train:
-  trainDir: run24_dt1e_2_update
-  nEpochs: 11500
+  trainDir: run24_straat_dt0_5_update
+  nEpochs: 14200
   checkpoint: model.pt
   lossesFile: losses.txt
   saveEvery: 100
@@ -57,4 +66,4 @@ train:
 eval:
   iSimu: 8
   imgExt: png
-  evalDir: evalDir
+  evalDir: eval_paper
