@@ -22,7 +22,7 @@ dataFile = "datasets/dataset_512x128_Ra1e7_dt1e-3_update.h5"
 modelFile = "models/model_run24_dt1e-3.pt"
 
 iSample = 10        # index of the sample used for evaluation
-itpOrder = 9        # interpolation order : odd number of np.inf (Fourier)
+itpOrder = 5        # interpolation order : odd number of np.inf (Fourier)
 injection = True    # use injection for x restriction (if not, use Fourier)
 iV = 2              # index of variable to show on contour plots
 
@@ -71,17 +71,31 @@ uPredCoarse = model(u0Coarse)
 if itpOrder == np.inf:
     uPred2 = np.fft.irfft(np.fft.rfft(uPredCoarse, axis=1), n=nX, axis=1)*2
     uPred2 = (P @ uPred2.reshape(-1, nZ//2).T).T.reshape(nVar, nX, nZ)
+
+    u0Fine = np.fft.irfft(np.fft.rfft(u0Coarse, axis=1), n=nX, axis=1)*2
+    u0Fine = (P @ u0Fine.reshape(-1, nZ//2).T).T.reshape(nVar, nX, nZ)
+
 else:
     RectilinearGrid.VERBOSE = False
     grid = RectilinearGrid(
         itpOrder,
         xG=[xGridCoarse, yGridCoarse], xF=[xGrid, yGrid],
         boundary=["PER", "WALL"], xL=[0, 0], xR=[4, 1])
+
     uPred2 = np.empty_like(uPred)
     uPred2[0] = grid.interpolate(uPredCoarse[0], lVal=0, rVal=0)
     uPred2[1] = grid.interpolate(uPredCoarse[1], lVal=0, rVal=0)
     uPred2[2] = grid.interpolate(uPredCoarse[2], lVal=1, rVal=0)
     uPred2[3] = grid.interpolate(uPredCoarse[3], lVal=0, rVal=0)
+
+    u0Fine = np.empty_like(uPred)
+    u0Fine[0] = grid.interpolate(u0Coarse[0], lVal=0, rVal=0)
+    u0Fine[1] = grid.interpolate(u0Coarse[1], lVal=0, rVal=0)
+    u0Fine[2] = grid.interpolate(u0Coarse[2], lVal=1, rVal=0)
+    u0Fine[3] = grid.interpolate(u0Coarse[3], lVal=0, rVal=0)
+
+# -- evaluation of interpolated coarse input
+uPred3 = model(u0Fine)
 
 def norm(x):
     return np.linalg.norm(x, axis=(-2, -1))
@@ -96,7 +110,8 @@ errors = pd.DataFrame(
     data={
         "model on fine": computeError(uPred, uRef),
         "model on coarse": computeError(uPredCoarse, uRefCoarse),
-        f"model on coarse + inter. [{itpOrder}]": computeError(uPred2, uRef)
+        f"model on coarse + inter. [{itpOrder}]": computeError(uPred2, uRef),
+        f"model on inter. coarse [{itpOrder}]": computeError(uPred3, uRef)
         },
     index=["u_x", "u_z", "b", "p"]).T
 print(errors.to_markdown())
@@ -124,6 +139,12 @@ contourPlot(
 
 contourPlot(
     uPred2[iV].T-u0[iV].T, xGrid, yGrid,
-    title=f"Model update on coarse input + interpolation [{itpOrder}]",
+    title=f"Model update on coarse input + inter. [{itpOrder}]",
     refField=uRef[iV].T-u0[iV].T, refTitle="Dedalus update reference",
     saveFig="update-coarse-inter.png", refScales=True, closeFig=True)
+
+contourPlot(
+    uPred3[iV].T-u0[iV].T, xGrid, yGrid,
+    title=f"Model update on inter. coarse input [{itpOrder}]",
+    refField=uRef[iV].T-u0[iV].T, refTitle="Dedalus update reference",
+    saveFig="update-inter-coarse.png", refScales=True, closeFig=True)
