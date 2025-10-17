@@ -22,7 +22,7 @@ dataFile = "datasets/dataset_512x128_Ra1e7_dt1e-3_update.h5"
 modelFile = "models/model_run24_dt1e-3.pt"
 
 iSample = 10        # index of the sample used for evaluation
-itpOrder = 5        # interpolation order : odd number of np.inf (Fourier)
+itpOrder = np.inf   # interpolation order : odd number of np.inf (Fourier)
 injection = True    # use injection for x restriction (if not, use Fourier)
 iV = 2              # index of variable to show on contour plots
 
@@ -30,8 +30,8 @@ iV = 2              # index of variable to show on contour plots
 dataset = HDF5Dataset(dataFile)
 model = FourierNeuralOp(checkpoint=modelFile)
 
-u0 = dataset.inputs[iSample]
-uRef = dataset.outputs[iSample]
+u0 = dataset.inputs[:]
+uRef = dataset.outputs[:]
 
 assert dataset.outType == "update"
 uRef /= dataset.outScaling
@@ -52,28 +52,28 @@ R = LagrangeApproximation(
     yGrid, weightComputation="STABLE").getInterpolationMatrix(yGridCoarse)
 P = LagrangeApproximation(
     yGridCoarse, weightComputation="STABLE").getInterpolationMatrix(yGrid)
-nVar, nX, nZ = u0.shape
+nSamples, nVar, nX, nZ = u0.shape
 
 # -- restriction to coarse grid
 if injection:
-    u0Coarse = u0[:, ::2]
-    uRefCoarse = uRef[:, ::2]
+    u0Coarse = u0[:, :, ::2]
+    uRefCoarse = uRef[:, :, ::2]
 else:
-    u0Coarse = np.fft.irfft(np.fft.rfft(u0, axis=1), n=nX//2, axis=1)/2
-    uRefCoarse = np.fft.irfft(np.fft.rfft(uRef, axis=1), n=nX//2, axis=1)/2
-u0Coarse = (R @ u0Coarse.reshape(-1, nZ).T).T.reshape(nVar, nX//2, nZ//2)
-uRefCoarse = (R @ uRefCoarse.reshape(-1, nZ).T).T.reshape(nVar, nX//2, nZ//2)
+    u0Coarse = np.fft.irfft(np.fft.rfft(u0, axis=2), n=nX//2, axis=2)/2
+    uRefCoarse = np.fft.irfft(np.fft.rfft(uRef, axis=2), n=nX//2, axis=2)/2
+u0Coarse = (R @ u0Coarse.reshape(-1, nZ).T).T.reshape(nSamples, nVar, nX//2, nZ//2)
+uRefCoarse = (R @ uRefCoarse.reshape(-1, nZ).T).T.reshape(nSamples, nVar, nX//2, nZ//2)
 
 # -- evaluation of coarse input
 uPredCoarse = model(u0Coarse)
 
 # -- interpolation of coarse output
 if itpOrder == np.inf:
-    uPred2 = np.fft.irfft(np.fft.rfft(uPredCoarse, axis=1), n=nX, axis=1)*2
-    uPred2 = (P @ uPred2.reshape(-1, nZ//2).T).T.reshape(nVar, nX, nZ)
+    uPred2 = np.fft.irfft(np.fft.rfft(uPredCoarse, axis=2), n=nX, axis=2)*2
+    uPred2 = (P @ uPred2.reshape(-1, nZ//2).T).T.reshape(nSamples, nVar, nX, nZ)
 
-    u0Fine = np.fft.irfft(np.fft.rfft(u0Coarse, axis=1), n=nX, axis=1)*2
-    u0Fine = (P @ u0Fine.reshape(-1, nZ//2).T).T.reshape(nVar, nX, nZ)
+    u0Fine = np.fft.irfft(np.fft.rfft(u0Coarse, axis=2), n=nX, axis=2)*2
+    u0Fine = (P @ u0Fine.reshape(-1, nZ//2).T).T.reshape(nSamples, nVar, nX, nZ)
 
 else:
     RectilinearGrid.VERBOSE = False
@@ -83,16 +83,17 @@ else:
         boundary=["PER", "WALL"], xL=[0, 0], xR=[4, 1])
 
     uPred2 = np.empty_like(uPred)
-    uPred2[0] = grid.interpolate(uPredCoarse[0], lVal=0, rVal=0)
-    uPred2[1] = grid.interpolate(uPredCoarse[1], lVal=0, rVal=0)
-    uPred2[2] = grid.interpolate(uPredCoarse[2], lVal=1, rVal=0)
-    uPred2[3] = grid.interpolate(uPredCoarse[3], lVal=0, rVal=0)
+    for i in range(nSamples):
+        uPred2[i, 0] = grid.interpolate(uPredCoarse[i, 0], lVal=0, rVal=0)
+        uPred2[i, 1] = grid.interpolate(uPredCoarse[i, 1], lVal=0, rVal=0)
+        uPred2[i, 2] = grid.interpolate(uPredCoarse[i, 2], lVal=1, rVal=0)
+        uPred2[i, 3] = grid.interpolate(uPredCoarse[i, 3], lVal=0, rVal=0)
 
-    u0Fine = np.empty_like(uPred)
-    u0Fine[0] = grid.interpolate(u0Coarse[0], lVal=0, rVal=0)
-    u0Fine[1] = grid.interpolate(u0Coarse[1], lVal=0, rVal=0)
-    u0Fine[2] = grid.interpolate(u0Coarse[2], lVal=1, rVal=0)
-    u0Fine[3] = grid.interpolate(u0Coarse[3], lVal=0, rVal=0)
+        u0Fine = np.empty_like(uPred)
+        u0Fine[i, 0] = grid.interpolate(u0Coarse[i, 0], lVal=0, rVal=0)
+        u0Fine[i, 1] = grid.interpolate(u0Coarse[i, 1], lVal=0, rVal=0)
+        u0Fine[i, 2] = grid.interpolate(u0Coarse[i, 2], lVal=1, rVal=0)
+        u0Fine[i, 3] = grid.interpolate(u0Coarse[i, 3], lVal=0, rVal=0)
 
 # -- evaluation of interpolated coarse input
 uPred3 = model(u0Fine)
@@ -108,43 +109,45 @@ def computeError(uPred, uRef):
 
 errors = pd.DataFrame(
     data={
-        "model on fine": computeError(uPred, uRef),
-        "model on coarse": computeError(uPredCoarse, uRefCoarse),
-        f"model on coarse + inter. [{itpOrder}]": computeError(uPred2, uRef),
-        f"model on inter. coarse [{itpOrder}]": computeError(uPred3, uRef)
+        "model on fine": computeError(uPred, uRef).mean(axis=0),
+        "model on coarse": computeError(uPredCoarse, uRefCoarse).mean(axis=0),
+        f"model on coarse + inter. [{itpOrder}]": computeError(uPred2, uRef).mean(axis=0),
+        f"model on inter. coarse [{itpOrder}]": computeError(uPred3, uRef).mean(axis=0)
         },
     index=["u_x", "u_z", "b", "p"]).T
-print(errors.to_markdown())
 
-# Contour plot
-contourPlot(
-    u0[2].T, xGrid, yGrid,
-    title="Initial solution",
-    refField=uRef[2].T, refTitle="Dedalus solution reference",
-    saveFig="solution.png", closeFig=True)
+print(errors.to_markdown(tablefmt="latex", floatfmt=".3e"))
 
-contourPlot(
-    uPred[iV].T - u0[iV].T, xGrid, yGrid,
-    title="Model update on fine input",
-    refField=uRef[iV].T - u0[iV].T,
-    refTitle="Dedalus update reference",
-    saveFig="update-fine.png", refScales=True, closeFig=True)
+if False:
+    # Contour plot
+    contourPlot(
+        u0[2].T, xGrid, yGrid,
+        title="Initial solution",
+        refField=uRef[2].T, refTitle="Dedalus solution reference",
+        saveFig="solution.png", closeFig=True)
 
-contourPlot(
-    uPredCoarse[iV].T - u0Coarse[iV].T, xGridCoarse, yGridCoarse,
-    title="Model update using coarse initial field (coarse)",
-    refField=uRefCoarse[iV].T - u0Coarse[iV].T,
-    refTitle="Dedalus update reference (coarse)",
-    saveFig="update-coarse.png", refScales=True, closeFig=True)
+    contourPlot(
+        uPred[iV].T - u0[iV].T, xGrid, yGrid,
+        title="Model update on fine input",
+        refField=uRef[iV].T - u0[iV].T,
+        refTitle="Dedalus update reference",
+        saveFig="update-fine.png", refScales=True, closeFig=True)
 
-contourPlot(
-    uPred2[iV].T-u0[iV].T, xGrid, yGrid,
-    title=f"Model update on coarse input + inter. [{itpOrder}]",
-    refField=uRef[iV].T-u0[iV].T, refTitle="Dedalus update reference",
-    saveFig="update-coarse-inter.png", refScales=True, closeFig=True)
+    contourPlot(
+        uPredCoarse[iV].T - u0Coarse[iV].T, xGridCoarse, yGridCoarse,
+        title="Model update using coarse initial field (coarse)",
+        refField=uRefCoarse[iV].T - u0Coarse[iV].T,
+        refTitle="Dedalus update reference (coarse)",
+        saveFig="update-coarse.png", refScales=True, closeFig=True)
 
-contourPlot(
-    uPred3[iV].T-u0[iV].T, xGrid, yGrid,
-    title=f"Model update on inter. coarse input [{itpOrder}]",
-    refField=uRef[iV].T-u0[iV].T, refTitle="Dedalus update reference",
-    saveFig="update-inter-coarse.png", refScales=True, closeFig=True)
+    contourPlot(
+        uPred2[iV].T-u0[iV].T, xGrid, yGrid,
+        title=f"Model update on coarse input + inter. [{itpOrder}]",
+        refField=uRef[iV].T-u0[iV].T, refTitle="Dedalus update reference",
+        saveFig="update-coarse-inter.png", refScales=True, closeFig=True)
+
+    contourPlot(
+        uPred3[iV].T-u0[iV].T, xGrid, yGrid,
+        title=f"Model update on inter. coarse input [{itpOrder}]",
+        refField=uRef[iV].T-u0[iV].T, refTitle="Dedalus update reference",
+        saveFig="update-inter-coarse.png", refScales=True, closeFig=True)
