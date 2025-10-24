@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os
-import sys
 import argparse
 import numpy as np
 import pandas as pd
@@ -59,7 +58,7 @@ def contourPlot(field, refField,
                  error=False, refScales=False, time=None):
     
     
-    fig, axs = plt.subplots(2 if plot_refField else 1)
+    fig, axs = plt.subplots(2 if plot_refField else 1, constrained_layout=True)
     ax = axs[0] if plot_refField else axs
     scales =  (np.min(refField), np.max(refField))
 
@@ -76,23 +75,30 @@ def contourPlot(field, refField,
             im.cmap.set_under("white")
             im.cmap.set_over("white")
             im.set_clim(*scales)
-            fig.colorbar(im, cax=cax, ax=ax, ticks=np.linspace(*scales, 3))
+            yticks = np.linspace(*scales, 3)
+            cbar = fig.colorbar(im, cax=cax, ax=ax, ticks=yticks)
         else:
-            fig.colorbar(im, cax=cax, ax=ax, ticks=np.linspace(np.min(field), np.max(field), 3))
+            yticks = np.linspace(np.min(field), np.max(field), 3)
+            cbar = fig.colorbar(im, cax=cax, ax=ax, ticks= yticks)
+        cbar.ax.set_yticklabels([str(round(i,2)) for i in yticks])
+        # cbar.ax.set_yticklabels(['0.0', '9e-4', '2e-3'])
 
     timeSuffix = f' at t = {np.round(time,3)}s' if time is not None else ''
   
-    im0 = ax.pcolormesh(x, y, field)
+    im0 = ax.pcolormesh(x, y, field, rasterized=True)
     setColorbar(field, im0,ax, scales, refScales)
-    ax.set_title(f'{title}{timeSuffix}', fontsize=14)
+    if title is not None:
+        ax.set_title(f'{title}{timeSuffix}', fontsize=14)
     setup(ax)
     if plot_refField:
-        im2 = axs[1].pcolormesh(x, y, refField)
+        im2 = axs[1].pcolormesh(x, y, refField, rasterized=True)
         setColorbar(refField, im2, axs[1], scales, refScales)
-        axs[1].set_title(f'{refTitle}{timeSuffix}',fontsize=14)
+        if refTitle is not None:
+            axs[1].set_title(f'{refTitle}{timeSuffix}',fontsize=14)
         setup(axs[1])
     
-    fig.tight_layout()
+    # fig.tight_layout()
+    plt.subplots_adjust(wspace=0, hspace=0)
     if saveFig:
         plt.savefig(saveFig, bbox_inches='tight', pad_inches=0.05)
     if closeFig:
@@ -103,8 +109,8 @@ def norm(x):
 
 def computeError(uPred, uRef):
     diff = norm(uPred-uRef)
-    nPred = norm(uPred)
-    return diff/nPred
+    nRef = norm(uRef)
+    return diff/nRef
 
 
 HEADER = """
@@ -203,22 +209,13 @@ for iDec in range(len(decomps)):
     avg_inferenceTime = np.round(sum(time)/len(time),3)
     print(" -- done !")
     print(f'-- slices: {slices}')
-    print(f"-- Avg inference time on {device_name} : {avg_inferenceTime}")
-    print(f"-- Total inference time on {device_name} for {tSteps} : {inferenceTime}")
-    print(f"-- Inference after (tSteps x dt)(s): {tSteps} x {model_dt}")
+    print(f"-- Avg inference time on {device_name} (s) : {avg_inferenceTime}")
+    print(f"-- Total inference time on {device_name} for {tSteps} iterations with dt of {model_dt} (s) : {inferenceTime}")
     
 
     # -------------------------------------------------------------------------
     # -- Relative error over time
     # -------------------------------------------------------------------------
-    def norm(x):
-        return np.linalg.norm(x, axis=(-2, -1))
-
-    def computeError(uPred, uRef):
-        diff = norm(uPred-uRef)
-        nPred = norm(uPred)
-        return diff/nPred
-
     err = computeError(uPred, uRef)
     errId = computeError(u0, uRef)
 
@@ -248,7 +245,8 @@ for iDec in range(len(decomps)):
     xGrid = dataset.infos["xGrid"][:]
     yGrid = dataset.infos["yGrid"][:]
 
-    uI = u0[0, 2].T
+    # evaluating at t=100 
+    uI = u0[0, 2].T  
     uM = uPred[0, 2].T
     uR = uRef[0, 2].T
 
@@ -256,7 +254,7 @@ for iDec in range(len(decomps)):
     contourPlot(
         field=uM, 
         x=xGrid, y=yGrid,
-        title="Model(output): "+subtitle,
+        title=None,
         refField=uR,
         refTitle=None,
         plot_refField=False,
@@ -269,7 +267,7 @@ for iDec in range(len(decomps)):
         field=uM-uI,
         refField=uR-uI,
         x=xGrid, y=yGrid,
-        title="Model(update): "+subtitle,
+        title=None,
         refTitle=None,
         plot_refField=False,
         saveFig=f"{evalDir}/{contourPlotUpdate}", 
@@ -282,7 +280,7 @@ for iDec in range(len(decomps)):
         refField=None, 
         plot_refField=False,
         x=xGrid, y=yGrid,
-        title="Error: |Model - Dedalus|, Grid: "+subtitle,
+        title=None,
         saveFig=f"{evalDir}/{contourPlotErr}",
         closeFig=True)
 
@@ -293,7 +291,7 @@ for iDec in range(len(decomps)):
             refField=None, 
             plot_refField=False,
             x=xGrid, y=yGrid,
-            title="Reference: Dedalus",
+            title=None,
             saveFig=f"{evalDir}/{contourPlotSolRef}",
             closeFig=True)
         
@@ -303,7 +301,7 @@ for iDec in range(len(decomps)):
             refField=None, 
             plot_refField=False,
             x=xGrid, y=yGrid,
-            title="Reference: Dedalus",
+            title=None,
             saveFig=f"{evalDir}/{contourPlotUpdateRef}",
             closeFig=True)
 
