@@ -1,0 +1,69 @@
+simu:
+  dataDir: simuData
+  tInit: 100
+  nSimu: 10
+  dtData: 0.1
+  tEnd: 100
+
+sample:
+  inSize: 1
+  outStep: 10
+  inStep: 5
+
+data:
+  outType: solution
+  outScaling: 1
+  dataFile: dataset_dt1e-3.h5
+  trainRatio: 0.8
+  seed: null
+  batchSize: 20
+  xStep: 1
+  yStep: 1
+
+model:
+  da: 4
+  du: 4
+  dv: 16
+  kX: 12
+  kY: 12
+  nLayers: 2
+  forceFFT: true
+  bias: false
+
+loss:
+  name: RBEqLoss
+  grids: démerde toi
+  L: [4, 1]
+  dt: 1.e-3
+  Rayleigh: 1.0e+7
+  Prantl: 1.0
+  
+optim:
+  name: adam
+  lr: 0.0001
+  weight_decay: 1.0e-5
+
+lr_scheduler:
+  scheduler: StepLR
+  step_size: 100.0
+  gamma: 0.98
+
+parallel_strategy:
+  ddp: False      # Distributed Data Parallel
+  gpus_per_node: 4
+
+train:
+  trainDir: training
+  nEpochs: 10
+  checkpoint: model.pt
+  lossesFile: losses.txt
+  saveEvery: 100
+  savePermanent: false
+  noTensorboard: false
+  logPrint: false
+  physicsLossesFile: physloss.txt
+
+eval:
+  iSimu: 8
+  imgExt: png
+  evalDir: evalDir

@@ -1,3 +1,4 @@
+import os
 import h5py
 import glob
 import random
@@ -6,16 +7,76 @@ import scipy.optimize as sco
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-def computeMeanSpectrum(uValues):
-    """ uValues[nT, nVar >= 2, nX, nY] """
+def computeMeanSpectrum(uValues, xGrid=None, zGrid=None, verbose=False):
+    """ uValues[nT, nVar, nX, (nY,) nZ] """
+    uValues = np.asarray(uValues)
+    nT, nVar, *gridSizes = uValues.shape
+    dim = len(gridSizes)
+    # assert nVar == dim
+    if verbose:
+        print(f"Computing Mean Spectrum on u[{', '.join([str(n) for n in uValues.shape])}]")
+
     energy_spectrum = []
-    for i in range(2):
-        u = uValues[:, i]                           # (nT, Nx, Nz)
-        spectrum = np.fft.rfft(u, axis=-2)          # over Nx -->  #(nT, k, Nz)
-        spectrum *= np.conj(spectrum)               # (nT, k, Nz)
-        spectrum /= spectrum.shape[-2]              # normalize with Nx --> (nT, k, Nz)
-        spectrum = np.mean(spectrum.real, axis=-1)  # mean over Nz --> (nT,k)
+    if dim == 2:
+
+        for i in range(2):
+            u = uValues[:, i]                           # (nT, Nx, Nz)
+            spectrum = np.fft.rfft(u, axis=-2)          # over Nx -->  #(nT, k, Nz)
+            spectrum *= np.conj(spectrum)               # (nT, k, Nz)
+            spectrum /= spectrum.shape[-2]              # normalize with Nx --> (nT, k, Nz)
+            spectrum = np.mean(spectrum.real, axis=-1)  # mean over Nz --> (nT,k)
+            energy_spectrum.append(spectrum)
+
+    elif dim == 3:
+
+        # Check for a cube with uniform dimensions
+        nX, nY, nZ = gridSizes
+        assert nX == nY
+        size = nX // 2
+
+        # Interpolate in z direction
+        assert xGrid is not None and zGrid is not None
+        if verbose: print(" -- interpolating from zGrid to a uniform mesh ...")
+        from qmat.lagrange import LagrangeApproximation
+        P = LagrangeApproximation(zGrid).getInterpolationMatrix(xGrid)
+        np.einsum('ij,tvxyj->tvxyi', P, uValues, out=uValues)
+
+        # Compute 3D mode shells
+        k1D = np.fft.fftfreq(nX, 1/nX)**2
+        kMod = k1D[:, None, None] + k1D[None, :, None] + k1D[None, None, :]
+        kMod **= 0.5
+        idx = kMod.copy()
+        idx *= (kMod < size)
+        idx -= (kMod >= size)
+
+        idxList = range(int(idx.max()) + 1)
+        flatIdx = idx.ravel()
+
+        # Fourier transform and square of Im,Re
+        if verbose: print(" -- 3D FFT on u, v & w ...")
+        uHat = np.fft.fftn(uValues, axes=(-3, -2, -1))
+
+        if verbose: print(" -- square of Im,Re ...")
+        ffts = [uHat[:, i] for i in range(nVar)]
+        reParts = [uF.reshape((nT, nX*nY*nZ)).real**2 for uF in ffts]
+        imParts = [uF.reshape((nT, nX*nY*nZ)).imag**2 for uF in ffts]
+
+        # Spectrum computation
+        if verbose: print(" -- computing spectrum ...")
+        spectrum = np.zeros((nT, size))
+        for i in idxList:
+            if verbose: print(f" -- k{i+1}/{len(idxList)}")
+            kIdx = np.argwhere(flatIdx == i)
+            tmp = np.empty((nT, *kIdx.shape))
+            for re, im in zip(reParts, imParts):
+                np.copyto(tmp, re[:, kIdx])
+                tmp += im[:, kIdx]
+                spectrum[:, i] += tmp.sum(axis=(1, 2))
+        spectrum /= 2*(nX*nY*nZ)**2
+
         energy_spectrum.append(spectrum)
+        if verbose: print(" -- done !")
+
     return energy_spectrum
 
 
@@ -44,10 +105,18 @@ class OutputFiles():
              print(f'x-grid: {self.x.shape}')
              print(f'z-grid: {self.z.shape}')
              print(f'timesteps: {np.array(vData0[:,0,0,0]).shape}')
+             self.dim = 2
         else:
             self.x = np.array(vData0.dims[2]["x"])
-            self.z = np.array(vData0.dims[3]["z"])
-            self.y = self.z
+            self.dim = dim = len(vData0.dims)-2
+            if dim == 2:
+                self.z = np.array(vData0.dims[3]["z"])
+                self.y = self.z
+            elif dim == 3:
+                self.y = np.array(vData0.dims[3]["y"])
+                self.z = np.array(vData0.dims[4]["z"])
+            else:
+                raise NotImplementedError(f"{dim = }")
 
 
     def file(self, iFile:int):
@@ -73,16 +142,26 @@ class OutputFiles():
         return self.x.size
 
     @property
+    def nY(self):
+        return self.y.size
+
+    @property
     def nZ(self):
         return self.z.size
 
     @property
     def shape(self):
-        return (4, self.nX, self.nZ)
+        if self.dim == 2:
+            return (4, self.nX, self.nZ)
+        elif self.dim == 3:
+            return (4, self.nX, self.nY, self.nZ)
 
     @property
     def k(self):
-        return getModes(self.x)
+        if self.dim == 2:
+            return getModes(self.x)
+        elif self.dim == 3:
+            return getModes(self.x), getModes(self.y)
 
     def vData(self, iFile:int):
         return self.file(iFile)['tasks']['velocity']
@@ -109,26 +188,47 @@ class OutputFiles():
         offset = np.cumsum(self.nFields)
         iFile = np.argmax(iField < offset)
         iTime = iField - sum(offset[:iFile])
-        # for obj in gc.get_objects():   # Browse through ALL objects
-        #     if isinstance(obj, h5py.File):   # Just HDF5 files
-        #         try:
-        #             obj.close()
-        #             print('Closed Files')
-        #         except:
-        #             pass # Was already closed
-        # print(f'Files {self.files}')
         data = self.file(iFile)["tasks"]
-        vx = data["velocity"][iTime, 0]
-        vz = data["velocity"][iTime, 1]
-        b = data["buoyancy"][iTime]
-        p = data["pressure"][iTime]
-        return np.array([vx, vz, b, p])
+        fields = [
+            data["velocity"][iTime, 0],
+            data["velocity"][iTime, 1],
+            ]
+        if self.dim == 3:
+            fields += [data["velocity"][iTime, 2]]
+        fields += [
+            data["buoyancy"][iTime],
+            data["pressure"][iTime]
+            ]
+        return np.array(fields)
 
     def nTimes(self, iFile:int):
         return self.times(iFile).size
 
-    def getMeanProfiles(self, iFile:int, buoyancy=False, pressure=False):
-        """_summary_
+    def readField(self, iFile, name, iBeg=0, iEnd=None, step=1, verbose=False):
+        if verbose: print(f"Reading {name} from hdf5 file {iFile}")
+        if name == "velocity":
+            fData = self.vData(iFile)
+        elif name == "buoyancy":
+            fData = self.bData(iFile)
+        elif name == "pressure":
+            fData = self.pData(iFile)
+        else:
+            raise ValueError(f"cannot read {name} from file")
+        shape = fData.shape
+        if iEnd is None: iEnd = shape[0]
+        rData = range(iBeg, iEnd, step)
+        data = np.zeros((len(rData), *shape[1:]))
+        for i, iData in enumerate(rData):
+            if verbose: print(f" -- field {i+1}/{len(rData)}")
+            data[i] = fData[iData]
+        if verbose: print(" -- done !")
+        return data
+
+
+    def getMeanProfiles(self, iFile:int,
+                        buoyancy=False, bRMS=False, pressure=False,
+                        iBeg=0, iEnd=None, step=1, verbose=False):
+        """
 
         Args:
             iFile (int): file index
@@ -139,20 +239,55 @@ class OutputFiles():
            profilr (list): mean profiles of velocity, buoyancy and pressure
         """
         profile = []
-        for i in range(2):                              # x and z components (time_index, 2, Nx, Nz)
-            u = self.vData(iFile)[:, i]                 # (time_index, Nx, Nz)
-            mean = np.mean(abs(u), axis=1)              # avg over Nx ---> (time_index, Nz)
-            profile.append(mean)                        # (2, time_index, Nz)
+        axes = 1 if self.dim==2 else (1, 2)
+        velocity = self.readField(0, "velocity", iBeg, iEnd, step, verbose)
+
+        # Horizontal mean velocity amplitude
+        uH = velocity[:, :self.dim-1]
+        meanH = ((uH**2).sum(axis=1)**0.5).mean(axis=axes)
+        profile.append(meanH)
+
+        # Vertical mean velocity
+        uV = velocity[:, -1]
+        meanV = np.mean(abs(uV), axis=axes)
+        profile.append(meanV)
+
+        if bRMS or buoyancy:
+            b = self.readField(0, "buoyancy", iBeg, iEnd, step, verbose)
         if buoyancy:
-            b = self.bData(iFile)                       #(time_index, Nx, Nz)
-            profile.append(np.mean(b, axis=1))          # (time_index, Nz)
+            profile.append(np.mean(b, axis=axes))
+        if bRMS:
+            diff = b - b.mean(axis=axes)[(slice(None), *[None]*(self.dim-1), slice(None))]
+            rms = (diff**2).mean(axis=axes)**0.5
+            profile.append(rms)
         if pressure:
-            p = self.pData(iFile)                       #(time_index, Nx, Nz)
-            profile.append(np.mean(p, axis=1))          # (time_index, Nz)
+            p = self.readField(0, "pressure", iBeg, iEnd, step, verbose)
+            profile.append(np.mean(p, axis=axes))          # (time_index, Nz)
         return profile
 
 
-    def getMeanSpectrum(self, iFile:int):
+    def getLayersQuantities(self, iFile, iBeg=0, iEnd=None, step=1, verbose=False):
+        uMean, _, bRMS = self.getMeanProfiles(
+            iFile, bRMS=True, iBeg=iBeg, iEnd=iEnd, step=step, verbose=verbose)
+        uMean = uMean.mean(axis=0)
+        bRMS = bRMS.mean(axis=0)
+
+        from qmat.lagrange import LagrangeApproximation
+        z = self.z
+        nFine = int(1e4)
+        zFine = np.linspace(0, 1, num=nFine)
+        P = LagrangeApproximation(z).getInterpolationMatrix(zFine)
+
+        uMeanFine = P @ uMean
+        bRMSFine = P @ bRMS
+
+        deltaU = zFine[np.argmax(uMeanFine[:nFine//2])]
+        deltaT = zFine[np.argmax(bRMSFine[:nFine//2])]
+
+        return zFine, uMeanFine, bRMSFine, deltaU, deltaT
+
+
+    def getMeanSpectrum(self, iFile:int, iBeg=0, iEnd=None, step=1, verbose=False):
         """
         Function to get mean spectrum
         Args:
@@ -161,7 +296,8 @@ class OutputFiles():
         Returns:
             energy_spectrum (list): mean energy spectrum
         """
-        return computeMeanSpectrum(self.vData(iFile))
+        velocity = self.readField(iFile, "velocity", iBeg, iEnd, step, verbose)
+        return computeMeanSpectrum(velocity, verbose=verbose, xGrid=self.x, zGrid=self.z)
 
 
     def getFullMeanSpectrum(self, iBeg:int, iEnd=None):
@@ -186,6 +322,40 @@ class OutputFiles():
         sMean = np.mean(sMean, axis=0)                      # mean over x and z ---> (k)
         np.savetxt(f'{self.folder}/spectrum.txt', np.vstack((sMean, self.k)))
         return sMean, self.k
+
+    def toVTR(self, idxFormat="{:06d}"):
+        """
+        Convert all 3D fields from the OutputFiles object into a list
+        of VTR files, that can be read later with Paraview or equivalent to
+        make videos.
+
+        Parameters
+        ----------
+        idxFormat : str, optional
+            Formating string for the index suffix of the VTR file.
+            The default is "{:06d}".
+
+        Example
+        -------
+        >>> # Suppose the FieldsIO object is already writen into outputs.pysdc
+        >>> import os
+        >>> from pySDC.utils.fieldsIO import Rectilinear
+        >>> os.makedirs("vtrFiles")  # to store all VTR files into a subfolder
+        >>> Rectilinear.fromFile("outputs.pysdc").toVTR(
+        >>>    baseName="vtrFiles/field", varNames=["u", "v", "w", "T", "p"])
+        """
+        assert self.dim == 3, "can only be used with 3D fields"
+        from pySDC.helpers.vtkIO import writeToVTR
+
+        baseName = f"{self.folder}/vtrFiles"
+        os.makedirs(baseName, exist_ok=True)
+        baseName += "/out"
+        template = f"{baseName}_{idxFormat}"
+        coords = [self.x, self.y, self.z]
+        varNames = ["velocity_x", "velocity_y", "velocity_z", "buoyancy", "pressure"]
+        for i in range(np.cumsum(self.nFields)[0]):
+            u = self.fields(i)
+            writeToVTR(template.format(i), u, coords, varNames)
 
 
 def extractU(outFields, idx=-1):
@@ -284,10 +454,13 @@ def generateChunkPairs(folder:str, N:int, M:int,
 
 def contourPlot(field, x, y, time=None,
                 title=None, refField=None, refTitle=None, saveFig=False,
-                closeFig=True, error=False):
+                closeFig=True, error=False, refScales=False):
 
     fig, axs = plt.subplots(1 if refField is None else 2)
     ax = axs if refField is None else axs[0]
+
+    if refField is not None and refScales:
+        scales = (np.min(refField), np.max(refField))
 
     def setup(ax):
         ax.set_aspect('equal', adjustable='box')
@@ -297,7 +470,13 @@ def contourPlot(field, x, y, time=None,
     def setColorbar(field, im, ax, error=False):
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="5%", pad=0.05)
-        fig.colorbar(im, cax=cax, ax=ax, ticks=np.linspace(np.min(field), np.max(field), 3))
+        if refScales:
+            im.cmap.set_under("white")
+            im.cmap.set_over("white")
+            im.set_clim(*scales)
+            fig.colorbar(im, cax=cax, ax=ax, ticks=np.linspace(*scales, 3))
+        else:
+            fig.colorbar(im, cax=cax, ax=ax, ticks=np.linspace(np.min(field), np.max(field), 3))
 
     im = ax.pcolormesh(x, y, field)
     setColorbar(field, im, ax, error)

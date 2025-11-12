@@ -6,119 +6,33 @@ import h5py
 import torch
 import glob
 import numpy as np
-from cfno.utils import UnitGaussianNormalizer
-
 from torch.utils.data import Dataset, DataLoader, random_split, Subset, DistributedSampler
 from cfno.simulation.post import OutputFiles
 from cfno.communication import get_rank, get_world_size
 
-class FNOData():
-    """
-    Processing Dedalus data
-    """
-    def __init__(self,
-                 nx:int,
-                 ny:int,
-                 dt:float,
-                 dim:str,
-                 start_time:float,
-                 stop_time:float,
-                 xStep:int=1,
-                 yStep:int=1,
-                 tStep:int=1,
-                 timestep:int=1,
-                 T_in:int=1,
-                 T:int=1,
-                 **kwargs
-    ):
-        """
-
-        Args:
-            nx (int): size of nx
-            ny (int): size of ny
-            dt (float): delta timestep 
-            dim (str): FNO2D or FNO3D strategy
-            start_time (float): start time
-            stop_time (float): stop time
-            xStep (int): slicing for x. Defaults to 1.
-            yStep (int): slicing for y. Defaults to 1.
-            tStep (int): time slice. Defaults to 1.
-            timestep (int): time interval. Defaults to 1.
-            T_in (int):number of input timesteps. Defaults to 1.
-            T (int): number of output timesteps. Defaults to 1.
-        """
-        super().__init__()
-        self.dim = dim
-        self.nx = nx
-        self.ny = ny
-        self.dt = dt
-        self.xStep = xStep
-        self.yStep = yStep
-        self.tStep = tStep
-        self.T_in = T_in
-        self.T = T
-        self.start_time = start_time
-        self.stop_time = stop_time
-        self.timestep = timestep
-        self.nx_state = 4*self.nx  # stacking [velx,velz,buoyancy,pressure]
-  
-    def get_concat_data(self, task:str, nsamples:int, reader, multistep:bool=True):
-        """
-        Data for FNO model
-
-        Args:
-            task (str): 'train', or 'val' or 'test
-            nsamples (int): number of simulation samples
-            reader: hdf5 file reader
-            multistep (bool): load multiple time index data. Defaults to True.
-
-        Returns:
-            inputs (torch.tensor): input for FNO
-            outputs (torch.tensor): output for FNO
-            
-        """
-      
-      
-        print(f'{task} data: {reader[task].shape}')
-        # [samples, nx_state, ny, time]
-        self.start_time_index = 0
-        self.stop_time_index = reader[task].shape[-1]
-     
-        inputs = torch.tensor(reader[task][:nsamples, ::self.xStep, ::self.yStep, \
-                                        self.start_time_index: self.start_time_index + (self.T_in*self.tStep): self.tStep], \
-                                        dtype=torch.float)
-        
-        outputs = torch.tensor(reader[task][:nsamples, ::self.xStep, ::self.yStep, \
-                                            self.start_time_index + (self.T_in*self.tStep): self.start_time_index + \
-                                            (self.T_in + self.T)*self.tStep: self.tStep],\
-                                            dtype=torch.float)
-        print(f"input data for {task}:{inputs.shape}")
-        print(f"output data for {task}: {outputs.shape}")
-        assert (self.nx_state == outputs.shape[-3])
-        assert (self.ny == outputs.shape[-2])
-        assert (self.T ==outputs.shape[-1])
-        
-        if self.dim == 'FNO3D':
-            # input_normalizer = UnitGaussianNormalizer(inputs)
-            # inputs = input_normalizer.encode(inputs)
-            # output_normalizer = UnitGaussianNormalizer(outputs)
-            # outputs = output_normalizer.encode(outputs)
-            
-            inputs = inputs.reshape(nsamples, self.nx_state, self.ny, 1, self.T_in).repeat([1,1,1,self.T,1])
-            print(f"Input data after reshaping for {task}:{inputs.shape}")
-        
-        print(f'Total {task} data: {inputs.shape[0]}')
-        return inputs, outputs
-
 class HDF5Dataset(Dataset):
 
-    def __init__(self, dataFile):
+    def __init__(self, dataFile, **kwargs):
+        """
+        Dataset reader and getitem for DataLoader
+
+        Args:
+            dataFile (hdf5): data file 
+            
+        """
+        
         self.file = h5py.File(dataFile, 'r')
         self.inputs = self.file['inputs']
         self.outputs = self.file['outputs']
+        xGrid, yGrid = self.grid
+        self.nX = xGrid.size
+        self.nY = yGrid.size
+        self.kX = kwargs.get('kX', 12)
+        self.kY = kwargs.get('kY', 12)
+ 
         assert len(self.inputs) == len(self.outputs), \
             f"different sample number for inputs and outputs ({len(self.inputs)},{len(self.outputs)})"
-
+        
     def __len__(self):
         return len(self.inputs)
 
@@ -151,6 +65,18 @@ class HDF5Dataset(Dataset):
     def outScaling(self):
         return float(self.infos["outScaling"][()])
 
+    def calc_sliceMin(self, n, modes):
+        """
+        Finding min number of points to satisfy
+        n/2 + 1 >= fourier modes
+        """
+        slice_min = 2*(modes-1)
+        if slice_min < n:
+            return slice_min
+        else:
+            print("Insufficient number of points to slice")
+            return 0
+
     def printInfos(self):
         xGrid, yGrid = self.grid
         infos = self.infos
@@ -166,10 +92,11 @@ class HDF5Dataset(Dataset):
         print(f" -- dtInput : {infos['dtInput'][()]:1.2g}")
         print(f" -- outType : {infos['outType'][()].decode('utf-8')}")
         print(f" -- outScaling : {infos['outScaling'][()]:1.2g}")
-
+ 
 def createDataset(
         dataDir, inSize, outStep, inStep, outType, outScaling, dataFile,
-        dryRun=False, verbose=False, **kwargs):
+        dryRun=False, verbose=False, pySDC=False, **kwargs):
+
     assert inSize == 1, "inSize != 1 not implemented yet ..."
     simDirsSorted = sorted(glob.glob(f"{dataDir}/simu_*"), key=lambda f: int(f.split('simu_',1)[1]))
     nSimu = int(kwargs.get("nSimu", len(simDirsSorted)))
@@ -179,20 +106,30 @@ def createDataset(
         print(f" -- {s}")
 
     # -- retrieve informations from first simulation
-    outFiles = OutputFiles(f"{simDirs[0]}/run_data")
+    if pySDC:
+        from pySDC.helpers.fieldsIO import FieldsIO
+        outFiles = FieldsIO.fromFile(f"{simDirs[0]}/run_data/outputs.pysdc")
+        nFields = outFiles.nFields
+        fieldShape = (outFiles.nVar, outFiles.nX, outFiles.nY)
+        times = outFiles.times
+        xGrid, yGrid = outFiles.header["coordX"], outFiles.header["coordY"]  # noqa: F841 (used lated by an eval call)
+    else:
+        outFiles = OutputFiles(f"{simDirs[0]}/run_data")
+        nFields = sum(outFiles.nFields)
+        fieldShape = outFiles.shape
+        times = outFiles.times().ravel()
+        xGrid, yGrid = outFiles.x, outFiles.y  # noqa: F841 (used lated by an eval call)
 
-    times = outFiles.times().ravel()
     dtData = times[1]-times[0]
     dtInput = dtData*outStep  # noqa: F841 (used lated by an eval call)
     dtSample = dtData*inStep  # noqa: F841 (used lated by an eval call)
-    xGrid, yGrid = outFiles.x, outFiles.y  # noqa: F841 (used lated by an eval call)
-    
+
     iBeg = int(kwargs.get("iBeg", 0))
-    iEnd = int(kwargs.get("iEnd", sum(outFiles.nFields)))
+    iEnd = int(kwargs.get("iEnd", nFields))
     sRange = range(iBeg, iEnd-inSize-outStep+1, inStep)
     nSamples = len(sRange)
     print(f'selector: {sRange},  outStep: {outStep}, inStep: {inStep}, iBeg: {iBeg}, iEnd: {iEnd}')
-    
+
     infoParams = [
         "inSize", "outStep", "inStep", "outType", "outScaling", "iBeg", "iEnd",
         "dtData", "dtInput", "xGrid", "yGrid", "nSimu", "nSamples", "dtSample",
@@ -213,17 +150,23 @@ def createDataset(
         except:
             dataset.create_dataset(f"infos/{name}", data=eval(name))
 
-    dataShape = (nSamples*nSimu, *outFiles.shape)
+    dataShape = (nSamples*nSimu, *fieldShape)
     print(f'data shape: {dataShape}')
     inputs = dataset.create_dataset("inputs", dataShape)
     outputs = dataset.create_dataset("outputs", dataShape)
     for iSim, dataDir in enumerate(simDirs):
-        outFiles = OutputFiles(f"{dataDir}/run_data")
-        print(f" -- sampling data from {outFiles.folder}")
+        if pySDC:
+            outFiles = FieldsIO.fromFile(f"{dataDir}/run_data/outputs.pysdc")
+        else:
+            outFiles = OutputFiles(f"{dataDir}/run_data")
+        print(f" -- sampling data from {dataDir}/run_data")
         for iSample, iField in enumerate(sRange):
             if verbose:
                 print(f"\t -- creating sample {iSample+1}/{nSamples}")
-            inpt, outp = outFiles.fields(iField), outFiles.fields(iField+outStep).copy()
+            if pySDC:
+                inpt, outp = outFiles.readField(iField)[-1], outFiles.readField(iField+outStep)[-1]
+            else:
+                inpt, outp = outFiles.fields(iField), outFiles.fields(iField+outStep).copy()
             if outType == "update":
                 outp -= inpt
                 if outScaling != 1:
@@ -236,6 +179,8 @@ def createDataset(
 
 def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None, use_distributed_sampler=False):
     dataset = HDF5Dataset(dataFile)
+
+    dataset.printInfos()
     nBatches = len(dataset)
     trainSize = int(trainRatio*nBatches)
     valSize = nBatches - trainSize
@@ -263,3 +208,4 @@ def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None, use_distri
     valLoader = DataLoader(valSet, batch_size=batchSize, sampler=val_sampler, shuffle=False, pin_memory=True, num_workers=4)
 
     return trainLoader, valLoader, dataset
+

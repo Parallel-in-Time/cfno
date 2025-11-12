@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os
-import sys
 import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from timeit import default_timer
 import torch
-from cfno.utils import readConfig
 from cfno.data.preprocessing import HDF5Dataset
 from cfno.training.pySDC import FourierNeuralOp
-from cfno.simulation.post import computeMeanSpectrum, getModes, contourPlot
+from cfno.simulation.post import computeMeanSpectrum, getModes
 
 
 # -----------------------------------------------------------------------------
@@ -35,19 +34,11 @@ parser.add_argument(
 parser.add_argument(
     "--evalDir", default="eval", help="directory to store the evaluation results")
 parser.add_argument(
-    "--config", default=None, help="configuration file")
+    "--runId", default="24",type=int,  help="run index from excel sheet")
+parser.add_argument(
+    "--subtitle", default="(256,64)",type=str,  help="subtitle for contour plot") 
 args = parser.parse_args()
 
-if args.config is not None:
-    config = readConfig(args.config)
-    if "eval" in config:
-        args.__dict__.update(**config["eval"])
-    if "data" in config and "dataFile" in config["data"]:
-        args.dataFile = config.data.dataFile
-    if "train" in config and "checkpoint" in config["train"]:
-        args.checkpoint = config.train.checkpoint
-        if "trainDir" in config.train:
-            FourierNeuralOp.TRAIN_DIR = config.train.trainDir
 
 dataFile = args.dataFile
 checkpoint = args.checkpoint
@@ -58,6 +49,69 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 device_name = torch.cuda.get_device_name(0) if device == 'cuda' else 'CPU'
 tSteps = args.tSteps
 model_dt = args.model_dt
+run_id = args.runId
+subtitle = args.subtitle
+
+def contourPlot(field, refField,
+                 x, y, title=None, refTitle=None, 
+                 saveFig=False, closeFig=True, plot_refField=False,
+                 error=False, refScales=False, time=None):
+    
+    
+    fig, axs = plt.subplots(2 if plot_refField else 1, constrained_layout=True)
+    ax = axs[0] if plot_refField else axs
+    scales =  (np.min(refField), np.max(refField))
+
+    def setup(ax):
+        ax.axis('on')
+        ax.set_aspect('equal', adjustable='box')
+        ax.set_xlabel("x")
+        ax.set_ylabel("z")
+
+    def setColorbar(field, im, ax, scales, refScales):
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        if refScales:
+            im.cmap.set_under("white")
+            im.cmap.set_over("white")
+            im.set_clim(*scales)
+            yticks = np.linspace(*scales, 3)
+            cbar = fig.colorbar(im, cax=cax, ax=ax, ticks=yticks)
+        else:
+            yticks = np.linspace(np.min(field), np.max(field), 3)
+            cbar = fig.colorbar(im, cax=cax, ax=ax, ticks= yticks)
+        cbar.ax.set_yticklabels([str(round(i,2)) for i in yticks])
+        # cbar.ax.set_yticklabels(['0.0', '9e-4', '2e-3'])
+
+    timeSuffix = f' at t = {np.round(time,3)}s' if time is not None else ''
+  
+    im0 = ax.pcolormesh(x, y, field, rasterized=True)
+    setColorbar(field, im0,ax, scales, refScales)
+    if title is not None:
+        ax.set_title(f'{title}{timeSuffix}', fontsize=14)
+    setup(ax)
+    if plot_refField:
+        im2 = axs[1].pcolormesh(x, y, refField, rasterized=True)
+        setColorbar(refField, im2, axs[1], scales, refScales)
+        if refTitle is not None:
+            axs[1].set_title(f'{refTitle}{timeSuffix}',fontsize=14)
+        setup(axs[1])
+    
+    # fig.tight_layout()
+    plt.subplots_adjust(wspace=0, hspace=0)
+    if saveFig:
+        plt.savefig(saveFig, bbox_inches='tight', pad_inches=0.05)
+    if closeFig:
+        plt.close(fig)
+
+def norm(x):
+        return np.linalg.norm(x, axis=(-2, -1))
+
+def computeError(uPred, uRef):
+    diff = norm(uPred-uRef)
+    nRef = norm(uRef)
+    return diff/nRef
+
 
 HEADER = """
 # FNO evaluation on validation dataset
@@ -73,7 +127,7 @@ HEADER = """
 
 """
 op = os.path
-with open(op.dirname(op.abspath(op.realpath(__file__)))+"/04_eval_template.md") as f:
+with open(op.dirname(op.abspath(op.realpath(__file__)))+"/eval_template.md") as f:
     TEMPLATE = f.read()
 
 def sliceToStr(s:slice):
@@ -109,7 +163,7 @@ if dataset.outType == "update":
 # Create summary file, and write header
 def fmt(hdfFloat): return float(hdfFloat[()])
 
-summary = open(f"{evalDir}/eval.md", "w")
+summary = open(f"{evalDir}/eval_run{run_id}.md", "w")
 summary.write(HEADER.format(
     iSimu=iSimu, checkpoint=checkpoint, dataFile=dataFile, nSamples=nSamples,
     dtInput=fmt(dataset.infos["dtInput"]), dtSample=fmt(dataset.infos["dtSample"]),
@@ -155,22 +209,13 @@ for iDec in range(len(decomps)):
     avg_inferenceTime = np.round(sum(time)/len(time),3)
     print(" -- done !")
     print(f'-- slices: {slices}')
-    print(f"-- Avg inference time on {device_name} : {avg_inferenceTime}")
-    print(f"-- Total inference time on {device_name} for {tSteps} : {inferenceTime}")
-    print(f"-- Inference after (tSteps x dt)(s): {tSteps} x {model_dt}")
+    print(f"-- Avg inference time on {device_name} (s) : {avg_inferenceTime}")
+    print(f"-- Total inference time on {device_name} for {tSteps} iterations with dt of {model_dt} (s) : {inferenceTime}")
     
 
     # -------------------------------------------------------------------------
     # -- Relative error over time
     # -------------------------------------------------------------------------
-    def norm(x):
-        return np.linalg.norm(x, axis=(-2, -1))
-
-    def computeError(uPred, uRef):
-        diff = norm(uPred-uRef)
-        nPred = norm(uPred)
-        return diff/nPred
-
     err = computeError(uPred, uRef)
     errId = computeError(u0, uRef)
 
@@ -185,7 +230,7 @@ for iDec in range(len(decomps)):
     plt.ylabel("relative $L_2$ error")
     fig.set_size_inches(10, 5)
     plt.tight_layout()
-    errorPlot = f"D{iDec}_error_over_time.{imgExt}"
+    errorPlot = f"run{run_id}_D{iDec}_error_over_time.{imgExt}"
     plt.savefig(f"{evalDir}/{errorPlot}")
 
     avgErr = err.mean(axis=0)
@@ -200,26 +245,65 @@ for iDec in range(len(decomps)):
     xGrid = dataset.infos["xGrid"][:]
     yGrid = dataset.infos["yGrid"][:]
 
-    uI = u0[0, 2].T
+    # evaluating at t=100 
+    uI = u0[0, 2].T  
     uM = uPred[0, 2].T
     uR = uRef[0, 2].T
 
-    contourPlotSol = f"D{iDec}_contour_sol.{imgExt}"
+    contourPlotSol = f"run{run_id}_D{iDec}_contour_solution.{imgExt}"
     contourPlot(
-        uM, xGrid, yGrid, title="Model output for buoyancy on first sample",
-        refField=uR, refTitle="Dedalus reference",
-        saveFig=f"{evalDir}/{contourPlotSol}", refScales=True, closeFig=True)
+        field=uM, 
+        x=xGrid, y=yGrid,
+        title=None,
+        refField=uR,
+        refTitle=None,
+        plot_refField=False,
+        saveFig=f"{evalDir}/{contourPlotSol}", 
+        refScales=True, 
+        closeFig=True)
+    
+    contourPlotUpdate = f"run{run_id}_D{iDec}_contour_update.{imgExt}"
+    contourPlot(
+        field=uM-uI,
+        refField=uR-uI,
+        x=xGrid, y=yGrid,
+        title=None,
+        refTitle=None,
+        plot_refField=False,
+        saveFig=f"{evalDir}/{contourPlotUpdate}", 
+        refScales=True, 
+        closeFig=True)
+    
+    contourPlotErr = f"run{run_id}_D{iDec}_contour_err.{imgExt}"
+    contourPlot(
+        field=np.abs(uM-uR), 
+        refField=None, 
+        plot_refField=False,
+        x=xGrid, y=yGrid,
+        title=None,
+        saveFig=f"{evalDir}/{contourPlotErr}",
+        closeFig=True)
 
-    contourPlotUpdate = f"D{iDec}_contour_update.{imgExt}"
-    contourPlot(
-        uM-uI, xGrid, yGrid, title="Model update for buoyancy on first sample",
-        refField=uR-uI, refTitle="Dedalus reference",
-        saveFig=f"{evalDir}/{contourPlotUpdate}", refScales=True, closeFig=True)
-
-    contourPlotErr = f"D{iDec}_contour_err.{imgExt}"
-    contourPlot(
-        np.abs(uM-uR), xGrid, yGrid, title="Absolute error for buoyancy on first sample",
-        saveFig=f"{evalDir}/{contourPlotErr}", closeFig=True)
+    if iDec == 0:
+        contourPlotSolRef = f"run{run_id}_D{iDec}_contour_ref_solution.{imgExt}"
+        contourPlot(
+            field=uR, 
+            refField=None, 
+            plot_refField=False,
+            x=xGrid, y=yGrid,
+            title=None,
+            saveFig=f"{evalDir}/{contourPlotSolRef}",
+            closeFig=True)
+        
+        contourPlotUpdateRef = f"run{run_id}_D{iDec}_contour_ref_update.{imgExt}"
+        contourPlot(
+            field=uR-uI, 
+            refField=None, 
+            plot_refField=False,
+            x=xGrid, y=yGrid,
+            title=None,
+            saveFig=f"{evalDir}/{contourPlotUpdateRef}",
+            closeFig=True)
 
     # -------------------------------------------------------------------------
     # -- Averaged spectrum
@@ -241,12 +325,12 @@ for iDec in range(len(decomps)):
     plt.xlabel("wavenumber")
     plt.ylim(bottom=1e-10)
     plt.tight_layout()
-    spectrumPlot = f"D{iDec}_spectrum.{imgExt}"
+    spectrumPlot = f"run{run_id}_D{iDec}_spectrum.{imgExt}"
     plt.savefig(f"{evalDir}/{spectrumPlot}")
 
     plt.xlim(left=50)
     plt.ylim(top=1e-5)
-    spectrumPlotHF = f"D{iDec}_spectrum_HF.{imgExt}"
+    spectrumPlotHF = f"run{run_id}_D{iDec}_spectrum_HF.{imgExt}"
     plt.savefig(f"{evalDir}/{spectrumPlotHF}")
 
 
@@ -266,8 +350,12 @@ for iDec in range(len(decomps)):
         contourPlotSol=contourPlotSol,
         contourPlotUpdate=contourPlotUpdate,
         contourPlotErr=contourPlotErr,
+        contourPlotSolRef=contourPlotSolRef,
+        contourPlotUpdateRef=contourPlotUpdateRef,
         spectrumPlot=spectrumPlot,
         spectrumPlotHF=spectrumPlotHF
         ))
 
 summary.close()
+
+

@@ -1,0 +1,69 @@
+simu:
+  dataDir: simuData
+  tInit: 100
+  nSimu: 10
+  dtData: 0.5
+  tEnd: 100
+
+sample:
+  inSize: 1
+  outStep: 1
+  inStep: 1
+
+data:
+  outType: update
+  dataFile: dataset_96x64_Ra5e6_dt0_5_update.h5
+  trainRatio: 0.8
+  seed: null
+  batchSize: 20
+  xStep: 1
+  yStep: 1
+  
+
+model:
+  da: 4
+  du: 4
+  dv: 16
+  kX: 12
+  kY: 12
+  nLayers: 2
+  forceFFT: true
+  bias: false
+  scaling_layers: 4
+  use_prechannel_mlp: true
+  channel_mlp_expansion: 4
+  use_fno_skip_connection: false
+  fno_skip_type: soft-gating
+  use_postfnochannel_mlp: false
+  channel_mlp_skip_type: 'soft-gating'
+  use_dse: false
+  get_subdomain_output: False              # set to true only for inference
+  iXBeg: 0
+  iYBeg: 0
+  iXEnd: 96
+  iYEnd: 64
+
+optim:
+  name: adam
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+
+lr_scheduler:
+  scheduler: CosAnnealingLR
+  T_max: 50000
+
+
+train:
+  trainDir: run24_straat_dt0_5_update
+  nEpochs: 14200
+  checkpoint: model.pt
+  lossesFile: losses.txt
+  saveEvery: 100
+  savePermanent: false
+  noTensorboard: false
+  logPrint: false
+
+eval:
+  iSimu: 8
+  imgExt: png
+  evalDir: eval_paper

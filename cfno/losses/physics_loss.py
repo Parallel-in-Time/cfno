@@ -1,0 +1,550 @@
+import torch
+from cfno.losses.data_loss import VectorNormLoss
+from qmat.lagrange import LagrangeApproximation
+
+### TODOs:
+### 1. training requires autodiff of the qmat stuff? needs to be tested -> seems to be fine
+### 2. implementation is for 2d, needs to be generalized to handle 3d as well
+
+# Store all loss classes in a dictionary using the register decorator 
+LOSSES_CLASSES = {}
+
+def register(cls):
+    assert hasattr(cls, '__call__') and callable(cls), "loss class must implement the __call__ method"
+    LOSSES_CLASSES[cls.__name__] = cls
+    return cls
+
+
+#@register
+class LpOmegaNorm(object):
+    """
+    Compute Lp norm of a minibatch of grid functions by integrating in space
+    """
+    
+    def __init__(self,
+                 grids,      # tuple of grids (x,y,z) or (x,z) depending on d
+                 L,          # tuple of domain sizes fitting to grids
+                 d:int=2,    # space dimension == len(grids), we don't really need this
+                 p:int=2,    # order of the norm
+                 device=None # device where the tensors live (to move the integration matrix to the correct device)
+                 ):
+        super().__init__()
+        # p has to be >= 1 for the norm to make sense
+        assert p >= 1
+        # Dimension is positive
+        assert d > 0
+        assert len(grids) == d
+        self.p = p
+        self.dx = L[0] / (grids[0].size-1.0)
+        self.dy = 1 # in case of 2d this stays at 1 to not influence the result
+        if d > 2:
+            self.dy = L[1] / (grids[1].size-1.0)
+        approx = LagrangeApproximation(grids[-1])
+        self.I = approx.getIntegrationMatrix([(0, L[-1])])  # spectral integration along z
+        self.I = torch.from_numpy(self.I).type(torch.float).to(device)
+        self.device=device
+        
+    def integrate(self,f):
+        """
+        integrates the grid functions abs(f)**p in space
+        shape of f is [nbatch, nx, ny, nz] in 3d. [nbatch, nx, nz] in 2d
+        """
+        fp = torch.abs(f)**self.p
+
+        
+        intZ = torch.einsum('ij,bkj->bki', self.I, fp)
+        # in x and potentially y direction we have equidistant grids with spacing dx, dy        
+        return torch.sum(intZ, dim=-2) * self.dx * self.dy   # sum everything (along x- and in 3d y-axis) 
+                                                # and scale with grid widths
+
+
+    def __call__(self,f):
+        return torch.mean(self.integrate(f)**(1/self.p))
+
+
+@register
+class LpOmegaLoss(object):
+    """
+    Compute (Lp norm)^p of a minibatch of grid functions by integrating in space
+    """
+    
+    def __init__(self,
+                 grids,      # tuple of grids (x,y,z) or (x,z) depending on d
+                 L,          # tuple of domain sizes fitting to grids
+                 d:int=2,    # space dimension == len(grids), we don't really need this
+                 p:int=2,    # order of the norm
+                 device=None # device where the tensors live (to move the integration matrix to the correct device)
+                 ):
+        super().__init__()
+        # p has to be >= 1 for the norm to make sense
+        assert p >= 1
+        # Dimension is positive
+        assert d > 0
+        assert len(grids) == d
+        self.p = p
+        self.dx = L[0] / (grids[0].size-1.0)
+        self.dy = 1 # in case of 2d this stays at 1 to not influence the result
+        if d > 2:
+            self.dy = L[1] / (grids[1].size-1.0)
+        approx = LagrangeApproximation(grids[-1])
+        self.I = approx.getIntegrationMatrix([(0, L[-1])])  # spectral integration along z
+        self.I = torch.from_numpy(self.I).type(torch.float).to(device)
+        self.device=device
+        self.varChoices = ["vx", "vz", "b", "p"]
+        
+    def integrate(self,u,varName):
+        """
+        integrates the grid functions abs(f)**p in space
+        shape of f is [nbatch, nx, ny, nz] in 3d. [nbatch, nx, nz] in 2d
+        """
+        f = u[:,self.varChoices.index(varName)].to(self.device)
+        fp = torch.abs(f)**self.p
+
+        
+        intZ = torch.einsum('ij,bkj->bki', self.I, fp)
+        # in x and potentially y direction we have equidistant grids with spacing dx, dy        
+        return torch.sum(intZ, dim=-2) * self.dx * self.dy   # sum everything (along x- and in 3d y-axis) 
+                                                # and scale with grid widths
+
+
+    def __call__(self, pred, ref, inp):
+        return torch.mean(self.integrate(pred-ref,"b")) + torch.mean(self.integrate(pred-ref,"vx")) +\
+               torch.mean(self.integrate(pred-ref,"vz")) + torch.mean(self.integrate(pred-ref,"p")) 
+
+
+
+# @register
+# class LpOmegaLoss(object):
+#     def __init__(self,
+#                  grids,      # tuple of grids (x,y,z) or (x,z) depending on d
+#                  L,          # tuple of domain sizes fitting to grids
+#                  d:int=2,    # space dimension == len(grids), we don't really need this
+#                  p:int=2,    # order of the norm
+#                  device=None # device where the tensors live (to move the integration matrix to the correct device)
+#                  ):
+#         super().__init__()
+#         self.lpNorm = LpOmegaNorm(grids, L, d, p, device)
+        
+#     def __call__(self, pred, ref, inp=None):
+#         return self.lpNorm(pred-ref) # this does not work, lpNorm only for a minibatch of a single function
+
+class PhysicsLoss(object): # todo: generalize to 3d
+    """
+    Base class for the physics based losses. 
+    Mainly implements calculating the required derivatives.
+    """
+    # u0 and u have shape [nbatches, 4, nx, nz]
+    def __init__(self,
+                  grids,   # tuple of grids (x,y,z) or (x,z) depending on d
+                  L,       # tuple of domain sizes fitting to grids
+                  dt:float=0.1, # time step size
+                  d:int=2, # space dimension == len(grids), we don't really need this
+                  device=None # device where the tensors live (to move the differentiation matrix to the correct device)
+                  ):
+         super().__init__()
+         # Dimension is positive
+         assert d > 0
+         assert len(grids) == d
+         self.grids = grids
+         self.dt = dt
+         self.nx = grids[0].size
+         self.Lx = L[0]
+         self.dx = self.Lx/(self.nx-1)
+         self.approx = LagrangeApproximation(self.grids[-1])
+         self.D = self.approx.getDerivationMatrix() # spectral differentiation along z
+         self.D = torch.from_numpy(self.D).type(torch.float).to(device)
+         self.varChoices = ["vx", "vz", "b", "p"]
+         self.device=device
+        
+    def calculateTimeDerivative(self, u, u0, varName):        
+        return ((u0[:,self.varChoices.index(varName)] - u[:,self.varChoices.index(varName)]) / self.dt).to(self.device)
+        
+         
+    def calculateFirstSpatialDerivatives(self, u, varName):
+        f = u[:,self.varChoices.index(varName)].to(self.device)
+        
+        # spectral differentiation in z -- this works, but can torch autodiff this?
+        f_z = torch.einsum('ij,bkj->bki', self.D, f)
+        
+        # FDM ([nbatch,nx, nz]) -- this works, but is rather inaccurate
+        f_x = torch.zeros_like(f)
+        f_x = (torch.roll(f, -1, dims=-2) - torch.roll(f, 1, dims=-2))/(2.0*self.dx)
+
+        # fix boundary
+        f_x[...,0,:] = (f[...,1,:] - f[...,0,:])/self.dx    
+        f_x[...,-1,:] = (f[...,-1,:] - f[...,-2,:])/self.dx
+        
+        return f_x, f_z
+
+    def calculateSecondSpatialDerivatives(self, u, varName):
+        f = u[:,self.varChoices.index(varName)].to(self.device)
+
+        f_z = torch.einsum('ij,bkj->bki', self.D, f)
+        f_zz = torch.einsum('ij,bkj->bki', self.D, f_z)
+
+        f_xx = torch.zeros_like(f)
+        f_xx = ( torch.roll(f, -1, dims=-2) - 2 * f + torch.roll(f, 1, dims=-2) ) / self.dx**2
+        # fix boundary
+        f_xx[..., 0,:] = (f[..., 2,:] - 2 * f[..., 1,:] + f[..., 0,:]) / self.dx**2
+        f_xx[..., -1,:] = (f[..., -1,:] - 2 * f[..., -2,:] + f[..., -3,:]) / self.dx**2
+        
+        return f_xx, f_zz
+        
+    def calculateDerivatives(self, u, u0, varName): # convenience...
+        u_t = self.calculateTimeDerivative(u, u0, varName)
+        u_x, u_z = self.calculateFirstSpatialDerivatives(u, varName)
+        u_xx, u_zz = self.calculateSecondSpatialDerivatives(u, varName)
+        
+        return u_t, u_x, u_z, u_xx, u_zz
+    
+
+@register
+class BuoyancyEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
+    """
+    Compute residual for the buoyancy equation
+    """
+    def __init__(self,
+                  grids,   # tuple of grids (x,y,z) or (x,z) depending on d
+                  L,       # tuple of domain sizes fitting to grids
+                  dt:float=0.1, # time step size
+                  d:int=2, # space dimension == len(grids), we don't really need this
+                  Rayleigh:float=1.0,                      
+                  Prantl:float=1.0,
+                  device=None
+                  ):
+         super().__init__(grids, L, dt, d, device)
+
+         self.kappa = (Rayleigh * Prantl)**(-1/2)
+         self.lpnorm = LpOmegaNorm(grids, L, d, 2, device)
+         
+    def computeResidual(self, u, u0):
+         bt, bx, bz, bxx, bzz = self.calculateDerivatives(u, u0, "b")
+
+         ## residual
+         vx = u[:,self.varChoices.index("vx")].to(self.device)
+         vz = u[:,self.varChoices.index("vz")].to(self.device)
+         
+         return bt-self.kappa*(bxx+bzz) + vx*bx + vz*bz
+     
+    def __call__(self, pred, ref, inp):
+         return torch.mean(self.lpnorm(self.computeResidual(pred, inp)))
+         
+@register
+class VelocityEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
+    """
+    Compute residual for the velocity equation
+    """
+    def __init__(self,
+                  grids,   # tuple of grids (x,y,z) or (x,z) depending on d
+                  L,       # tuple of domain sizes fitting to grids
+                  dt:float=0.1, # time step size
+                  d:int=2, # space dimension == len(grids), we don't really need this
+                  Rayleigh:float=1.0,                      
+                  Prantl:float=1.0,
+                  device=None
+                  ):
+         super().__init__(grids, L, dt, d, device)
+
+         self.nu = (Rayleigh / Prantl)**(-1/2)
+         self.lpnorm = LpOmegaNorm(grids, L, d, 2, device)
+         
+    def computeResidual(self, u, u0):
+         vx_t, vx_x, vx_z, vx_xx, vx_zz = self.calculateDerivatives(u, u0, "vx")
+         vz_t, vz_x, vz_z, vz_xx, vz_zz = self.calculateDerivatives(u, u0, "vz")
+
+         b = u[:,self.varChoices.index("b")].to(self.device)
+         vx = u[:,self.varChoices.index("vx")].to(self.device)
+         vz = u[:,self.varChoices.index("vz")].to(self.device)
+         p_x, p_z = self.calculateFirstSpatialDerivatives(u, "p")
+         
+         return vx_t - self.nu*(vx_xx+vx_zz) + p_x + vx*vx_x + vz*vz_x, vz_t - self.nu*(vz_xx+vz_zz) + p_z - b + vx*vx_z + vz*vz_z
+     
+    def __call__(self, pred, ref, inp):
+         res_vx, res_vz = self.computeResidual(pred, inp)
+         return torch.mean(self.lpnorm(res_vx)+self.lpnorm(res_vz))
+     
+
+@register
+class BuoyancyUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
+    """
+    Compute equation residual for the update of buoyancy 
+    """
+    def __init__(self,
+                  grids,   # tuple of grids (x,y,z) or (x,z) depending on d
+                  L,       # tuple of domain sizes fitting to grids
+                  dt:float=0.1, # time step size
+                  d:int=2, # space dimension == len(grids), we don't really need this
+                  Rayleigh:float=1.0,                      
+                  Prantl:float=1.0,
+                  device=None
+                  ):
+         super().__init__(grids, L, dt, d, device)
+
+         self.kappa = (Rayleigh * Prantl)**(-1/2)
+         self.lpnorm = LpOmegaNorm(grids, L, d, 2, device)
+         
+    def computeResidual(self, du, u0):
+         db_x, db_z = self.calculateFirstSpatialDerivatives(du, "b")
+         db_xx, db_zz = self.calculateSecondSpatialDerivatives(du, "b")
+         
+         # db_t (for the update) is calculated wrong in calculateDerivatives, 
+         # so re-calculate it here using that the update at t0 is zero
+         db_t = du[:,self.varChoices.index("b")].to(self.device) / self.dt
+         
+         # additionally we need b_x, b_z
+         b_x, b_z  = self.calculateFirstSpatialDerivatives(u0, "b")
+
+         ## residual
+         dvx = du[:,self.varChoices.index("vx")].to(self.device)
+         dvz = du[:,self.varChoices.index("vz")].to(self.device)
+         vx = u0[:,self.varChoices.index("vx")].to(self.device)
+         vz = u0[:,self.varChoices.index("vz")].to(self.device)
+         
+
+         return db_t-self.kappa*(db_xx+db_zz) + (vx+dvx)*db_x + (vz+dvz)*db_z + dvx*b_x + dvz*b_z
+     
+    def __call__(self, pred, ref, inp):
+         return torch.mean(self.lpnorm(self.computeResidual(pred, inp)))
+
+
+@register
+class VelocityUpdateEquationLoss2D(PhysicsLoss):    # todo: generalize to 3d
+    """
+    Compute residual for the velocity equation
+    """
+    def __init__(self,
+                  grids,   # tuple of grids (x,y,z) or (x,z) depending on d
+                  L,       # tuple of domain sizes fitting to grids
+                  dt:float=0.1, # time step size
+                  d:int=2, # space dimension == len(grids), we don't really need this
+                  Rayleigh:float=1.0,                      
+                  Prantl:float=1.0,
+                  device=None
+                  ):
+         super().__init__(grids, L, dt, d, device)
+
+         self.nu = (Rayleigh / Prantl)**(-1/2)
+         self.lpnorm = LpOmegaNorm(grids, L, d, 2, device)
+         
+    def computeResidual(self, du, u0):
+         dvx = du[:,self.varChoices.index("vx")].to(self.device)
+         dvz = du[:,self.varChoices.index("vz")].to(self.device)
+         dvx_x, dvx_z = self.calculateFirstSpatialDerivatives(du, "vx")
+         dvz_x, dvz_z = self.calculateFirstSpatialDerivatives(du, "vz")
+         dvx_xx, dvx_zz = self.calculateSecondSpatialDerivatives(du, "vx")
+         dvz_xx, dvz_zz = self.calculateSecondSpatialDerivatives(du, "vz")
+         
+         dvx_t = du[:,self.varChoices.index("vx")].to(self.device) / self.dt
+         dvz_t = du[:,self.varChoices.index("vz")].to(self.device) / self.dt
+
+
+         db = du[:,self.varChoices.index("b")].to(self.device)
+         
+         vx = u0[:,self.varChoices.index("vx")].to(self.device)
+         vz = u0[:,self.varChoices.index("vz")].to(self.device)
+         vx_x, vx_z = self.calculateFirstSpatialDerivatives(u0, "vx")
+         vz_x, vz_z = self.calculateFirstSpatialDerivatives(u0, "vz")
+
+         
+         dp_x, dp_z = self.calculateFirstSpatialDerivatives(du, "p")
+         
+         return dvx_t - self.nu*(dvx_xx+dvx_zz) + dp_x + dvx*vx_x + dvz*vz_x + (vx+dvx)*dvx_x + (vz+dvz)*dvz_x, \
+                dvz_t - self.nu*(dvz_xx+dvz_zz) + dp_z - db + dvx*vx_z + dvz*vz_z + (vx+dvx)*dvx_z + (vz+dvz)*dvz_z
+     
+    def __call__(self, pred, ref, inp):
+         res_dvx, res_dvz = self.computeResidual(pred, inp)
+         return torch.mean(self.lpnorm(res_dvx)+self.lpnorm(res_dvz))
+     
+
+
+@register
+class DivergenceLoss(PhysicsLoss):
+    """
+    Measures how much the L2-norm of the divergence of a field differs from zero.
+    """
+    
+    def __init__(self,
+                 grids,   # tuple of grids (x,y,z) or (x,z) depending on d
+                 L,       # tuple of domain sizes fitting to grids
+                 dt:float=0.1, # time step size
+                 d:int=2, # space dimension == len(grids), we don't really need this
+                 varNames:list = ["vx", "vz"],
+                 device=None
+                 ):
+        super().__init__(grids, L, dt, d, device)
+        self.varNames = varNames
+        self.lpnorm = LpOmegaNorm(grids, L, d, 2, device=device)
+
+
+    def __call__(self, pred, ref=None, inp=None):
+        vx_x, _ = self.calculateFirstSpatialDerivatives(pred, self.varNames[0])
+        _, vz_z = self.calculateFirstSpatialDerivatives(pred, self.varNames[1])
+        return torch.mean(self.lpnorm((vx_x + vz_z)))
+      
+
+@register
+class IntegralLoss(PhysicsLoss):
+    """
+    Measures how much the spatial integral of a function (specified by varName) deviates from a given value
+    """
+    def __init__(self,
+                 grids,   # tuple of grids (x,y,z) or (x,z) depending on d
+                 L,       # tuple of domain sizes fitting to grids
+                 dt:float=0.1, # time step size
+                 d:int=2, # space dimension == len(grids), we don't really need this
+                 varName:str="p",
+                 value:float=0.0,
+                 device=None
+                 ):
+         super().__init__(grids, L, dt, d, device)
+         self.dx = L[0] / (grids[0].size-1.0)
+         self.dy = 1 # in case of 2d this stays at 1 to not influence the result
+         if d > 2:
+             self.dy = L[1] / (grids[1].size-1.0)
+         approx = LagrangeApproximation(grids[-1])
+         self.I = approx.getIntegrationMatrix([(0, L[-1])])  # spectral integration along z    
+         self.I = torch.from_numpy(self.I).type(torch.float).to(device)
+         self.varName = varName
+         self.value = value
+            
+    def integrate(self, u):
+         # cannot directly use the LpOmegaNorm class, as there for p=1 abs(f) is integrated, not f
+         f = u[:,self.varChoices.index(self.varName)].to(self.device)
+         
+         intZ = torch.einsum('ij,bkj->bki', self.I, f)
+         # in x and potentially y direction we have equidistant grids with spacing dx, dy        
+         return torch.sum(intZ, dim=-2) * self.dx * self.dy   # sum everything (along x- and in 3d y-axis) 
+                                                 # and scale with grid widths
+
+    def __call__(self, pred, ref, inp): 
+         return torch.mean(torch.abs(self.integrate(pred) - self.value))
+
+
+
+
+@register
+class RBEqLoss(object):
+    """
+    Combines all the above defined physics losses (weighted) into one total loss for the Rayleigh Benard Equations
+    """
+    def __init__(self,
+                 grids,   # tuple of grids (x,y,z) or (x,z) depending on d
+                 L,       # tuple of domain sizes fitting to grids
+                 dt:float=0.1, # time step size
+                 d:int=2, # space dimension == len(grids), we don't really need this
+                 Rayleigh:float=1.0,
+                 Prantl:float=1.0,
+                 device=None,
+                 weights=[1, 1, 1, 1, 0]
+                 ):
+        self.weights=weights
+        self.device=device
+        self.losses = [VelocityEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device),\
+                       BuoyancyEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device),\
+                       IntegralLoss(grids,L,dt,d,device=device),\
+                       DivergenceLoss(grids,L,dt,d,device=device),\
+                       VectorNormLoss()]
+                       #LpOmegaLoss(grids,L,d,p=2,device=device)]
+        num_losses = len(self.losses)
+        self.loss_values = torch.zeros(num_losses)
+                       
+    def getLossValues(self):
+        return self.loss_values
+                   
+    def resetLossValues(self):
+        self.loss_values[:] = 0.0
+        
+    def __call__(self, pred, ref, inp):
+        sum = 0.0
+        for i, loss in enumerate(self.losses):
+            lossval = loss(pred, ref, inp)
+            sum = sum + self.weights[i] * lossval 
+            self.loss_values[i] = self.loss_values[i] + lossval
+        return sum
+    
+@register
+class RBEqLossForUpdate(object):
+    """
+    When training for the update du we have u0+du satisfying the origninal RB Equation.
+    This differs from the derived equation for the update, which favors du=0.
+    """
+    def __init__(self,
+                 grids,   # tuple of grids (x,y,z) or (x,z) depending on d
+                 L,       # tuple of domain sizes fitting to grids
+                 dt:float=0.1, # time step size
+                 d:int=2, # space dimension == len(grids), we don't really need this
+                 Rayleigh:float=1.0,
+                 Prantl:float=1.0,
+                 device=None,
+                 weights=[1, 1, 1, 1, 0],
+                 scaling=1.0
+                 ):
+        self.weights=weights
+        self.device=device
+        self.losses = [VelocityEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device),\
+                       BuoyancyEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device),\
+                       IntegralLoss(grids,L,dt,d,device=device),\
+                       DivergenceLoss(grids,L,dt,d,device=device),\
+                       VectorNormLoss()]
+                       #LpOmegaLoss(grids,L,d,p=2,device=device)]
+        num_losses = len(self.losses)
+        self.loss_values = torch.zeros(num_losses)
+        
+    def getLossValues(self):
+        return self.loss_values
+    
+    def resetLossValues(self):
+        self.loss_values[:] = 0.0                       
+        
+    def __call__(self, pred, ref, inp):
+        sum = 0.0
+        for i, loss in enumerate(self.losses):
+            lossval = loss(inp+pred, inp+ref/self.scaling, inp)
+            sum = sum + self.weights[i] * lossval #loss(inp+pred, inp+ref/self.scaling, inp)
+            self.loss_values[i] = self.loss_values[i] + lossval
+        return sum
+    
+@register
+class RBUpdateEqLoss(object):
+    """
+    Combines all the above defined physics losses (weighted) 
+    into one total loss for the Rayleigh Benard Equations for the update of the solution
+    instead of the solution itself.
+    TODO: debug, this favors du=0, which is not what we want.
+    """
+    def __init__(self,
+                 grids,   # tuple of grids (x,y,z) or (x,z) depending on d
+                 L,       # tuple of domain sizes fitting to grids
+                 dt:float=0.1, # time step size
+                 d:int=2, # space dimension == len(grids), we don't really need this
+                 Rayleigh:float=1.0,
+                 Prantl:float=1.0,
+                 device=None,
+                 weights=[1, 1, 1, 1, 0],
+                 scaling=1.0
+                 ):
+        self.weights=weights
+        self.scaling=scaling
+        self.device=device
+        self.losses = [VelocityUpdateEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device), \
+                       BuoyancyUpdateEquationLoss2D(grids, L, dt, d, Rayleigh=Rayleigh, Prantl=Prantl, device=device), \
+                       IntegralLoss(grids,L,dt,d,device=device), \
+                       DivergenceLoss(grids,L,dt,d,device=device), \
+                       VectorNormLoss()]
+                       #LpOmegaLoss(grids,L,d,p=2,device=device)]
+        num_losses = len(self.losses)
+        self.loss_values = torch.zeros(num_losses)
+        
+    def getLossValues(self):
+        return self.loss_values
+    
+    def resetLossValues(self):
+        self.loss_values[:] = 0.0
+        
+    def __call__(self, pred, ref, inp):
+        sum = 0.0
+        for i, loss in enumerate(self.losses):
+            lossval = loss(pred, ref/self.scaling, inp)
+            sum = sum + self.weights[i] * lossval #loss(pred, ref/self.scaling, inp)
+            self.loss_values[i] = self.loss_values[i] + lossval
+        return sum

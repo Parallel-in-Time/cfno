@@ -4,7 +4,9 @@ import torch as th
 import torch.nn as nn
 import pandas as pd
 from torch_dct import dct, idct
+import torch.nn.functional as F
 
+from cfno.layers.skip_connection import skip_connection
 from cfno.utils import CudaMemoryDebugger, format_tensor_size, format_complexTensor, deformat_complexTensor
 
 class CF2DConv(nn.Module):
@@ -12,16 +14,28 @@ class CF2DConv(nn.Module):
 
     USE_T_CACHE = False
 
-    def __init__(self, kX, kY, dv, forceFFT=False, reorder=False):
+    def __init__(self, kX, kY, dv, forceFFT=False, reorder=False, bias=False, order=2):
         super().__init__()
 
         self.kX = kX
         self.kY = kY
         self.forceFFT = forceFFT
         self.reorder = reorder
+        self.order = order
+
         # complexfloat module parameter not compatible with NCCL
         operator_weights = th.rand(dv, dv, kX*(2 if forceFFT else 1), kY, dtype=th.cfloat) 
         self.R = nn.Parameter(format_complexTensor(operator_weights))
+        
+        if bias:
+            self.init_std = (2 / (dv + dv))**0.5
+            self.bias = nn.Parameter(
+                self.init_std * th.randn(*(tuple([dv]) + (1,) * self.order))
+            )
+        else:
+            self.init_std = None
+            self.bias = None
+        
         
 
         if forceFFT:
@@ -65,20 +79,20 @@ class CF2DConv(nn.Module):
         x = th.fft.rfft(x, dim=-2, norm="ortho")    # RFFT on before-last dimension
         return x
 
-    def _toRealSpace(self, x):
+    def _toRealSpace(self, x, org_size):
         """ x[nBatch, dv, fX = nX/2+1, fY = nY] -> [nBatch, dv, nX, nY] """
-        x = th.fft.irfft(x, dim=-2, norm="ortho")   # IRFFT on before-last dimension
+        x = th.fft.irfft(x, dim=-2, n=org_size[0], norm="ortho")   # IRFFT on before-last dimension
         x = idct(x, norm="ortho")                   # IDCT on last dimension
         return x
 
     def _toFourierSpace_FORCE_FFT(self, x):
-        """ x[nBatch, dv, nX, nY] -> [nBatch, dv, fX = nX/2+1, fY = nY/2+1] """
+        """ x[nBatch, dv, nX, nY] -> [nBatch, dv, fX = nX, fY = nY/2+1] """
         x = th.fft.rfft2(x, norm="ortho")   # RFFT on last 2 dimensions
         return x
 
-    def _toRealSpace_FORCE_FFT(self, x):
-        """ x[nBatch, dv, fX = nX/2+1, fY = nY/2+1] -> [nBatch, dv, nX, nY]"""
-        x = th.fft.irfft2(x, norm="ortho")  # IRFFT on last 2 dimensions
+    def _toRealSpace_FORCE_FFT(self, x, org_size):
+        """ x[nBatch, dv, fX = nX, fY = nY/2+1] -> [nBatch, dv, nX, nY]"""
+        x = th.fft.irfft2(x, s=org_size, norm="ortho")  # IRFFT on last 2 dimensions
         return x
 
     def _toFourierSpace_FORCE_FFT_REORDER(self, x):
@@ -89,9 +103,9 @@ class CF2DConv(nn.Module):
         x = th.fft.rfft2(x, norm="ortho")   # RFFT on last 2 dimensions
         return x
 
-    def _toRealSpace_FORCE_FFT_REORDER(self, x):
+    def _toRealSpace_FORCE_FFT_REORDER(self, x, org_size):
         """ x[nBatch, dv, fX = nX/2+1, fY = nY/2+1] -> [nBatch, dv, nX, nY]"""
-        x = th.fft.irfft2(x, norm="ortho")  # IRFFT on last 2 dimensions
+        x = th.fft.irfft2(x, s=org_size, norm="ortho")  # IRFFT on last 2 dimensions
         nY = x.shape[-1]
         reorder = np.zeros(nY, dtype=int)
         reorder[: nY - nY % 2 : 2] = np.arange(nY // 2)
@@ -100,9 +114,9 @@ class CF2DConv(nn.Module):
         x = x[:, :, :, reorder]
         return x
 
-
     def forward(self, x:th.tensor):
         """ x[nBatch, dv, nX, nY] -> [nBatch, dv, nX, nY] """
+        org_size = x.shape
         # Transform to Fourier space -> [nBatch, dv, fX, fY]
         x = self._toFourierSpace(x)
         # Truncate and keep only first modes -> [nBatch, dv, kX, kY]
@@ -119,33 +133,127 @@ class CF2DConv(nn.Module):
         x = th.einsum("xa,yb,eiab->eixy", Tx.T, Ty.T, x)
 
         # Transform back to Real space -> [nBatch, dv, nX, nY]
-        x = self._toRealSpace(x)
+        # Need to pass signal orginal shape to round irfft2() 
+        # if last dim is odd
+        x = self._toRealSpace(x, org_size[-2:])
+
+        if self.bias is not None:
+            x = x + self.bias
+
+        return x
+
+
+class ChannelMLP(nn.Module):
+    """ChannelMLP applies an arbitrary number of layers of 
+    1d convolution and nonlinearity to the channels of input
+    and is invariant to spatial resolution.
+
+    Parameters
+    ----------
+    in_channels : int
+    out_channels : int, default is None
+        if None, same is in_channels
+    hidden_channels : int, default is None
+        if None, same is in_channels
+    n_layers : int, default is 2
+        number of linear layers in the MLP
+    non_linearity : default is F.gelu
+    dropout : float, default is 0
+        if > 0, dropout probability
+    """
+
+    def __init__(
+        self,
+        in_channels,
+        out_channels=None,
+        hidden_channels=None,
+        n_layers=4,
+        non_linearity=F.gelu,
+        dropout=0.0,
+        **kwargs,
+    ):
+        super().__init__()
+        self.n_layers = n_layers
+        self.in_channels = in_channels
+        self.out_channels = in_channels if out_channels is None else out_channels
+        self.hidden_channels = (
+            in_channels if hidden_channels is None else hidden_channels
+        )
+        self.non_linearity = non_linearity
+        self.dropout = (
+            nn.ModuleList([nn.Dropout(dropout) for _ in range(n_layers)])
+            if dropout > 0.0
+            else None
+        )
+        
+        # we use nn.Conv1d for everything and roll data along the 1st data dim
+        self.fcs = nn.ModuleList()
+        for i in range(n_layers):
+            if i == 0 and i == (n_layers - 1):
+                self.fcs.append(nn.Conv1d(self.in_channels, self.out_channels, 1))
+            elif i == 0:
+                self.fcs.append(nn.Conv1d(self.in_channels, self.hidden_channels, 1))
+            elif i == (n_layers - 1):
+                self.fcs.append(nn.Conv1d(self.hidden_channels, self.out_channels, 1))
+            else:
+                self.fcs.append(nn.Conv1d(self.hidden_channels, self.hidden_channels, 1))
+
+    def forward(self, x):
+        reshaped = False
+        size = list(x.shape)
+        if x.ndim > 3:  
+            x = x.reshape((*size[:2], -1)) 
+            reshaped = True
+
+        for i, fc in enumerate(self.fcs):
+            x = fc(x)
+            if i < self.n_layers - 1:
+                x = self.non_linearity(x)
+            if self.dropout is not None:
+                x = self.dropout[i](x)
+                
+        if reshaped:
+            x = x.reshape((size[0], self.out_channels, *size[2:]))
+
         return x
 
 
 class Grid2DLinear(nn.Module):
 
-    def __init__(self, inSize, outSize, bias=True):
+    def __init__(self, inSize, outSize, hiddenSize=None,
+                 bias=False, n_layers=1, non_linearity=F.gelu):
         super().__init__()
 
-        self.weights = nn.Parameter(th.empty((outSize, inSize)))
-        if bias:
-            self.bias = nn.Parameter(th.empty((outSize, 1, 1)))
-        else:
-            self.register_parameter('bias', None)
+        self.n_layers = n_layers
+        hiddenSize = outSize if hiddenSize is None else hiddenSize 
+        self.weights = nn.ParameterList()
+        self.biases = nn.ParameterList() if bias else None
+        layer_sizes = [inSize] + [hiddenSize] * (n_layers - 1) + [outSize]
+        self.non_linearity = non_linearity
+
+        for i in range(n_layers):
+            self.weights.append(nn.Parameter(th.empty(layer_sizes[i + 1], layer_sizes[i])))
+            if bias:
+                self.biases.append(nn.Parameter(th.empty(layer_sizes[i + 1], 1, 1)))
+        
 
         # Initialize parameters (same as in pytorch for nn.Linear)
-        nn.init.kaiming_uniform_(self.weights, a=math.sqrt(5))
-        if bias:
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weights)
-            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-            nn.init.uniform_(self.bias, -bound, bound)
+        for i,weight in enumerate(self.weights):
+            nn.init.kaiming_uniform_(weight, a=math.sqrt(5))
+            if bias:
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(weight)
+                bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+                nn.init.uniform_(self.biases[i], -bound, bound)
 
     def forward(self, x):
         """ x[nBatch, inSize, nX, nY] -> [nBatch, outSize, nX, nY] """
-        x = th.einsum("ij,ejxy->eixy", self.weights, x)
-        if self.bias is not None:
-            x += self.bias
+        for i in range(self.n_layers):
+            x = th.einsum("ij,ejxy->eixy", self.weights[i], x)
+            if self.biases is not None:
+                x += self.biases[i]
+            if i < self.n_layers - 1:
+                x = self.non_linearity(x)
+
         return x
 
 
@@ -171,15 +279,27 @@ class Grid2DPartialPositiver(nn.Module):
 
 class CF2DLayer(nn.Module):
 
-    def __init__(self, kX, kY, dv, forceFFT=False, non_linearity='gelu', bias=True, reorder=False):
+    def __init__(self, kX, kY, dv, 
+                 forceFFT=False, 
+                 non_linearity='gelu',
+                 bias=False, reorder=False,
+                 use_fno_skip_connection=False, 
+                 fno_skip_type='linear'
+                 ):
         super().__init__()
 
-        self.conv = CF2DConv(kX, kY, dv, forceFFT, reorder)
+        self.conv = CF2DConv(kX, kY, dv, forceFFT, reorder, bias)
         if non_linearity == 'gelu':
             self.sigma = nn.functional.gelu
         else:
             self.sigma = nn.ReLU(inplace=True)
-        self.W = Grid2DLinear(dv, dv, bias)
+        if use_fno_skip_connection:
+            self.W = skip_connection(dv, dv, skip_type=fno_skip_type)
+        else:
+            self.W = Grid2DLinear(inSize=dv,
+                              outSize=dv,
+                              bias=bias,
+                            )
 
 
     def forward(self, x):
@@ -195,33 +315,116 @@ class CF2DLayer(nn.Module):
 
 class CFNO2D(nn.Module):
 
-    def __init__(self, da, dv, du, kX=4, kY=4, nLayers=1,
-                 forceFFT=False, non_linearity='gelu', bias=True, reorder=False):
+    def __init__(self, da, dv, du,
+                 kX=4, kY=4, 
+                 nLayers=2,
+                 forceFFT=False, 
+                 non_linearity='gelu',
+                 bias=True, 
+                 reorder=False, 
+                 scaling_layers=4,
+                 use_prechannel_mlp=False,
+                 use_fno_skip_connection=False, 
+                 fno_skip_type='linear',
+                 use_postfnochannel_mlp=False,
+                 channel_mlp_skip_type='soft-gating',
+                 channel_mlp_expansion=4,
+                 get_subdomain_output=False,
+                 iXBeg=0,iYBeg=0,
+                 iXEnd=None,iYEnd=None,
+                 **kwargs):
+        
         super().__init__()
         self.config = {
             key: val for key, val in locals().items()
             if key != "self" and not key.startswith('__')}
+        
+        self.use_postfnochannel_mlp = use_postfnochannel_mlp
 
-        self.P = Grid2DLinear(da, dv, bias)
-        self.Q = Grid2DLinear(dv, du, bias)
+        # Use conv1d
+        if use_prechannel_mlp:
+            self.P = ChannelMLP(
+                in_channels=da,
+                out_channels=dv,
+                hidden_channels=dv*channel_mlp_expansion,
+                n_layers=scaling_layers
+                )
+            self.Q =  ChannelMLP(
+                in_channels=dv,
+                out_channels=du,
+                hidden_channels=dv*channel_mlp_expansion,
+                n_layers=scaling_layers
+                )
+        else:
+            self.P = Grid2DLinear(inSize=da,
+                                 outSize=dv,
+                                 hiddenSize=dv*channel_mlp_expansion,
+                                 bias=bias,
+                                 n_layers=scaling_layers
+                                )
+            self.Q = Grid2DLinear(inSize=dv,
+                                  outSize=du,
+                                  hiddenSize=dv*channel_mlp_expansion,
+                                  bias=bias,
+                                  n_layers=scaling_layers
+                                )
+           
         self.layers = nn.ModuleList(
-            [CF2DLayer(kX, kY, dv, forceFFT, non_linearity, bias, reorder)
-             for _ in range(nLayers)])
-        # self.pos = Grid2DPartialPositiver([0, 0, 1, 1])
+            [CF2DLayer(kX, kY, dv, 
+                        forceFFT,
+                        non_linearity, 
+                        bias, reorder,
+                        use_fno_skip_connection,
+                        fno_skip_type)
+                for _ in range(nLayers)])
+
+
+        if self.use_postfnochannel_mlp:
+            postchannel_mlp_expansion = 0.5
+            self.channel_mlp = nn.ModuleList(
+            [ChannelMLP(in_channels=dv,
+                        hidden_channels=round(dv * postchannel_mlp_expansion))
+                for _ in range(nLayers)])
+            
+            self.channel_mlp_skips = nn.ModuleList(
+            [skip_connection(dv, dv, skip_type=channel_mlp_skip_type)
+                for _ in range(nLayers)])
 
         self.memory = CudaMemoryDebugger(print_mem=True)
+        self.get_subdomain_output = get_subdomain_output
+        if self.get_subdomain_output:
+            self.iXBeg = iXBeg
+            self.iXEnd = iXEnd
+            self.iYBeg = iYBeg
+            self.iYEnd = iYEnd
 
     def forward(self, x):
-        """ x[nBatch, nX, nY, da] -> [nBatch, du, nX, nY]"""
-        # x = x.permute(0,3,1,2)
-        x = self.P(x)
+        """ x[nBatch, nX, nY, da] -> [nBatch, du, nX, nY] 
+            if use_subdomain_output:
+                x[nBatch, nX, nY, da] -> [nBatch, du, iEndX-iBegX, iEndY-iBegY]
+        """
 
-        for layer in self.layers:
+        x = self.P(x)
+        
+        for index,layer in enumerate(self.layers):
+            if self.use_postfnochannel_mlp:
+                x_skip_channel_mlp = self.channel_mlp_skips[index](x)
+
             x = layer(x)
 
+            if self.use_postfnochannel_mlp:
+                 x = self.channel_mlp[index](x) + x_skip_channel_mlp
+                 if index < len(self.layers) - 1:
+                    x = nn.functional.gelu(x)
+
+        # to get only a subdomain output inference
+        if self.get_subdomain_output:
+            print(f'Filtering to  x-subdomain {self.iXBeg,self.iXEnd} & y-subdomain {self.iYBeg,self.iYEnd}')
+            x = x[:, :, self.iXBeg:self.iXEnd, self.iYBeg:self.iYEnd]
+
         x = self.Q(x)
-        # x = self.pos(x)
-        # x = x.permute(0,2,3,1)
+
+        # print(f'Shape of x: {x.shape}')
 
         return x
 

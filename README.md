@@ -6,9 +6,8 @@ _:scroll: Extension of the [Fourier Neural Operators](https://arxiv.org/abs/2010
 
 - [cfno](./cfno/) : base Python module for CFNO
 - [dedalus](./dedalus/) : scripts to run RBC simulations with Dedalus and pySDC
-- [docs](./docs/) : some documentations about the FNO
+- [docs](./docs/) : main documentation of this package
 - [script](./scripts/) : scripts for the full training pipeline (data generation, training, evaluation)
-- [utils](./utils/) : utility scripts for cluster run
 
 ## Installation
 

@@ -22,6 +22,9 @@ parser.add_argument(
 parser.add_argument(
     "--xMax", default=None, type=float, help="maximum value in x axis")
 parser.add_argument(
+    "--scaleLoss", action="store_true", help="scale the loss by loss[0]"
+)
+parser.add_argument(
     "--saveFig", default="losses.pdf", help="name of the file to store the figure")
 parser.add_argument(
     "--trainDirs", nargs='*', default=["."], help="training directories to plot the loss from")
@@ -31,17 +34,24 @@ lossesFile = args.lossesFile
 saveFig = args.saveFig
 yMin, yMax = args.yMin, args.yMax
 xMin, xMax = args.xMin, args.xMax
+scaleLoss = args.scaleLoss
 
 # -----------------------------------------------------------------------------
 # Script execution
 # -----------------------------------------------------------------------------
 currentDir = os.getcwd()
+
 for trainDir in args.trainDirs:
 
     os.chdir(trainDir)
 
     data = np.loadtxt(lossesFile).T
     nEpochs, trainLoss, validLoss, idTrain, idValid = data[:5]
+    if scaleLoss:
+        idTrain /= trainLoss[0]
+        trainLoss /= trainLoss[0]
+        idValid /= validLoss[0]
+        validLoss /= validLoss[0]
 
     plt.figure()
     plt.semilogy(nEpochs, trainLoss, '-', label="train. loss")
