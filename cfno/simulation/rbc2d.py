@@ -50,10 +50,16 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
         Write into a file the space parallel distribution from dedalus
     """
     # Parameters
-    Lx, Lz = 4, 1
-    Nx, Nz = 256*resFactor, 64*resFactor
-    # Lx, Lz = 1.5, 1
-    # Nx, Nz = 96*resFactor, 64*resFactor
+    # Lx, Lz = 4, 1
+    # Nx, Nz = 256*resFactor, 64*resFactor
+ 
+    # Straat paper 
+    zBot = -1
+    Lz = 2
+    zTop = zBot + Lz
+    Nx, Nz = 96*resFactor, 64*resFactor
+    tempBot = 2
+    tempTop = 1
     timestep = baseDt/resFactor
 
     nSteps = round(float(tEnd-tBeg)/timestep, ndigits=3)
@@ -78,21 +84,21 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
                 f.write(f", MPI rank {MPI_RANK} ({MPI_SIZE})")
                 f.write(f" : {msg}\n")
 
-    Prandtl = 1
-    # Prandtl = 0.7
+    # Prandtl = 1
+    Prandtl = 0.7  # straat paper
     dealias = 3/2
     stop_sim_time = tEnd
-    timestepper = SpectralDeferredCorrectionIMEX if useSDC else d3.RK443
+    timestepper =  d3.RK443 #SpectralDeferredCorrectionIMEX if useSDC else
     dtype = np.float64
 
-    if timeParallel:
-        assert useSDC, "cannot use time-parallel without SDC"
-        _, sComm, _ = SDCIMEX_MPI.initSpaceTimeComms(groupTime=groupTimeProcs)
-        timestepper = SDCIMEX_MPI2 if useTimePar2 else SDCIMEX_MPI
-        if MPI_RANK == 0:
-            print(" -- using timeParallel implementation" + " 2" if useTimePar2 else "")
-    else:
-        sComm = COMM_WORLD
+    # if timeParallel:
+    #     assert useSDC, "cannot use time-parallel without SDC"
+    #     _, sComm, _ = SDCIMEX_MPI.initSpaceTimeComms(groupTime=groupTimeProcs)
+    #     timestepper = SDCIMEX_MPI2 if useTimePar2 else SDCIMEX_MPI
+    #     if MPI_RANK == 0:
+    #         print(" -- using timeParallel implementation" + " 2" if useTimePar2 else "")
+    # else:
+    sComm = COMM_WORLD
 
     os.makedirs(dirName, exist_ok=True)
     with open(f"{dirName}/00_infoSimu.txt", "w") as f:
@@ -106,8 +112,11 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     # Bases
     coords = d3.CartesianCoordinates('x', 'z')
     distr = d3.Distributor(coords, dtype=dtype, mesh=distrMesh, comm=sComm)
-    xbasis = d3.RealFourier(coords['x'], size=Nx, bounds=(0, Lx), dealias=dealias)
-    zbasis = d3.ChebyshevT(coords['z'], size=Nz, bounds=(0, Lz), dealias=dealias)
+    # xbasis = d3.RealFourier(coords['x'], size=Nx, bounds=(0, Lx), dealias=dealias)
+    # zbasis = d3.ChebyshevT(coords['z'], size=Nz, bounds=(0, Lz), dealias=dealias)
+    # Straat paper
+    xbasis = d3.RealFourier(coords['x'], size=Nx, bounds=(0, 2*np.pi), dealias=dealias)
+    zbasis = d3.ChebyshevT(coords['z'], size=Nz, bounds=(zBot, zTop), dealias=dealias)
 
     # Fields
     p = distr.Field(name='p', bases=(xbasis,zbasis))
@@ -144,13 +153,16 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     problem.add_equation("trace(grad_u) + tau_p = 0")
     problem.add_equation("dt(b) - kappa*div(grad_b) + lift(tau_b2) = - u@grad(b)")
     problem.add_equation("dt(u) - nu*div(grad_u) + grad(p) - b*ez + lift(tau_u2) = - u@grad(u)")
-    problem.add_equation("b(z=0) = Lz")
-    problem.add_equation("u(z=0) = 0")
-    problem.add_equation("b(z=Lz) = 0")
-    problem.add_equation("u(z=Lz) = 0")
     problem.add_equation("integ(p) = 0") # Pressure gauge
-    # problem.add_equation("b(z=0) = 2")
-    # problem.add_equation("b(z=Lz) = 1")
+    # problem.add_equation("b(z=0) = Lz")
+    # problem.add_equation("b(z=Lz) = 0")
+    # problem.add_equation("u(z=0) = 0")
+    # problem.add_equation("u(z=Lz) = 0")
+    # straat paper
+    problem.add_equation("b(z=zBot) = tempBot")
+    problem.add_equation("b(z=zTop) = tempTop")
+    problem.add_equation("u(z=zBot) = 0")
+    problem.add_equation("u(z=zTop) = 0")
 
     # Solver
     solver = problem.build_solver(timestepper)
@@ -160,8 +172,14 @@ def runSim(dirName, Rayleigh=1e7, resFactor=1, baseDt=1e-2/2, seed=999,
     # Initial conditions
     if initFields is None:
         b.fill_random('g', seed=seed, distribution='normal', scale=1e-3) # Random noise
-        b['g'] *= z * (Lz - z) # Damp noise at walls
-        b['g'] += Lz - z # Add linear background
+        # b['g'] *= z * (Lz - z) # Damp noise at walls
+        # b['g'] += Lz - z       # Add linear background
+        # Straat paper 
+        b['g'] *= (z-zBot) * (Lz - (z-zBot))
+        b['g'] += Lz - (z-zBot)
+        # b['g'] += (tempBot-tempTop) - (z-zBot) 
+        # b['g'] +=  tempBot + (tempTop - tempBot) * (z - zBot) / (zTop - zBot)
+
     else:
         fields = [
             (b, "buoyancy"), (p, "pressure"), (u, "velocity"),

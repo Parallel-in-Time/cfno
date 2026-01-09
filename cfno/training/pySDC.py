@@ -1,5 +1,6 @@
 import os
 import time
+import math
 from pathlib import Path
 from collections import OrderedDict
 import torch as th
@@ -7,14 +8,13 @@ import pickle
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
-from torch.utils.data import DataLoader, DistributedSampler
 from cfno.data.preprocessing import getDataLoaders
 from cfno.models.cfno2d import CFNO2D
+from cfno.models.fno import FNO
 from cfno.losses import LOSSES_CLASSES
-from cfno.utils import print_rank0
+from cfno.utils import print_rank0, augment_batch_with_noise
 from cfno.communication import Communicator
 from .lbfgs import LBFGS
-
 
 class FourierNeuralOp:
     """
@@ -35,7 +35,7 @@ class FourierNeuralOp:
 
 
     def __init__(self, data:dict=None, model:dict=None, optim:dict=None, lr_scheduler:dict=None, loss:dict=None,
-                 checkpoint=None, parallel_strategy:dict=None):
+                 checkpoint=None, parallel_strategy:dict=None, model_class='CFNO', ndim=2, data_aug=False):
 
         self.device = th.device('cuda:0' if th.cuda.is_available() else 'cpu')
         self.DDP_enabled = False
@@ -61,33 +61,39 @@ class FourierNeuralOp:
             if model is not None:
                 self.modelConfig = model
             self.dataset = None
+            self.model_class = model_class
+            self.ndim = ndim
             self.load(checkpoint, modelOnly=True)
             return
 
         # Data setup
-        assert "dataFile" in data, ""
-        self.data_config = {**data}
-        self.xStep, self.yStep = data.pop("xStep", 1), data.pop("yStep", 1)
-        data.pop("outType", None), data.pop("outScaling", None)  # overwritten by dataset
-        self.trainLoader, self.valLoader, self.dataset = getDataLoaders(**data, use_distributed_sampler=self.DDP_enabled)
-        # sample : [batchSize, 4, nX, nY]
+        assert "dataFile" in data, "Missing dataFile in data config"
+        self.data_config = data.copy()
+        self.xStep, self.yStep = self.data_config.pop("xStep", 1), self.data_config.pop("yStep", 1)
+        self.data_config.pop("outType", 'solution')
+        self.data_config.pop("outScaling", 1.0)
+        self.trainLoader, self.valLoader, self.dataset = getDataLoaders(**self.data_config, use_distributed_sampler=self.DDP_enabled)
+        # sample : [batchSize, 4, nX, nY] or [batchSize, 4, T, nX, nY]
         self.outType = self.dataset.outType
         self.outScaling = self.dataset.outScaling
+        self.data_aug = data_aug
+        if self.data_aug:
+            print_rank0(f'Using data noise injection per batch')
+        
         if loss is None:    # Use default settings
             loss = {
                 "name": "VectorNormLoss",
                 "absolute": False,
+                "dim": ndim
             }
         assert "name" in loss, "loss section in config must contain the 'name' parameter"
-        name = loss.pop("name")
-        try:
-            LossClass = LOSSES_CLASSES[name]
-        except KeyError:
-            raise NotImplementedError(f"{name} loss not implemented, available are {list(LOSSES_CLASSES.keys())}")
+        self.lossConfig = loss.copy()
+        loss_class = LOSSES_CLASSES.get(self.lossConfig.pop("name"))
+        if loss_class is None:
+            raise NotImplementedError(f"Unknown loss type, available are {list(LOSSES_CLASSES.keys())}")
         if "grids" in loss:
             loss["grids"] = self.dataset.grid
-        self.lossFunction = LossClass(**loss, device=self.device)
-        self.lossConfig = loss
+        self.lossFunction = loss_class(**self.lossConfig, device=self.device)
         self.losses = {
             "model": {
                 "avg_valid": -1,
@@ -107,16 +113,17 @@ class FourierNeuralOp:
             print_rank0("WARNING : absLoss should be now specified with 'absolute' in the loss section for VectorNormLoss")
 
         # Set model
-        self.setupModel(model)
+        self.model_class = model_class
+        self.ndim = ndim
+ 
+        if checkpoint is not None: 
+            self.load(checkpoint)
+        else:
+            self.setupModel(model)
+            self.setupOptimizer(optim)
+            self.setupLRScheduler(lr_scheduler)
+            self.epochs = 0
 
-        # Eventually load checkpoint if provided
-        if checkpoint is not None: self.load(checkpoint)
-        # /!\ overwrite model setup if checkpoint is loaded /!\
-
-        self.setupOptimizer(optim)
-        self.setupLRScheduler(lr_scheduler)
-
-        self.epochs = 0
         self.tCompEpoch = 0
         self.gradientNormEpoch = 0.0
         if self.USE_TENSORBOARD and self.rank == 0:
@@ -131,9 +138,12 @@ class FourierNeuralOp:
     # -------------------------------------------------------------------------
     def setupModel(self, model):
         assert model is not None, "model configuration is required"
-        self.model = CFNO2D(**model, dataset=self.dataset).to(self.device)
-        self.modelConfig = {**model}
-        self.modelConfig.pop('dataset', None)
+        if self.model_class == 'CFNO':
+            self.model = CFNO2D(**model).to(self.device)
+        else:
+            self.model = FNO(**model).to(self.device)
+        self.modelConfig = model.copy()
+        self.model.print_size()
         if self.DDP_enabled:
             self.model = DDP(self.model, device_ids=[self.local_rank])
         th.cuda.empty_cache()   # in case another model was setup before ...
@@ -153,11 +163,10 @@ class FourierNeuralOp:
         self.optimizer = OptimClass(self.model.parameters(), **optim)
         self.optimConfig = optim
         self.optim = name
-        th.cuda.empty_cache()   # in case another optimizer was setup before ...
 
     def setupLRScheduler(self, lr_scheduler=None):
         if lr_scheduler is None:
-            lr_scheduler = {"scheduler": "StepLR", "step_size": 100.0, "gamma": 0.98}
+           lr_scheduler = {'scheduler': 'ConstantLR', 'total_iters': 1, 'factor': 1.0}
         self.scheduler_config = lr_scheduler
         scheduler = lr_scheduler.pop('scheduler')
         self.scheduler_name = scheduler
@@ -165,10 +174,16 @@ class FourierNeuralOp:
             self.lr_scheduler = th.optim.lr_scheduler.StepLR(self.optimizer, **lr_scheduler)
         elif scheduler == "CosAnnealingLR":
             self.lr_scheduler = th.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, **lr_scheduler)
+        elif scheduler == "CosAnnealingWarmRestarts":
+            self.lr_scheduler = th.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                            self.optimizer, **lr_scheduler
+                        )
+        elif scheduler == "ConstantLR":
+            self.lr_scheduler = th.optim.lr_scheduler.ConstantLR(self.optimizer, **lr_scheduler)
         else:
             raise ValueError(f"LR scheduler {scheduler} not implemented yet")
+        self.scheduler_config = lr_scheduler
         
-
     def setOptimizerParam(self, **params):
         """
         Allows to change the optimizer parameter(s) dynamically during training
@@ -201,7 +216,6 @@ class FourierNeuralOp:
         # TODO: add more details here ...
         print_rank0("-"*80)
         
-
     def idLoss(self, dataset="valid"):
         if dataset == "valid":
             loader = self.valLoader
@@ -226,7 +240,6 @@ class FourierNeuralOp:
         avgLoss /= nBatches
         return avgLoss
 
-
     @classmethod
     def fullPath(cls, filePath):
         if cls.TRAIN_DIR is not None:
@@ -248,10 +261,22 @@ class FourierNeuralOp:
 
         model = self.model
         optimizer = self.optimizer
-        scheduler = self.lr_scheduler
+        scheduler = self.lr_scheduler 
         avgLoss = 0.0
         gradsEpoch = 0.0
         idLoss = self.losses['id']['train']
+
+        if self.data_aug:
+           r = self.epochs/500
+           eps_uv0, eps_uvf = 0.2, 0.002
+           eps_b0,  eps_bf  = 0.05, 0.002
+           eps_p0,  eps_pf  = 0.05, 0.002
+
+           eps_uv = eps_uvf + (eps_uv0 - eps_uvf) * math.exp(-4 * r)
+           eps_b  = eps_bf  + (eps_b0  - eps_bf)  * math.exp(-4 * r)
+           eps_p  = eps_pf  + (eps_p0  - eps_pf)  * math.exp(-4 * r)
+
+           noise_levels = (eps_uv, eps_uv, eps_b, eps_p)
 
         model.train()
         for iBatch in range(nBatches):
@@ -259,6 +284,13 @@ class FourierNeuralOp:
             inp = data[0][..., ::self.xStep, ::self.yStep].to(self.device)
             ref = data[1][..., ::self.xStep, ::self.yStep].to(self.device)
 
+            if self.data_aug:
+                if inp.shape[1] == 4:
+                    inp, ref = augment_batch_with_noise(inp, ref, noise_levels=noise_levels)
+                    # inp, ref has shape (2B, 4, nx, ny)
+                else:
+                    inp, ref = augment_batch_with_noise(inp, ref, noise_levels=noise_levels[:3])
+                    # inp, ref has shape (2B, 3, nx, ny)
             pred = model(inp)
             loss = self.lossFunction(pred, ref, inp)
             optimizer.zero_grad()
@@ -280,10 +312,18 @@ class FourierNeuralOp:
                 optimizer.step(closure)
 
             grads = [param.grad.detach().flatten() for param in self.model.parameters() if param.grad is not None]
-            gradsNorm = th.cat(grads).norm()
-            if self.USE_TENSORBOARD and self.rank == 0:
-                self.writer.add_histogram("Gradients/GradientNormBatch", gradsNorm, iBatch)
-            gradsEpoch += gradsNorm
+            if len(grads) > 0:
+                gradsNorm = th.cat(grads).norm()
+
+                if self.USE_TENSORBOARD and self.rank == 0:
+                    if th.isfinite(gradsNorm):
+                        self.writer.add_scalar(
+                            "Gradients/GradientNormBatch",
+                            gradsNorm.item(),
+                            iBatch
+                        )
+
+                gradsEpoch += gradsNorm
 
             loss, current = loss.item(), iBatch*batchSize + len(inp)
             if self.LOG_PRINT:
@@ -316,8 +356,6 @@ class FourierNeuralOp:
             self.lossFunction.resetLossValues()
         self.gradientNormEpoch = gradsEpoch
         
-        
-
     def valid(self):
         """Validate the model for one epoch"""
         nBatches = len(self.valLoader)
@@ -380,6 +418,8 @@ class FourierNeuralOp:
 
         if self.LOSSES_FILE and self.rank == 0:
             with open(self.fullPath(self.LOSSES_FILE), "a") as f:
+                if self.epochs == 0:
+                    f.write("Epochs\t\tTrainLoss\t\tValidLoss\t\tTrainIdLoss\t\tValidIdLoss\t\tGradNorm\t\tComputeTime\n")
                 f.write("{epochs}\t{train:1.18f}\t{valid:1.18f}\t{train_id:1.18f}\t{valid_id:1.18f}\t{gradNorm:1.18f}\t{tComp}\n".format(
                     epochs=self.epochs,
                     train_id=self.losses["id"]["train"], valid_id=self.losses["id"]["valid"],
@@ -411,6 +451,7 @@ class FourierNeuralOp:
             # Optimizer config and state
             'optim': self.optim,
             'optimizer_state_dict': self.optimizer.state_dict(),
+            'lr_scheduler': self.scheduler_name,
             'lr_scheduler_state_dict': self.lr_scheduler.state_dict()
             })
             
@@ -432,7 +473,9 @@ class FourierNeuralOp:
             map_location = {f'cuda:0': f'{self.device}'}
         else:
             map_location = self.device
-        checkpoint = th.load(fullPath, weights_only=True, map_location=map_location)
+        
+        weights_only = True if self.model_class == 'CFNO' else False
+        checkpoint = th.load(fullPath, weights_only=weights_only, map_location=map_location)
       
         # Load model state (eventually config before)
         if 'model' in checkpoint:
@@ -448,7 +491,6 @@ class FourierNeuralOp:
                 print_rank0("WARNING : different model settings in config file,"
                       " overwriting with config from checkpoint ...")
             print_rank0(f"Model: {checkpoint['model']}")
-            self.setupModel(checkpoint['model'])
             
         state_dict = checkpoint['model_state_dict']
         # creating new OrderedDict for model trained without DDP but used now with DDP 
@@ -456,19 +498,26 @@ class FourierNeuralOp:
         new_state_dict = OrderedDict()
         for k, v in state_dict.items():
             if self.DDP_enabled:
-                if k[:7] == 'module.':
+                if k == '_metadata':
                     name = k
                 else:
-                    name = 'module.'+ k
+                    if k[:7] == 'module.':
+                        name = k
+                    else:
+                        name = 'module.'+ k
             else:
                 if k[:7] == 'module.':
                     name = k[7:]
-                else:
-                    name = k    
-            if v.dtype == th.complex64:
-                new_state_dict[name] = th.view_as_real(v)
-            else:
+            # print(f'name: {name}, k: {k}')
+            if isinstance(v, th.Tensor) and v.is_complex():
+                v = th.view_as_real(v)
+            if name.endswith(".weight.tensor"):
+                name = name.replace(".weight.tensor", ".weight")
+            if name not in new_state_dict:
                 new_state_dict[name] = v
+        if "_metadata" in new_state_dict:
+            del new_state_dict["_metadata"]
+        self.setupModel(checkpoint['model'])  
         self.model.load_state_dict(new_state_dict)
         self.outType = checkpoint["outType"]
         self.outScaling = checkpoint["outScaling"]
@@ -483,19 +532,52 @@ class FourierNeuralOp:
             optim = checkpoint['optim']
             self.setupOptimizer({"name": optim})
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            try:
+            resumed_lr = checkpoint['optimizer_state_dict']['param_groups'][0]['lr']
+            # for g in self.optimizer.param_groups:
+            #     g['lr'] = 3e-4
+
+            # Move optimizer state tensors to correct device
+            for state in self.optimizer.state.values():
+                for k, v in state.items():
+                    if isinstance(v, th.Tensor):
+                        state[k] = v.to(self.device)
+            if 'lr_scheduler' not in checkpoint.keys():
+                self.scheduler_name = "CosAnnealingLR" 
+                # "CosAnnealingWarmRestarts"
+                # CosAnnealingLR
+                self.scheduler_config = {"scheduler": self.scheduler_name}
+                # self.lr_scheduler = th.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                #         self.optimizer,
+                #         T_0=500,
+                #         T_mult=1,
+                #         eta_min=1e-6
+                #     )
+                self.lr_scheduler = th.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=1000)
+                self.lr_scheduler.last_epoch = self.epochs
+            else:
+                # self.lr_scheduler = None
+                # self.scheduler_name = None
+                lr_scheduler = {"scheduler": checkpoint['lr_scheduler']}
+                lr_scheduler.update({'T_max': checkpoint['lr_scheduler_state_dict']['T_max']})
+                # lr_scheduler.update({'T_0': checkpoint['lr_scheduler_state_dict']['T_0'],
+                #                      'T_mult': checkpoint['lr_scheduler_state_dict']['T_mult'],
+                #                      'eta_min': checkpoint['lr_scheduler_state_dict']['eta_min'],
+                #                      'last_epoch': checkpoint['lr_scheduler_state_dict']['last_epoch']})
+                self.setupLRScheduler(lr_scheduler)
                 self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
-            except KeyError:
-                print_rank0("Learning rate scheduler is restarted!")
-
-
+            print_rank0(f'LR scheduler sate: {self.lr_scheduler.state_dict()}')
+            print_rank0(f'Resuming from checkpoint at epoch {self.epochs} with lr={resumed_lr}\
+                          with scheduler {self.scheduler_name}....')
+        # waiting for all ranks to load checkpoint
+        if self.DDP_enabled:
+            dist.barrier()
 
     # -------------------------------------------------------------------------
     # Inference method
     # -------------------------------------------------------------------------
     def __call__(self, u0, nEval=1):
         model = self.model
-        multi = len(u0.shape) == 4
+        multi = len(u0.shape) >= 4
         if not multi: u0 = u0[None, ...]
 
         inpt = th.tensor(u0, device=self.device, dtype=th.get_default_dtype())

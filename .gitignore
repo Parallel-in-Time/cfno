@@ -32,3 +32,4 @@ scratch.py
 launch_scripts/*.sh
 env
 *.pysdc
+utils

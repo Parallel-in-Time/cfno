@@ -74,24 +74,32 @@ class VectorNormLoss(object):
     Vector norm model loss
     Args:
         p (int): order of norm 
-        out: model prediction of shape [nBatch,nVar,nX,nZ]
-        ref: data reference of shape [nBatch,nVar,nX,nZ]
+        out: model prediction of shape 
+        ref: data reference of shape 
+        dim: dimension of FFT
     """
     def __init__(self, 
                  p:int=2,
                  absolute=False,
+                 dim=2,
                  device=None
     ):
         super().__init__()
         # Lp-norm type is positive
         assert p > 0
+        assert dim in (2,3), "Only FNO2D and FNO3D supported"
+        self.dim = dim
         self.p = p
         if absolute:
             self.__class__.__call__ = self.__class__.__call__ABS
         self.absolute = absolute
 
-    def vectorNorm(self, x, dim=(-2,-1)):
-        return torch.linalg.vector_norm(x, ord=self.p, dim=dim)
+    def vectorNorm(self, x):
+        if self.dim == 2:
+            axis = (-2,-1)
+        else:
+            axis = (-3,-2,-1)
+        return torch.linalg.vector_norm(x, ord=self.p, dim=axis)
     
     def __call__(self, pred, ref, inp=None):
         refNorms = self.vectorNorm(ref)

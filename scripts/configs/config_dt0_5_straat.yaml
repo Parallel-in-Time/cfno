@@ -1,32 +1,31 @@
 simu:
-  dataDir: simuData
-  tInit: 100
-  nSimu: 10
+  dataDir: Straat_data
+  tInit: 200
+  nSimu: 20
   dtData: 0.5
-  tEnd: 100
+  tEnd: 300
 
 sample:
   inSize: 1
-  outStep: 1
+  outStep: 5
   inStep: 1
 
 data:
-  outType: update
-  dataFile: dataset_96x64_Ra5e6_dt0_5_update.h5
-  trainRatio: 0.8
+  outType: solution
+  dataFile: dataset_96x64_Ra5e6_dt0_5_sol.h5
+  trainRatio: 0.75
   seed: null
-  batchSize: 20
+  batchSize: 32  # local batch size
   xStep: 1
   yStep: 1
   
-
 model:
   da: 4
   du: 4
-  dv: 16
-  kX: 12
-  kY: 12
-  nLayers: 2
+  dv: 64
+  kX: 16
+  kY: 16
+  nLayers: 8
   forceFFT: true
   bias: false
   scaling_layers: 4
@@ -44,26 +43,37 @@ model:
   iYEnd: 64
 
 optim:
-  name: adam
+  name: adamw
   lr: 1.0e-4
-  weight_decay: 1.0e-5
+  weight_decay: 1.0e-4
 
 lr_scheduler:
   scheduler: CosAnnealingLR
-  T_max: 50000
+  T_max: 1000
 
+parallel_strategy:
+  ddp: true
+  gpus_per_node: 4
 
 train:
-  trainDir: run24_straat_dt0_5_update
-  nEpochs: 14200
-  checkpoint: model.pt
+  trainDir: straat_paper_dt0_5_sol
+  nEpochs: 500
+  checkpoint: model_epochs500.pt
   lossesFile: losses.txt
-  saveEvery: 100
-  savePermanent: false
+  saveEvery: 50
+  savePermanent: true
   noTensorboard: false
   logPrint: false
+  data_aug: false
+  model_class: CFNO
+  ndim: 2
 
 eval:
-  iSimu: 8
+  iSimu: 15
   imgExt: png
-  evalDir: eval_paper
+  evalDir: eval
+  tSteps: 60
+  batchsize: 10
+  model_dt: 0.5
+  sample: random
+ 
