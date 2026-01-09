@@ -26,6 +26,12 @@ parser.add_argument(
 parser.add_argument(
     "--saveEvery", default=100, type=int, help="save checkpoint every [...] epochs")
 parser.add_argument(
+    "--ndim", default=2, type=int, help="FNO2D or 3D")
+parser.add_argument(
+    "--data_aug",  action="store_true", help='Add noisy data per batch while training')
+parser.add_argument(
+    "--model_class", default="CFNO", help="CFNO or FNO")
+parser.add_argument(
     "--savePermanent", action="store_true", help="save permanent checkpoint into [...]_epochs[...].pt files")
 parser.add_argument(
     "--noTensorboard", action="store_false", help="do not use tensorboard for losses output (only native)")
@@ -53,39 +59,45 @@ nEpochs = args.nEpochs
 saveEvery = args.saveEvery
 savePermanent = args.savePermanent
 checkpoint = args.checkpoint
+if not args.noTensorboard:
+    FourierNeuralOp.USE_TENSORBOARD = True
+else:
+    FourierNeuralOp.USE_TENSORBOARD = False
 
 
 # -----------------------------------------------------------------------------
 # Script execution
 # -----------------------------------------------------------------------------
 FourierNeuralOp.TRAIN_DIR = args.trainDir
-FourierNeuralOp.USE_TENSORBOARD = args.noTensorboard
 FourierNeuralOp.LOSSES_FILE = args.lossesFile
 FourierNeuralOp.LOG_PRINT = args.logPrint
 FourierNeuralOp.PHYSICS_LOSSES_FILE = args.physicsLossesFile
 
-model = FourierNeuralOp(**configs)
-try:
-    model.load(checkpoint)
-except: pass
+model = FourierNeuralOp(**configs,
+                        checkpoint=checkpoint,
+                        model_class=args.model_class,
+                        ndim=args.ndim,
+                        data_aug=args.data_aug)
 
 saveEvery = min(nEpochs, saveEvery)
 nChunks = nEpochs // saveEvery
 lastChunk = nEpochs % saveEvery
 
-cPrefix = os.path.splitext(checkpoint)[0]
+# cPrefix = os.path.splitext(checkpoint)[0]
 
 for _ in range(nChunks):
     model.learn(saveEvery)
-    model.save(checkpoint)
     if savePermanent:
-        model.save(f"{cPrefix}_epochs{model.epochs:06d}.pt")
+        model.save(f"model_epochs{model.epochs}.pt")
+    else:
+        model.save(f"model.pt")
 
 if lastChunk > 0:
     model.learn(lastChunk)
-    model.save(checkpoint)
     if savePermanent:
-        model.save(f"{cPrefix}_epochs{model.epochs:06d}.pt")
+        model.save(f"model_epochs{model.epochs}.pt")
+    else:
+        model.save(f"model.pt")
 
 if torch.distributed.is_initialized():
     torch.distributed.destroy_process_group()

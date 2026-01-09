@@ -7,7 +7,7 @@ from torch_dct import dct, idct
 import torch.nn.functional as F
 
 from cfno.layers.skip_connection import skip_connection
-from cfno.utils import CudaMemoryDebugger, format_tensor_size, format_complexTensor, deformat_complexTensor
+from cfno.utils import CudaMemoryDebugger, format_tensor_size, format_complexTensor, deformat_complexTensor, print_rank0
 
 class CF2DConv(nn.Module):
     """2D Neural Convolution, FFT in X, DCT in Y (can force FFT in Y for comparison)"""
@@ -142,7 +142,6 @@ class CF2DConv(nn.Module):
 
         return x
 
-
 class ChannelMLP(nn.Module):
     """ChannelMLP applies an arbitrary number of layers of 
     1d convolution and nonlinearity to the channels of input
@@ -217,7 +216,6 @@ class ChannelMLP(nn.Module):
 
         return x
 
-
 class Grid2DLinear(nn.Module):
 
     def __init__(self, inSize, outSize, hiddenSize=None,
@@ -256,7 +254,6 @@ class Grid2DLinear(nn.Module):
 
         return x
 
-
 class Grid2DPartialPositiver(nn.Module):
 
     def __init__(self, posIdx):
@@ -275,7 +272,6 @@ class Grid2DPartialPositiver(nn.Module):
         xPos = self.sigma(xPos)
         out = xNeg + xPos
         return out
-
 
 class CF2DLayer(nn.Module):
 
@@ -311,7 +307,6 @@ class CF2DLayer(nn.Module):
         v += w
         o = self.sigma(v)
         return o
-
 
 class CFNO2D(nn.Module):
 
@@ -378,7 +373,6 @@ class CFNO2D(nn.Module):
                         fno_skip_type)
                 for _ in range(nLayers)])
 
-
         if self.use_postfnochannel_mlp:
             postchannel_mlp_expansion = 0.5
             self.channel_mlp = nn.ModuleList(
@@ -428,7 +422,6 @@ class CFNO2D(nn.Module):
 
         return x
 
-
     def print_size(self):
         properties = []
 
@@ -440,7 +433,7 @@ class CFNO2D(nn.Module):
         total_mem = elementFrame["Memory(KB)"].sum()
         totals = pd.DataFrame(data=[[0, total_param, total_mem]], columns=['ParamSize', 'NParams', 'Memory(KB)'])
         elementFrame = pd.concat([elementFrame,totals], ignore_index=True, sort=False)
-        print(f'Total number of model parameters: {total_param} with (~{format_tensor_size(total_mem*1000)})')
+        print_rank0(f'Total number of model parameters: {total_param} with (~{format_tensor_size(total_mem*1000)})')
         return elementFrame
 
 if __name__ == "__main__":

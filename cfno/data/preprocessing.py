@@ -9,6 +9,7 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader, random_split, Subset, DistributedSampler
 from cfno.simulation.post import OutputFiles
 from cfno.communication import get_rank, get_world_size
+from cfno.utils import print_rank0
 
 class HDF5Dataset(Dataset):
 
@@ -29,6 +30,7 @@ class HDF5Dataset(Dataset):
         self.nY = yGrid.size
         self.kX = kwargs.get('kX', 12)
         self.kY = kwargs.get('kY', 12)
+        self.kZ = kwargs.get('kZ', None)
  
         assert len(self.inputs) == len(self.outputs), \
             f"different sample number for inputs and outputs ({len(self.inputs)},{len(self.outputs)})"
@@ -74,24 +76,24 @@ class HDF5Dataset(Dataset):
         if slice_min < n:
             return slice_min
         else:
-            print("Insufficient number of points to slice")
+            print_rank0("Insufficient number of points to slice")
             return 0
 
     def printInfos(self):
         xGrid, yGrid = self.grid
         infos = self.infos
-        print(f" -- grid shape : ({xGrid.size}, {yGrid.size})")
-        print(f" -- grid domain : [{xGrid.min():.1f}, {xGrid.max():.1f}] x [{yGrid.min():.1f}, {yGrid.max():.1f}]")
-        print(f" -- nSimu : {infos['nSimu'][()]}")
-        print(f" -- dtData : {infos['dtData'][()]:1.2g}")
-        print(f" -- inSize : {infos['inSize'][()]}")                # T_in
-        print(f" -- outStep : {infos['outStep'][()]}")              # T
-        print(f" -- inStep : {infos['inStep'][()]}")                # tStep
-        print(f" -- nSamples (per simu) : {infos['nSamples'][()]}")
-        print(f" -- nSamples (total) : {infos['nSamples'][()]*infos['nSimu'][()]}")
-        print(f" -- dtInput : {infos['dtInput'][()]:1.2g}")
-        print(f" -- outType : {infos['outType'][()].decode('utf-8')}")
-        print(f" -- outScaling : {infos['outScaling'][()]:1.2g}")
+        print_rank0(f" -- grid shape : ({xGrid.size}, {yGrid.size})")
+        print_rank0(f" -- grid domain : [{xGrid.min():.1f}, {xGrid.max():.1f}] x [{yGrid.min():.1f}, {yGrid.max():.1f}]")
+        print_rank0(f" -- nSimu : {infos['nSimu'][()]}")
+        print_rank0(f" -- dtData : {infos['dtData'][()]:1.2g}")
+        print_rank0(f" -- inSize : {infos['inSize'][()]}")                # T_in
+        print_rank0(f" -- outStep : {infos['outStep'][()]}")              # T
+        print_rank0(f" -- inStep : {infos['inStep'][()]}")                # tStep
+        print_rank0(f" -- nSamples (per simu) : {infos['nSamples'][()]}")
+        print_rank0(f" -- nSamples (total) : {infos['nSamples'][()]*infos['nSimu'][()]}")
+        print_rank0(f" -- dtInput : {infos['dtInput'][()]:1.2g}")
+        print_rank0(f" -- outType : {infos['outType'][()].decode('utf-8')}")
+        print_rank0(f" -- outScaling : {infos['outScaling'][()]:1.2g}")
  
 def createDataset(
         dataDir, inSize, outStep, inStep, outType, outScaling, dataFile,
@@ -174,9 +176,98 @@ def createDataset(
             inputs[iSim*nSamples + iSample] = inpt
             outputs[iSim*nSamples + iSample] = outp
     dataset.close()
-    print(" -- done !")
-    
+    print_rank0(" -- done !")
 
+def createDataset3D(
+            dataDir,dataFile,
+            inSize,outStep, inStep,
+            outType='solution', outScaling=1,
+            random=False,
+            **kwargs
+        ):
+
+    simDirsSorted = sorted(glob.glob(f"{dataDir}/simu_*"), key=lambda f: int(f.split('simu_',1)[1]))
+    nSimu = int(kwargs.get("nSimu", len(simDirsSorted)))
+    simDirs = simDirsSorted[:nSimu]
+    print_rank0('Using Simulations:')
+    for s in simDirs:
+        print_rank0(f" -- {s}")
+
+    # -- retrieve informations from first simulation
+
+    outFiles = OutputFiles(f"{simDirs[0]}/run_data")
+    nFields = sum(outFiles.nFields)
+    times = outFiles.times().ravel()
+    xGrid, yGrid = outFiles.x, outFiles.y  # noqa: F841 (used lated by an eval call)
+    fieldShape = (4, inSize, len(xGrid), len(yGrid))
+
+    dtData = times[1]-times[0]
+    dtInput = dtData*outStep  # noqa: F841 (used lated by an eval call)
+    dtSample = dtData*inStep  # noqa: F841 (used lated by an eval call)
+
+    infoParams = [
+        "inSize", "outStep", "inStep", "outType", "outScaling", "iBeg", "iEnd",
+        "dtData", "dtInput", "xGrid", "yGrid", "nSimu", "nSamples", "dtSample", "random"
+    ]  
+
+    iBeg = int(kwargs.get("iBeg", 0))
+   
+    if random:
+        block_list = []
+        for iSim in range(nSimu):
+            n_times = outFiles.nFields[0] # get data from first simulation
+            iEnd = int(kwargs.get("iEnd", n_times))
+            sRange = range(iBeg, iEnd-inSize-outStep+1, inStep) 
+            perm = np.random.permutation(sRange)
+            perm = perm[: (len(perm) // inSize) * inSize]
+            window = perm.reshape(-1, inSize)
+            nSamples = len(perm)
+            block_list.append(window)
+    else:
+         iEnd = int(kwargs.get("iEnd", nFields))
+         sRange = range(iBeg, iEnd-inSize-outStep+1, inStep)
+         nSamples = len(sRange)
+    print_rank0(f'selector: {sRange}, iBeg: {iBeg}, iEnd: {iEnd}, outStep: {outStep}, inStep: {inStep}, inSize: {inSize}')   
+    print_rank0(f"Creating dataset from {nSimu} simulations, {nSamples} samples each ...")
+    dataset = h5py.File(dataFile, "w")
+    for name in infoParams:
+        try:
+            dataset.create_dataset(f"infos/{name}", data=np.asarray(eval(name)))
+        except:
+            dataset.create_dataset(f"infos/{name}", data=eval(name))
+            
+    dataShape = (nSamples*nSimu, *fieldShape)
+    print_rank0(f'data shape: {dataShape}')
+    inputs = dataset.create_dataset("inputs", dataShape)
+    outputs = dataset.create_dataset("outputs", dataShape)
+    for iSim, dataDir in enumerate(simDirs):
+        outFiles = OutputFiles(f"{dataDir}/run_data")
+        print_rank0(f" -- sampling data from {dataDir}/run_data")
+        if random: 
+            print_rank0(f" -- random data in blocks")
+            blocks = block_list[iSim]
+            for iSample, time_block in enumerate(blocks):
+                inpt = outFiles.fields_window(random, iFile=iSim, time_indices=time_block)
+                outp = outFiles.fields_window(random, iFile=iSim, time_indices=time_block + outStep)
+                if outType == "update":
+                    outp -= inpt
+                    if outScaling != 1:
+                        outp *= outScaling
+                inputs[iSim*nSamples + iSample] = inpt
+                outputs[iSim*nSamples + iSample] = outp
+        else:
+            for iSample, iField in enumerate(sRange):
+                inpt, outp = outFiles.fields_window(iField, T=inSize, random=random), outFiles.fields_window(iField+outStep, T=inSize, random=random).copy()
+                if outType == "update":
+                    outp -= inpt
+                    if outScaling != 1:
+                        outp *= outScaling
+                inputs[iSim*nSamples + iSample] = inpt
+                outputs[iSim*nSamples + iSample] = outp
+     
+    dataset.close()
+    print_rank0(" -- done !")
+    
 def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None, use_distributed_sampler=False):
     dataset = HDF5Dataset(dataFile)
 
@@ -204,8 +295,8 @@ def getDataLoaders(dataFile, trainRatio=0.8, batchSize=20, seed=None, use_distri
         train_sampler = None
         val_sampler = None
 
-    trainLoader = DataLoader(trainSet, batch_size=batchSize, sampler=train_sampler, shuffle=(train_sampler is None), pin_memory=True, num_workers=4)
-    valLoader = DataLoader(valSet, batch_size=batchSize, sampler=val_sampler, shuffle=False, pin_memory=True, num_workers=4)
+    trainLoader = DataLoader(trainSet, batch_size=batchSize, sampler=train_sampler, shuffle=(train_sampler is None), pin_memory=True, num_workers=4, persistent_workers=True)
+    valLoader = DataLoader(valSet, batch_size=batchSize, sampler=val_sampler, shuffle=(val_sampler is None), pin_memory=True, num_workers=4, persistent_workers=True )
 
     return trainLoader, valLoader, dataset
 

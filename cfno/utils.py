@@ -219,3 +219,48 @@ def print_rank0(message):
             print(message, flush=True)
     else:
         print(message, flush=True)
+
+def add_channelwise_noise(
+    input,
+    noise_levels,  # (u, v, b, p)
+):
+    """
+    input: (B, channels, nx, ny)
+    returns noisy version of x with same shape
+    """
+    x_noisy = input.clone()
+
+    for c, eps in enumerate(noise_levels):
+        if eps == 0:
+            continue
+
+        # std per sample
+        std = input[:, c].std(dim=(-2, -1), keepdim=True)  # (B,1,1)
+        # Normal distribution with mean zero and eps*std scaled per batch
+        noise = eps * std * torch.randn_like(input[:, c])  # (B,nx,ny)
+        x_noisy[:, c] += noise
+
+    return x_noisy
+
+def augment_batch_with_noise(
+    x,
+    y,
+    noise_levels,
+):
+    """
+    Keeps all clean samples and appends noisy copies.
+
+    Input:
+        x : (B, channels, nx, ny)
+        y : (B, channels, nx, ny)
+
+    Output:
+        x_aug : (2B, channels, nx, ny)
+        y_aug : (2B, channels, nx, ny)
+    """
+    x_noisy = add_channelwise_noise(x, noise_levels)
+
+    x_aug = torch.cat([x, x_noisy], dim=0)
+    y_aug = torch.cat([y, y], dim=0)
+
+    return x_aug, y_aug

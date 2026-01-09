@@ -152,9 +152,10 @@ class OutputFiles():
     @property
     def shape(self):
         if self.dim == 2:
-            return (4, self.nX, self.nZ)
+            # return (4, self.nX, self.nZ)
+            return (4, 10, self.nX, self.nZ)
         elif self.dim == 3:
-            return (4, self.nX, self.nY, self.nZ)
+            return (5, self.nX, self.nY, self.nZ)
 
     @property
     def k(self):
@@ -200,6 +201,42 @@ class OutputFiles():
             data["pressure"][iTime]
             ]
         return np.array(fields)
+
+    def fields_window(self, iField, T=1):
+        """
+        Returns a block of T timesteps starting at global index iField.
+        Output shape: [channels, T, nx, ny]
+        """
+
+        # Determine which file and which time index
+        offset = np.cumsum(self.nFields)
+        iFile = np.argmax(iField < offset)
+        iTime = iField - sum(offset[:iFile])
+
+        data = self.file(iFile)["tasks"]
+
+        time_slices = []
+      
+        for t in range(iTime, iTime + T):
+            fields_t = [
+                data["velocity"][t, 0],     # vel_x
+                data["velocity"][t, 1],     # vel_y
+            ]
+
+            if self.dim == 3:
+                fields_t.append(data["velocity"][t, 2])  # vel_z
+
+            fields_t += [
+                data["buoyancy"][t],
+                data["pressure"][t],
+            ]
+
+            # [channels, nx, ny]
+            time_slices.append(np.array(fields_t))
+
+        # Stack into [channels, T, nx, ny]
+        return np.stack(time_slices, axis=1)
+
 
     def nTimes(self, iFile:int):
         return self.times(iFile).size
@@ -450,6 +487,51 @@ def generateChunkPairs(folder:str, N:int, M:int,
         random.shuffle(pairs)
 
     return pairs
+
+
+def contourPlotStraat(field, x, y, time=None,
+                title=None, refField=None, refTitle=None, saveFig=False,
+                closeFig=True, error=False, refScales=False):
+
+    fig, axs = plt.subplots(1 if refField is None else 2)
+    ax = axs if refField is None else axs[0]
+
+    if refField is not None and refScales:
+        scales = (np.min(refField), np.max(refField))
+
+    def setup(ax):
+        ax.set_aspect('equal', adjustable='box')
+        ax.set_xlabel("x")
+        ax.set_ylabel("z")
+
+    def setColorbar(field, im, ax, error=False):
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        if refScales:
+            im.cmap.set_under("white")
+            im.cmap.set_over("white")
+            im.set_clim(*scales)
+            fig.colorbar(im, cax=cax, ax=ax, ticks=np.round(np.linspace(*scales, 3),2))
+        else:
+            fig.colorbar(im, cax=cax, ax=ax, ticks=np.round(np.linspace(np.min(field), np.max(field), 3),2))
+
+    im = ax.pcolormesh(x, y, field, cmap='RdBu_r', rasterized=True)
+    setColorbar(field, im, ax, error)
+    timeSuffix = f' at t = {np.round(time,3)}s' if time is not None else ''
+    ax.set_title(f'{title}{timeSuffix}')
+    setup(ax)
+
+    if refField is not None:
+        im = axs[1].pcolormesh(x, y, refField, cmap='RdBu_r', rasterized=True)
+        setColorbar(refField, im, axs[1])
+        axs[1].set_title(f'{refTitle}{timeSuffix}')
+        setup(axs[1])
+
+    plt.tight_layout()
+    if saveFig:
+        plt.savefig(saveFig)
+    if closeFig:
+        plt.close(fig)
 
 
 def contourPlot(field, x, y, time=None,
