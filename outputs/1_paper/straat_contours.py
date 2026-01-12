@@ -4,7 +4,6 @@ import os
 import sys
 import argparse
 sys.path.insert(2, os.getcwd())
-sys.path.insert(1, '/p/project1/cexalab/john2/NeuralOperators/fourier_operator')
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -16,10 +15,14 @@ from cfno.data.preprocessing import HDF5Dataset
 from cfno.training.pySDC import FourierNeuralOp
 from cfno.simulation.post import computeMeanSpectrum, getModes, contourPlotStraat
 from cfno.simulation.post import OutputFiles
+from cfno.utils import compile_timing
+from cfno.models.cfno2d import CFNO2D
 
-# torch.set_float32_matmul_precision("low")  # Enable TF32 matmul
-# torch.backends.cuda.matmul.allow_tf32 = False
-# torch.backends.cudnn.allow_tf32 = False
+torch.set_float32_matmul_precision("high")  # Enable TF32 matmul
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+torch._dynamo.config.cache_size_limit = 128 
+
 
 # -----------------------------------------------------------------------------
 # Script parameters
@@ -49,6 +52,8 @@ parser.add_argument(
     "--model_class", default="CFNO", help="CFNO or FNO")
 parser.add_argument(
     "--sampling", default="random", help="random or sequential sampling")
+parser.add_argument("--compile", action="store_true", 
+                    help="using torch.compile for inference in default mode")
 parser.add_argument(
     "--loss_axis", default=2, type=int, help="loss axis")
 parser.add_argument(
@@ -91,9 +96,6 @@ def sliceToStr(s:slice):
 
 # Create summary file, and write header
 def fmt(hdfFloat): return float(hdfFloat[()])
-
-
-
 
 def contourPlot2(field, x, y, title=None,  
                  saveFig=False, closeFig=True, time=None):
@@ -143,7 +145,6 @@ def contourPlot2(field, x, y, title=None,
     if closeFig:
         plt.close(fig)
 
-
 if args.config is not None:
     config = readConfig(args.config)
     if "eval" in config:
@@ -189,12 +190,10 @@ time_list50 = []
 # -----------------------------------------------------------------------------
 # Script execution
 # -----------------------------------------------------------------------------
-dataset = HDF5Dataset('/p/scratch/cexalab/john2/fno_paper_data/dedalus_data/dataset_96x64_Ra5e6_dt0_5_sol.h5')
-dedalus_dataFile = OutputFiles('/p/scratch/cexalab/john2/fno_extra_data/Straat_data/simu_720966/run_data')
+dataset = HDF5Dataset('dedalus_data/dataset_96x64_Ra5e6_dt0_5_sol.h5')
+dedalus_dataFile = OutputFiles('Straat_data/simu_720966/run_data')
 time_org = dedalus_dataFile.file(0)['scales']['sim_time']
-model = FourierNeuralOp(checkpoint=checkpoint, model_class=args.model_class, ndim=ndim, data_aug=False)
 os.makedirs(evalDir, exist_ok=True)
-
 nSamples = dataset.infos["nSamples"][()]
 batchsize = args.batchsize 
 nSimu = dataset.infos["nSimu"][()]
@@ -203,6 +202,16 @@ dtSample = fmt(dataset.infos["dtSample"])
 dtData = fmt(dataset.infos["dtData"])
 error_list = []
 single_step_error_list = []
+
+
+if args.compile:
+    chk = torch.load(checkpoint, map_location=device)
+    model = CFNO2D(**chk['model'])
+    print("Using torch.compile(model, mode=default) for inference")
+    model.compile(mode='default')
+    model.eval()
+else:
+    model = FourierNeuralOp(checkpoint=checkpoint, model_class=args.model_class, ndim=ndim, data_aug=False)
 
 
 HEADER = """
@@ -229,8 +238,8 @@ summary.write(HEADER.format(
     outType=dataset.outType, outScaling=dataset.outScaling, batchsize=batchsize, tSteps=tSteps))
 
 # Performing inference on different validation sets
-# val_set = [15,16,17,18,19,20]
-val_set = [16]
+val_set = [15,16,17,18,19,20]
+# val_set = [16]
 for index,iVal in enumerate(val_set):
     if iVal < 20:
         assert iVal < nSimu, f"cannot evaluate with iSimu={iVal} with only {nSimu} simu"
@@ -304,46 +313,56 @@ for index,iVal in enumerate(val_set):
 
     
     time = []
+    compile_times = []
     uPred = np.zeros_like(uRef)
     print(f"Computing {tSteps}-Step prediction for {slices} with dt={model_dt}")
     input = u0
     single_step_error = []
-    for t in range(1,tSteps+1):
-        start_inference = default_timer()
-        uPred = model(input)
-        stop_inference = default_timer() - start_inference
-        time.append(stop_inference)
-        if iVal < 20:
-            if isinstance(start_idx, int):
-                uRef_single = u0_full[start_idx + int((t*model_dt)/dtData): end_idx + int((t*model_dt)/dtData)]
-                # print(f'{t}-step time: {time_org[start_idx + int((t*model_dt)/dtData): end_idx + int((t*model_dt)/dtData): 1]}')
+    with torch.no_grad():
+        for t in range(1,tSteps+1):
+            start_inference = default_timer()
+            uPred, compile_time = compile_timing(lambda: model(input))
+            stop_inference = default_timer() - start_inference
+            compile_times.append(compile_time)
+            time.append(stop_inference)
+            if torch.is_tensor(uPred):
+                uPred = uPred.cpu().detach().numpy()
+            if iVal < 20:
+                if isinstance(start_idx, int):
+                    uRef_single = u0_full[start_idx + int((t*model_dt)/dtData): end_idx + int((t*model_dt)/dtData)]
+                    # print(f'{t}-step time: {time_org[start_idx + int((t*model_dt)/dtData): end_idx + int((t*model_dt)/dtData): 1]}')
+                else:
+                    out_index_single_step = start_idx + int((t*model_dt)/dtData)
+                    uRef_single = u0_full[out_index_single_step]
+                    # print(f'{t}-step time: {time_org[out_index_single_step]}')
+                if ndim == 2:
+                    uRef_single50[t-1, (index*inSize):(index+1)*inSize,:,:,:] = uRef_single
+                else:
+                    uRef_single = np.moveaxis(uRef_single, [0,2], [2,0])
+                    # uRef_single50[t-1, :,:,(index*inSize):(index+1)*inSize,:,:] = uRef_single  
+                    uRef_single50[t-1, index,:,:,:,:] = uRef_single   
+                    # uRef_single50[t-1,(index*inSize):(index+1)*inSize, :,:,:,:] = uRef_single    
             else:
-                out_index_single_step = start_idx + int((t*model_dt)/dtData)
-                uRef_single = u0_full[out_index_single_step]
-                # print(f'{t}-step time: {time_org[out_index_single_step]}')
-            if ndim == 2:
-                uRef_single50[t-1, (index*inSize):(index+1)*inSize,:,:,:] = uRef_single
+                uRef_single = uRef_single50[t-1]
+            if ndim == 3:
+                step_error_val = computeError(uPred, uRef_single, ndim, loss_axis).mean() #.mean(axis=2).mean(axis=1)[0]
             else:
-                uRef_single = np.moveaxis(uRef_single, [0,2], [2,0])
-                # uRef_single50[t-1, :,:,(index*inSize):(index+1)*inSize,:,:] = uRef_single  
-                uRef_single50[t-1, index,:,:,:,:] = uRef_single   
-                # uRef_single50[t-1,(index*inSize):(index+1)*inSize, :,:,:,:] = uRef_single    
-        else:
-            uRef_single = uRef_single50[t-1]
-        if ndim == 3:
-            step_error_val = computeError(uPred, uRef_single, ndim, loss_axis).mean() #.mean(axis=2).mean(axis=1)[0]
-        else:
-            step_error_val = computeError(uPred, uRef_single, ndim, loss_axis).mean()
-        single_step_error.append(step_error_val)
-        input = uPred
+                step_error_val = computeError(uPred, uRef_single, ndim, loss_axis).mean()
+            single_step_error.append(step_error_val)
+            input = uPred
     inferenceTime = np.round(sum(time),3)
-    avg_inferenceTime = np.round(sum(time)/len(time),3)
+    avg_inferenceTime = np.round(inferenceTime/len(time),3)
+    print(f'Excluding initial compile inference timing: {compile_times[:2]}')
+    compileTime = np.round(sum(compile_times[2:]),3)
+    avg_compileTime = np.round(compileTime/(len(compile_times)-2),3)
     print(" -- done !")
     print(f'-- slices: {slices}')
     print(f'- -batchsize: {batchsize}')
     print(f' --shape of output: {uPred.shape}')
     print(f"-- Avg inference time on {device_name} (s) : {avg_inferenceTime}")
     print(f"-- Total inference time on {device_name} for {tSteps} iterations with dt of {model_dt} (s) : {inferenceTime}")
+    print(f"-- Avg Compileinference time on {device_name} (s) : {avg_compileTime}")
+    print(f"-- Total compile inference time on {device_name} for {tSteps} iterations with dt of {model_dt} (s) : {compileTime}")
 
     fig = plt.figure(f"{iVal}_step_error")
     singleerrorPlot = f"{iVal}_step_error.{imgExt}"
@@ -351,9 +370,10 @@ for index,iVal in enumerate(val_set):
     ticks = [1, tSteps//3, 2*tSteps//3, tSteps]
     tick_label = [str(val*0.5) for val in ticks]
     plt.xticks(ticks, labels=tick_label)
-    plt.ylabel('NRSSE')
-    plt.xlabel('Extrapolation in time')
+    plt.ylabel('NRSSE', fontsize=14)
+    plt.xlabel('Extrapolation in time / second', fontsize=14)
     plt.grid(True)
+    fig.tight_layout()
     plt.savefig(f"{evalDir}/{singleerrorPlot}")
     plt.close()
 
@@ -466,8 +486,10 @@ for index,iVal in enumerate(val_set):
         errorPlot=errorPlot,
         errors=errors.to_markdown(floatfmt="1.1e"),
         avg_inferenceTime=avg_inferenceTime,
+        avg_compileTime=avg_compileTime,
         tSteps=tSteps,
         dt=model_dt,
+        compileTime=compileTime,
         inferenceTime=inferenceTime,
         contourPlotSol=contourPlotSol,
         contourPlotErr=contourPlotErr,
@@ -484,9 +506,10 @@ plt.plot(np.arange(1,tSteps+1),avg_step_error)
 ticks = [1, tSteps//3, 2*tSteps//3, tSteps]
 tick_label = [str(val*0.5) for val in ticks]
 plt.xticks(ticks, labels=tick_label)
-plt.ylabel('NRSSE')
-plt.xlabel('Extrapolation in time')
+plt.ylabel('NRSSE', fontsize=14)
+plt.xlabel('Extrapolation in time / second', fontsize=14)
 plt.grid(True)
+fig.tight_layout()
 plt.savefig(f"{evalDir}/{steperrorPlot}")
 plt.close()
 

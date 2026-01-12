@@ -12,6 +12,8 @@ Averaged L_2 relative error over time :
 
 Average Inference time for single timestep (s): {avg_inferenceTime}
 Inference time after ({tSteps} x {dt})(s): {inferenceTime}
+Average Compile time for single timestep (s): {avg_compileTime}
+Inference Compile time after ({tSteps} x {dt})(s): {compileTime}
 
 Contour plots :
 

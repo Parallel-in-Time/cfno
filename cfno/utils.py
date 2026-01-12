@@ -264,3 +264,16 @@ def augment_batch_with_noise(
     y_aug = torch.cat([y, y], dim=0)
 
     return x_aug, y_aug
+
+def compile_timing(func):
+    """
+    Function to return timing in seconds
+    and result of running func.
+    """
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
+    start.record()
+    result = func()
+    end.record()
+    torch.cuda.synchronize()
+    return result, start.elapsed_time(end) / 1000
