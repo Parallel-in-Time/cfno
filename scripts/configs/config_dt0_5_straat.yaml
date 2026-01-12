@@ -76,4 +76,5 @@ eval:
   batchsize: 10
   model_dt: 0.5
   sample: random
+  compile: false
  
